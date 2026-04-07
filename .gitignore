@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+build/
+packages/*/dist/
+packages/frontend/dist/
+
+# User data (projects contain graphs, documents, conversations)
+projects/
+
+# Local settings
+.claude/
+
+# Symlinks (rebuilt by build)
+packages/web-server/client
+
+# Large data files
+packages/core/data/words_alpha.txt
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Queue sender runtime files
+queue.jsonl
+responses.jsonl
+
+# SQLite databases (if any stray ones)
+*.sqlite
+*.db
+
+# Material (reference files, PDFs, etc.)
+material/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.synctex.gz
+*.toc
+texput.log

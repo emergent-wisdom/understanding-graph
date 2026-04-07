@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+/* Industrial Optimism Design System */
+@theme {
+  /* Light mode colors (default) */
+  --color-bg-base: #f5f5f4;
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated: #fafaf9;
+  --color-bg-muted: #e7e5e4;
+
+  --color-border-default: #d6d3d1;
+  --color-border-subtle: #e7e5e4;
+  --color-border-strong: #a8a29e;
+
+  --color-text-primary: #1c1917;
+  --color-text-secondary: #57534e;
+  --color-text-muted: #78716c;
+  --color-text-inverse: #fafaf9;
+
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-accent-muted: rgba(59, 130, 246, 0.1);
+
+  /* Industrial accent - warm amber */
+  --color-industrial: #f59e0b;
+  --color-industrial-muted: rgba(245, 158, 11, 0.1);
+
+  /* Status colors */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px
+    rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px
+    rgba(0, 0, 0, 0.05);
+  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.15);
+
+  /* Radius - soft but not too round */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Trigger colors */
+  --color-trigger-foundation: #22c55e;
+  --color-trigger-surprise: #f43f5e;
+  --color-trigger-tension: #f97316;
+  --color-trigger-consequence: #eab308;
+  --color-trigger-repetition: #14b8a6;
+  --color-trigger-question: #8b5cf6;
+  --color-trigger-serendipity: #ec4899;
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-bg-base: #18181b;
+  --color-bg-surface: #27272a;
+  --color-bg-elevated: #3f3f46;
+  --color-bg-muted: #3f3f46;
+
+  --color-border-default: #3f3f46;
+  --color-border-subtle: #27272a;
+  --color-border-strong: #52525b;
+
+  --color-text-primary: #fafaf9;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-text-inverse: #18181b;
+
+  --color-accent: #60a5fa;
+  --color-accent-hover: #3b82f6;
+  --color-accent-muted: rgba(96, 165, 250, 0.1);
+
+  --color-industrial: #fbbf24;
+  --color-industrial-muted: rgba(251, 191, 36, 0.1);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px
+    rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px
+    rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 20px rgba(96, 165, 250, 0.2);
+}
+
+/* Noise texture as base64 SVG */
+@layer utilities {
+  .noise {
+    position: relative;
+  }
+
+  .noise::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+    border-radius: inherit;
+  }
+
+  .noise-subtle::before {
+    opacity: 0.2;
+  }
+
+  .noise-strong::before {
+    opacity: 0.6;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border-default;
+  }
+
+  html {
+    @apply bg-bg-base;
+  }
+
+  body {
+    @apply bg-bg-base text-text-primary font-sans antialiased;
+  }
+}
+
+/* Button base styles */
+@layer components {
+  .btn {
+    @apply relative inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all duration-150;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-text-inverse hover:bg-accent-hover;
+    @apply shadow-sm hover:shadow-md;
+  }
+
+  .btn-secondary {
+    @apply bg-bg-surface text-text-primary border border-border-default;
+    @apply hover:bg-bg-muted hover:border-border-strong;
+  }
+
+  .btn-ghost {
+    @apply text-text-secondary hover:text-text-primary hover:bg-bg-muted;
+  }
+
+  /* Card styles */
+  .card {
+    @apply bg-bg-surface border border-border-subtle rounded-lg shadow-sm;
+  }
+
+  .card-elevated {
+    @apply bg-bg-elevated border border-border-default rounded-lg shadow-md;
+  }
+
+  /* Panel styles */
+  .panel {
+    @apply bg-bg-surface/95 backdrop-blur-xl border-border-subtle;
+  }
+
+  /* Input styles */
+  .input {
+    @apply w-full px-3 py-2 text-sm bg-bg-surface border border-border-default rounded-md;
+    @apply placeholder:text-text-muted;
+    @apply focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent;
+    @apply transition-shadow duration-150;
+  }
+
+  /* Tab styles */
+  .tab {
+    @apply px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150;
+  }
+
+  .tab-active {
+    @apply bg-bg-surface text-text-primary shadow-sm;
+  }
+
+  .tab-inactive {
+    @apply text-text-muted hover:text-text-primary;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Subtle gradient backgrounds */
+@layer utilities {
+  .gradient-subtle {
+    background: linear-gradient(
+      135deg,
+      var(--color-bg-surface) 0%,
+      var(--color-bg-elevated) 100%
+    );
+  }
+
+  .gradient-industrial {
+    background: linear-gradient(
+      135deg,
+      var(--color-bg-surface) 0%,
+      var(--color-industrial-muted) 100%
+    );
+  }
+}

@@ -1,0 +1,43 @@
+\documentclass[11pt, a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+% geometry package is loaded by arxiv.sty, do not reload it here to avoid option clash
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstdefinelanguage{XML}{
+  basicstyle=\ttfamily\footnotesize,
+  morestring=[b]",
+  moredelim=*[s][\bfseries\color{blue!50!black}]{<}{>},
+  morekeywords={concept,id,degree,type,name,understanding}
+}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usepackage{tabularx}
+\usepackage{colortbl}
+\usepackage{array}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{arxiv} 
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    filecolor=black,
+    urlcolor=black,
+    citecolor=black,
+}
+
+\author{
+  Henrik Westerberg \\
+  Emergent Wisdom \\
+  \href{mailto:henrik.westerberg@emergentwisdom.org}{\texttt{henrik.westerberg@emergentwisdom.org}}
+}
+\date{\today}

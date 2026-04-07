@@ -1,0 +1,59 @@
+{
+  "name": "@understanding-graph/mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for building understanding graphs - persistent AI memory that captures comprehension, not just facts",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "understanding-graph-mcp": "dist/index.js"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emergent-wisdom/understanding-graph.git",
+    "directory": "packages/mcp-server"
+  },
+  "homepage": "https://github.com/emergent-wisdom/understanding-graph#readme",
+  "bugs": {
+    "url": "https://github.com/emergent-wisdom/understanding-graph/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "memory",
+    "knowledge-graph",
+    "understanding",
+    "llm",
+    "agent",
+    "reasoning",
+    "cognition",
+    "persistent-memory",
+    "multi-agent"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@understanding-graph/core": "*",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^9.0.8",
+    "typescript": "^5.3.0"
+  }
+}

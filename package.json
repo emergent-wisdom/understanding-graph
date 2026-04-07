@@ -1,0 +1,89 @@
+{
+  "name": "understanding-graph",
+  "version": "1.0.0",
+  "description": "Persistent understanding graphs for AI agents - structured memory with MCP support",
+  "author": "Henrik Westerberg",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emergent-wisdom/understanding-graph.git"
+  },
+  "homepage": "https://github.com/emergent-wisdom/understanding-graph#readme",
+  "bugs": {
+    "url": "https://github.com/emergent-wisdom/understanding-graph/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "memory",
+    "knowledge-graph",
+    "understanding",
+    "claude",
+    "llm",
+    "agent",
+    "stigmergy",
+    "swarm"
+  ],
+  "bin": {
+    "understanding-graph": "./bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "packages/core/dist/",
+    "packages/core/package.json",
+    "packages/mcp-server/dist/",
+    "packages/mcp-server/package.json",
+    "packages/web-server/dist/",
+    "packages/web-server/package.json",
+    "packages/frontend/dist/",
+    "packages/frontend/package.json",
+    "prompts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "bundledDependencies": [
+    "@understanding-graph/core",
+    "@understanding-graph/mcp-server",
+    "@understanding-graph/web-server",
+    "@understanding-graph/frontend"
+  ],
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:core": "npm run build -w @understanding-graph/core",
+    "build:mcp": "npm run build -w @understanding-graph/mcp-server",
+    "build:web": "npm run build -w @understanding-graph/web-server",
+    "start": "npm run start -w @understanding-graph/web-server",
+    "start:web": "npm run start -w @understanding-graph/web-server",
+    "start:mcp": "npm run start -w @understanding-graph/mcp-server",
+    "dev": "npm run dev -w @understanding-graph/web-server",
+    "dev:web": "npm run dev -w @understanding-graph/web-server",
+    "clean": "rm -rf packages/*/dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check packages/*/src",
+    "lint:fix": "biome check --write packages/*/src",
+    "format": "biome format --write packages/*/src",
+    "prepare": "husky",
+    "prepublishOnly": "npm run build",
+    "worker": "npx tsx scripts/autonomous-worker.ts",
+    "worker:parallel": "concurrently \"npm run worker\" \"npm run worker\" \"npm run worker\"",
+    "daemon": "npx tsx scripts/project-daemon.ts",
+    "daemon:all": "for dir in projects/*/; do PROJECT_ID=$(basename $dir) npm run daemon & done"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "@biomejs/biome": "^2.3.8",
+    "husky": "^9.1.7",
+    "nodemon": "^3.0.1",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.5.0"
+  }
+}
