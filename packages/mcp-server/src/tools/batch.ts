@@ -4,9 +4,22 @@ import {
   createCommit,
   createDocumentWriter,
   getGraphStore,
+  sqlite,
 } from '@understanding-graph/core';
 import type { ContextManager } from '../context-manager.js';
 import { handleToolCall } from './index.js';
+
+// Sentinel error class used by handleBatchTools to bubble an
+// "intentional early return with payload" out of a transactional block
+// and force the surrounding catch handler to ROLLBACK before returning
+// the carried payload. We can't `return` directly from inside the
+// transaction without also calling COMMIT, so we throw and recover.
+class BatchEarlyExit extends Error {
+  constructor(public readonly payload: Record<string, unknown>) {
+    super('__batch_early_exit__');
+    this.name = 'BatchEarlyExit';
+  }
+}
 
 // Tools that create nodes and need immediate embedding generation
 const NODE_CREATING_TOOLS = [
@@ -41,13 +54,23 @@ interface DuplicateWarning {
 export const batchTools: Tool[] = [
   {
     name: 'graph_batch',
-    description: `Execute multiple graph operations in a single call.
+    description: `Execute multiple graph operations as an ATOMIC COMMIT.
+
+The entire batch is wrapped in a SQLite transaction. If any operation
+fails, the entire batch is rolled back as if it never ran — there is no
+half-state to clean up. This is the system's "Atomic Commit" primitive
+from the paper: it lets you branch and revert cognitive states cleanly.
+
+The required commit_message becomes the Origin Story attached to every
+node and edge created in the batch. Future agents reading those nodes see
+the intent that created them, not just the content. The commit stream is
+the metacognitive log of how the graph evolved.
 
 Use for:
 - Document splitting (create children + clear parent)
 - Creating hierarchies (root + multiple children)
 - Bulk concept/connection creation
-- Any multi-step modifications
+- Any multi-step modification that should land all-or-nothing
 
 EDGE QUALITY REMINDER: When using graph_connect, edges should aid cognition — help future agents think better. Don't create edges for bureaucracy or "completeness". Each edge should answer: "When reasoning about X, why should I consider Y?"
 
@@ -170,10 +193,33 @@ function resolveReferences(
 const DEFAULT_DUPLICATE_THRESHOLD = 0.8;
 
 /**
- * PRE-VALIDATION: Every new concept must connect to an EXISTING node.
- * Exception: First node in an empty graph is allowed.
+ * PRE-VALIDATION: every new concept created in this batch must be reachable
+ * (transitively) to a node that already exists in the graph.
  *
- * This prevents orphan nodes from being created in the first place.
+ * Three things this check has to honor that an earlier version got wrong:
+ *
+ *   1. **Title-based references work at runtime.** The graph_connect tool
+ *      resolves `from`/`to` via contextManager.resolveNodeWithSuggestions,
+ *      which accepts EITHER an id OR a literal title. The pre-check used
+ *      to only recognize ids and `$N.id` back-refs, so a perfectly valid
+ *      title-based connect was rejected as orphaning.
+ *
+ *   2. **Transitive reachability is allowed.** A common batch pattern is:
+ *        op0: add concept A
+ *        op1: add concept B
+ *        op2: connect A → existing
+ *        op3: connect B → A
+ *      B is anchored to the existing graph through A. The pre-check used
+ *      to require every new concept to be DIRECTLY adjacent to an existing
+ *      node, which forbade this pattern.
+ *
+ *   3. **The error label needs to be the actual title.** Earlier code read
+ *      params.name (which graph_add_concept doesn't define) and always fell
+ *      through to "operation N", which made the error useless.
+ *
+ * Algorithm: compute the set of all nodes reachable to/from the existing
+ * graph via the union of new connect operations, then any new concept not
+ * in that reachable set is orphaned.
  */
 function validateNoOrphans(
   operations: Array<{ tool: string; params: Record<string, unknown> }>,
@@ -181,76 +227,173 @@ function validateNoOrphans(
   const store = getGraphStore();
   const { nodes: existingNodes } = store.getAll();
   const existingNodeIds = new Set(existingNodes.map((n) => n.id));
+  const existingNodeTitles = new Set(
+    existingNodes
+      .map((n) => (n as { title?: string }).title)
+      .filter(Boolean) as string[],
+  );
 
-  // Find all node-creating operations and their indices
-  const nodeCreatingOps: Array<{ index: number; name: string }> = [];
+  // Extract the title (or question) a node-creating op will produce.
+  // Different node-creating tools use different schemas:
+  //   graph_add_concept     -> params.title
+  //   graph_question        -> params.question
+  //   graph_supersede       -> params.new_name (the replacement concept's name)
+  //   graph_serendipity     -> params.title
+  //   graph_answer          -> params.answer (creates an answer node)
+  const conceptToolName = (op: {
+    tool: string;
+    params: Record<string, unknown>;
+  }): string => {
+    if (op.tool === 'graph_question')
+      return (op.params.question as string) || '';
+    if (op.tool === 'graph_supersede')
+      return (op.params.new_name as string) || '';
+    if (op.tool === 'graph_answer') return (op.params.answer as string) || '';
+    return (op.params.title as string) || (op.params.name as string) || '';
+  };
+
+  // Collect all node-creating ops and a per-op identifier set.
+  // Each new node has at least two valid handles: its title (if present) and
+  // its `$N.id` back-ref. We canonicalize on the title, but accept either.
+  const nodeCreatingOps: Array<{
+    index: number;
+    title: string;
+    idRef: string;
+  }> = [];
   for (let i = 0; i < operations.length; i++) {
     const op = operations[i];
     if (NODE_CREATING_TOOLS.includes(op.tool) && op.tool !== 'doc_create') {
       nodeCreatingOps.push({
         index: i,
-        name: (op.params.name as string) || `operation ${i}`,
+        title: conceptToolName(op),
+        idRef: `$${i}.id`,
       });
     }
   }
 
-  // If graph is empty and we're creating the first node, allow it
+  // Empty-graph exemption: the very first concept in a previously-empty
+  // graph is allowed to land without an edge. The post-execution sweep
+  // honors the same exemption.
   if (existingNodes.length === 0 && nodeCreatingOps.length > 0) {
-    // Allow first node, but subsequent nodes in this batch must still connect
-    // to something (either existing or the first node via $0.id reference)
     return { valid: true };
   }
 
-  // For each node-creating operation, check if there's a graph_connect
-  // that connects it to an EXISTING node (not just another new node)
-  for (const nodeOp of nodeCreatingOps) {
-    const ref = `$${nodeOp.index}.id`;
-    let connectsToExisting = false;
+  // Build a name → set-of-aliases map so we can normalize references.
+  // Both the title and the $N.id form refer to the same logical new node.
+  const aliasOf = new Map<string, string>(); // any handle → canonical key
+  for (const op of nodeCreatingOps) {
+    const canonical = op.title || op.idRef; // prefer title, fall back to idRef
+    if (op.title) aliasOf.set(op.title, canonical);
+    aliasOf.set(op.idRef, canonical);
+  }
 
-    for (const op of operations) {
-      if (op.tool !== 'graph_connect') continue;
+  // Seed the reachable set with everything that already exists.
+  // Existing nodes are referenced by either id or title at the agent layer;
+  // both forms are valid anchors.
+  const reachable = new Set<string>(); // canonical handles known to be anchored
+  const ANCHOR = '__existing__';
+  reachable.add(ANCHOR);
 
-      const from = (op.params.from || op.params.fromId) as string;
-      const to = (op.params.to || op.params.toId) as string;
-
-      // Check if this connect references our new node
-      const referencesNewNode = from === ref || to === ref;
-      if (!referencesNewNode) continue;
-
-      // Check if the OTHER end connects to an existing node
-      const otherEnd = from === ref ? to : from;
-
-      // If otherEnd is an existing node ID, we're good
-      if (existingNodeIds.has(otherEnd)) {
-        connectsToExisting = true;
-        break;
-      }
-
-      // If otherEnd is a reference to an earlier operation that creates a doc node, that's ok
-      // (doc nodes are structural and allowed)
-      if (otherEnd.startsWith('$')) {
-        const match = otherEnd.match(/^\$(\d+)\.(\w+)$/);
-        if (match) {
-          const refIndex = Number.parseInt(match[1], 10);
-          if (refIndex < operations.length) {
-            const refOp = operations[refIndex];
-            // Document nodes are structural anchors, connecting to them is valid
-            if (refOp.tool === 'doc_create') {
-              connectsToExisting = true;
-              break;
-            }
-          }
+  // Resolve any handle (title, id, or $N.id) into a canonical key.
+  // Returns ANCHOR for handles that point to an existing graph node, the
+  // canonical new-node key for handles that point to a new node in this
+  // batch, or null for unknown handles (treated as a forward-reference to
+  // some existing node we don't have in our pre-check view, which is rare
+  // but possible if the agent passes a literal id we haven't observed).
+  const canonicalize = (handle: string): string | null => {
+    if (!handle) return null;
+    if (existingNodeIds.has(handle) || existingNodeTitles.has(handle))
+      return ANCHOR;
+    if (aliasOf.has(handle)) return aliasOf.get(handle) ?? null;
+    // Unknown handle. Could be a doc_create $N.id back-ref to an earlier op
+    // in the same batch — those are treated as anchors (doc roots are
+    // structural).
+    if (handle.startsWith('$')) {
+      const match = handle.match(/^\$(\d+)\.(\w+)$/);
+      if (match) {
+        const refIndex = Number.parseInt(match[1], 10);
+        if (refIndex < operations.length) {
+          const refOp = operations[refIndex];
+          if (refOp.tool === 'doc_create') return ANCHOR;
         }
       }
     }
+    return null;
+  };
 
-    if (!connectsToExisting) {
+  // Build the adjacency list of the connect-graph for new nodes (undirected).
+  const adjacency = new Map<string, Set<string>>();
+  const neighborsOf = (key: string): Set<string> => {
+    let set = adjacency.get(key);
+    if (!set) {
+      set = new Set();
+      adjacency.set(key, set);
+    }
+    return set;
+  };
+  const addEdge = (a: string, b: string) => {
+    neighborsOf(a).add(b);
+    neighborsOf(b).add(a);
+  };
+  for (const op of operations) {
+    if (op.tool !== 'graph_connect') continue;
+    const fromHandle = (op.params.from || op.params.fromId) as string;
+    const toHandle = (op.params.to || op.params.toId) as string;
+    const fromKey = canonicalize(fromHandle);
+    const toKey = canonicalize(toHandle);
+    if (fromKey && toKey) addEdge(fromKey, toKey);
+  }
+  // graph_supersede creates BOTH a new node (params.new_name) AND a structural
+  // supersedes-edge from that new node to the old node (params.old). The
+  // pre-check has to model that as: the new concept is automatically anchored
+  // through the old (existing) concept it supersedes. Without this, every
+  // valid supersede call would be flagged as orphaning the new node.
+  for (const op of operations) {
+    if (op.tool !== 'graph_supersede') continue;
+    const oldHandle = (op.params.old as string) || '';
+    const newHandle = (op.params.new_name as string) || '';
+    const oldKey = canonicalize(oldHandle);
+    const newKey = canonicalize(newHandle);
+    if (oldKey && newKey) addEdge(oldKey, newKey);
+  }
+  // graph_answer creates an answer node connected to the question node it
+  // resolves. The connectivity is implicit, just like supersede.
+  for (const op of operations) {
+    if (op.tool !== 'graph_answer') continue;
+    const questionHandle = (op.params.question as string) || '';
+    const answerHandle = (op.params.answer as string) || '';
+    const questionKey = canonicalize(questionHandle);
+    const answerKey = canonicalize(answerHandle);
+    if (questionKey && answerKey) addEdge(questionKey, answerKey);
+  }
+
+  // BFS from ANCHOR through the adjacency list.
+  const queue: string[] = [ANCHOR];
+  while (queue.length > 0) {
+    const node = queue.shift();
+    if (node === undefined) break;
+    const neighbors = adjacency.get(node);
+    if (!neighbors) continue;
+    for (const next of neighbors) {
+      if (!reachable.has(next)) {
+        reachable.add(next);
+        queue.push(next);
+      }
+    }
+  }
+
+  // Any new node whose canonical key isn't in `reachable` is orphaned.
+  for (const op of nodeCreatingOps) {
+    const canonical = op.title || op.idRef;
+    if (!reachable.has(canonical)) {
+      const label = op.title || `operation ${op.index}`;
       return {
         valid: false,
         error:
-          `Concept "${nodeOp.name}" (operation ${nodeOp.index}) would be orphaned. ` +
-          `Every new concept MUST connect to an EXISTING node in the graph. ` +
-          `Add a graph_connect operation that links this concept to an existing node ID.`,
+          `Concept "${label}" (operation ${op.index}) would be orphaned. ` +
+          `Every new concept must reach an EXISTING node in the graph through at least one chain of graph_connect operations in this batch. ` +
+          `Add a graph_connect that links this concept (directly or via another new concept) to an existing node — ` +
+          `you can use the existing node's title (e.g. to: "Existing Concept Title"), its ID (e.g. to: "n_abc123"), or a back-ref to an earlier op in this batch (e.g. to: "$0.id").`,
       };
     }
   }
@@ -403,156 +546,287 @@ export async function handleBatchTools(
   const errors: Array<{ index: number; tool: string; error: string }> = [];
   const affectedDocRoots = new Set<string>(); // Track doc roots that need regeneration
 
-  for (let i = 0; i < operations.length; i++) {
-    const op = operations[i];
-
+  // Snapshot whether the graph was empty BEFORE this batch ran. The
+  // pre-validation step (validateNoOrphans) explicitly allows the very first
+  // node into an empty graph — the post-execution orphan sweep below must
+  // honor the same exemption, otherwise it deletes the seed node and the
+  // user gets a paradoxical "your first concept can't exist because it has
+  // no edges, but there are no nodes for it to connect to" error.
+  const graphWasEmptyAtBatchStart = (() => {
     try {
-      // Resolve any variable references in params
-      const resolvedParams = resolveReferences(op.params, results);
+      const store = getGraphStore();
+      return store.getAll().nodes.length === 0;
+    } catch {
+      return false;
+    }
+  })();
 
-      // Pre-execution check: doc_create with parentId but no afterId
-      if (
-        op.tool === 'doc_create' &&
-        resolvedParams.parentId &&
-        !resolvedParams.afterId &&
-        !allowUnorderedDocs
-      ) {
-        const store = getGraphStore();
-        const parentId = resolvedParams.parentId as string;
-        const existingSiblings = store.getChildren(parentId);
+  // Hoisted out of the try block below so the post-commit return statement
+  // can read them. `commit` is set inside the transaction, `hasErrors` is
+  // computed after the loop but still inside the transactional section.
+  let commit: { id: string; message: string } | undefined;
+  let hasErrors = false;
 
-        if (existingSiblings.length > 0) {
-          const siblingNames = existingSiblings.map((s) => s.title).join(', ');
-          throw new Error(
-            `doc_create requires afterId when parent already has children. ` +
-              `Parent "${parentId}" has siblings: [${siblingNames}]. ` +
-              `Use afterId to specify position, or set allowUnorderedDocs: true to allow arbitrary ordering.`,
-          );
-        }
-      }
+  // ATOMICITY: wrap the entire batch in a SQLite transaction so that a
+  // mid-batch failure (op N throws, an orphan is detected, etc.) leaves
+  // the graph in EXACTLY the state it was in before the batch ran.
+  //
+  // The paper's "Atomic Commits" framing makes this load-bearing — agents
+  // need to be able to revert a failed reasoning step cleanly. The earlier
+  // version had no transaction wrapping; ops 1..N-1 were persisted when op
+  // N failed, and the manual cleanup only handled the special case of
+  // "orphaned concept nodes". Connected nodes from prior ops survived
+  // failures, so a half-finished commit could land in the graph.
+  //
+  // Implementation notes:
+  //   * better-sqlite3's `db.transaction(fn)` requires fn to be sync.
+  //     Our batch loop awaits the embedding service, so we use manual
+  //     BEGIN/COMMIT/ROLLBACK instead. This is safe because the MCP server
+  //     handles requests serially against a single per-project connection.
+  //   * Early-return cases (mid-loop error with stopOnError, orphan-sweep
+  //     failure) are signalled via the BatchEarlyExit sentinel so the
+  //     catch block can ROLLBACK before returning the payload.
+  //   * Doc auto-regeneration writes files (not the DB), so it happens
+  //     AFTER commit. Score-hint computation is read-only, also after.
+  const txnDb = sqlite.getDb();
+  txnDb.exec('BEGIN');
+  let txnCommitted = false;
 
-      // Execute the tool
-      const result = await handleToolCall(
-        op.tool,
-        resolvedParams,
-        contextManager,
-      );
-      results.push(result);
+  try {
+    for (let i = 0; i < operations.length; i++) {
+      const op = operations[i];
 
-      // Track affected node/edge IDs for commit
-      const resultObj = result as Record<string, unknown>;
-      if (resultObj.id && typeof resultObj.id === 'string') {
-        if (resultObj.id.startsWith('e_')) {
-          affectedEdgeIds.push(resultObj.id);
-        } else if (resultObj.id.startsWith('n_')) {
-          affectedNodeIds.push(resultObj.id);
-        }
-      }
-      // Some tools return nodeId instead of id
-      if (resultObj.nodeId && typeof resultObj.nodeId === 'string') {
-        affectedNodeIds.push(resultObj.nodeId);
-      }
-      // graph_revise returns the updated node id
-      if (resultObj.newId && typeof resultObj.newId === 'string') {
-        affectedNodeIds.push(resultObj.newId);
-      }
+      try {
+        // Resolve any variable references in params
+        const resolvedParams = resolveReferences(op.params, results);
 
-      // Generate embedding immediately for node-creating tools
-      // This ensures duplicate detection works within the same batch
-      if (NODE_CREATING_TOOLS.includes(op.tool)) {
-        const nodeId =
-          (result as Record<string, unknown>).id ||
-          (result as Record<string, unknown>).newId;
-        if (nodeId && typeof nodeId === 'string') {
-          try {
-            const store = getGraphStore();
-            await store.generateAndStoreEmbedding(nodeId);
-          } catch {
-            // Non-fatal: embedding generation can fail without breaking the batch
-          }
-        }
-      }
-
-      // Post-creation verification: doc_create nodes must trace to root
-      // This catches forward references that bypassed pre-validation
-      if (op.tool === 'doc_create') {
-        const resultObj = result as Record<string, unknown>;
-        const nodeId = resultObj.id as string;
-        const isRoot = resultObj.isDocRoot as boolean;
-        if (nodeId && !isRoot) {
+        // Pre-execution check: doc_create with parentId but no afterId
+        if (
+          op.tool === 'doc_create' &&
+          resolvedParams.parentId &&
+          !resolvedParams.afterId &&
+          !allowUnorderedDocs
+        ) {
           const store = getGraphStore();
-          const docPath = store.getDocumentPath(nodeId);
-          if (!docPath) {
+          const parentId = resolvedParams.parentId as string;
+          const existingSiblings = store.getChildren(parentId);
+
+          if (existingSiblings.length > 0) {
+            const siblingNames = existingSiblings
+              .map((s) => s.title)
+              .join(', ');
             throw new Error(
-              `Created document node "${nodeId}" does not trace to a document root. ` +
-                'This may indicate a broken forward reference or missing parentId.',
+              `doc_create requires afterId when parent already has children. ` +
+                `Parent "${parentId}" has siblings: [${siblingNames}]. ` +
+                `Use afterId to specify position, or set allowUnorderedDocs: true to allow arbitrary ordering.`,
             );
           }
         }
-      }
 
-      // Track affected document roots for auto-regeneration
-      if (DOC_MUTATION_TOOLS.includes(op.tool)) {
+        // Execute the tool
+        const result = await handleToolCall(
+          op.tool,
+          resolvedParams,
+          contextManager,
+        );
+        results.push(result);
+
+        // Track affected node/edge IDs for commit
         const resultObj = result as Record<string, unknown>;
-        const nodeId = (resultObj.id || resultObj.nodeId) as string;
-        if (nodeId) {
-          const store = getGraphStore();
-          const docPath = store.getDocumentPath(nodeId);
-          if (docPath && docPath.length > 0 && docPath[0].isDocRoot) {
-            affectedDocRoots.add(docPath[0].id);
+        if (resultObj.id && typeof resultObj.id === 'string') {
+          if (resultObj.id.startsWith('e_')) {
+            affectedEdgeIds.push(resultObj.id);
+          } else if (resultObj.id.startsWith('n_')) {
+            affectedNodeIds.push(resultObj.id);
           }
         }
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      errors.push({ index: i, tool: op.tool, error: errorMsg });
-
-      if (stopOnError) {
-        // CRITICAL: Clean up orphaned nodes before returning
-        // Otherwise nodes created before the error become orphans
-        const graphStore = getGraphStore();
-        const { edges: currentEdges } = graphStore.getAll();
-        const connectedNodeIds = new Set<string>();
-        for (const edge of currentEdges) {
-          connectedNodeIds.add(edge.fromId);
-          connectedNodeIds.add(edge.toId);
+        // Some tools return nodeId instead of id
+        if (resultObj.nodeId && typeof resultObj.nodeId === 'string') {
+          affectedNodeIds.push(resultObj.nodeId);
+        }
+        // graph_revise returns the updated node id
+        if (resultObj.newId && typeof resultObj.newId === 'string') {
+          affectedNodeIds.push(resultObj.newId);
         }
 
-        const orphanedNodes: string[] = [];
-        for (const nodeId of affectedNodeIds) {
-          if (!nodeId.startsWith('n_')) continue;
-          const node = graphStore.getNode(nodeId);
-          if (!node) continue;
-          if (node.fileType || node.isDocRoot) continue;
-          if (!connectedNodeIds.has(nodeId)) {
-            orphanedNodes.push(nodeId);
-            graphStore.archiveNode(nodeId);
+        // Generate embedding immediately for node-creating tools
+        // This ensures duplicate detection works within the same batch
+        if (NODE_CREATING_TOOLS.includes(op.tool)) {
+          const nodeId =
+            (result as Record<string, unknown>).id ||
+            (result as Record<string, unknown>).newId;
+          if (nodeId && typeof nodeId === 'string') {
+            try {
+              const store = getGraphStore();
+              await store.generateAndStoreEmbedding(nodeId);
+            } catch {
+              // Non-fatal: embedding generation can fail without breaking the batch
+            }
           }
         }
 
-        const orphanMsg =
-          orphanedNodes.length > 0
-            ? ` Rolled back ${orphanedNodes.length} orphaned node(s).`
-            : '';
+        // Post-creation verification: doc_create nodes must trace to root
+        // This catches forward references that bypassed pre-validation
+        if (op.tool === 'doc_create') {
+          const resultObj = result as Record<string, unknown>;
+          const nodeId = resultObj.id as string;
+          const isRoot = resultObj.isDocRoot as boolean;
+          if (nodeId && !isRoot) {
+            const store = getGraphStore();
+            const docPath = store.getDocumentPath(nodeId);
+            if (!docPath) {
+              throw new Error(
+                `Created document node "${nodeId}" does not trace to a document root. ` +
+                  'This may indicate a broken forward reference or missing parentId.',
+              );
+            }
+          }
+        }
 
-        return {
-          success: false,
-          completed: i,
-          total: operations.length,
-          results,
-          errors,
-          message: `Batch stopped at operation ${i} (${op.tool}): ${errorMsg}${orphanMsg}`,
-        };
+        // Track affected document roots for auto-regeneration
+        if (DOC_MUTATION_TOOLS.includes(op.tool)) {
+          const resultObj = result as Record<string, unknown>;
+          const nodeId = (resultObj.id || resultObj.nodeId) as string;
+          if (nodeId) {
+            const store = getGraphStore();
+            const docPath = store.getDocumentPath(nodeId);
+            if (docPath && docPath.length > 0 && docPath[0].isDocRoot) {
+              affectedDocRoots.add(docPath[0].id);
+            }
+          }
+        }
+      } catch (error) {
+        // Don't double-wrap our own sentinel
+        if (error instanceof BatchEarlyExit) throw error;
+
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        errors.push({ index: i, tool: op.tool, error: errorMsg });
+
+        if (stopOnError) {
+          // The whole batch is in a SQLite transaction, so the outer catch
+          // will ROLLBACK and undo every prior op. No need for the manual
+          // orphan cleanup that the pre-transaction version had to do.
+          throw new BatchEarlyExit({
+            success: false,
+            completed: i,
+            total: operations.length,
+            results,
+            errors,
+            message: `Batch stopped at operation ${i} (${op.tool}): ${errorMsg}. Entire batch rolled back.`,
+          });
+        }
+
+        // Push null result for failed operation
+        results.push({ success: false, error: errorMsg });
       }
-
-      // Push null result for failed operation
-      results.push({ success: false, error: errorMsg });
     }
+
+    hasErrors = errors.length > 0;
+
+    // ORPHAN PREVENTION: detect any concept nodes created in this batch that
+    // have no edges. Exception: if the graph was empty when this batch started,
+    // the very first concept node is allowed to remain unconnected — by
+    // definition there's nothing for it to connect to yet. This matches
+    // validateNoOrphans's pre-check exemption.
+    //
+    // Inside the transaction. If we find orphans, throw BatchEarlyExit so
+    // the catch block ROLLBACKs the entire batch (no half-state). The
+    // pre-transaction version manually archived the orphan nodes and left
+    // everything else committed; the transactional version is cleaner.
+    const sweepStore = getGraphStore();
+    const sweepEdges = sweepStore.getAll().edges;
+    const sweepConnectedIds = new Set<string>();
+    for (const edge of sweepEdges) {
+      sweepConnectedIds.add(edge.fromId);
+      sweepConnectedIds.add(edge.toId);
+    }
+
+    const orphanedNodes: string[] = [];
+    let seedNodeAllowed = graphWasEmptyAtBatchStart;
+    for (const nodeId of affectedNodeIds) {
+      if (!nodeId.startsWith('n_')) continue;
+      const node = sweepStore.getNode(nodeId);
+      if (!node) continue;
+      // Skip document nodes (they have structural edges managed elsewhere)
+      if (node.fileType || node.isDocRoot) continue;
+      // Check if node has any edges
+      if (!sweepConnectedIds.has(nodeId)) {
+        // Allow exactly one seed node when the batch started against an empty graph.
+        if (seedNodeAllowed) {
+          seedNodeAllowed = false;
+          continue;
+        }
+        orphanedNodes.push(nodeId);
+      }
+    }
+
+    if (orphanedNodes.length > 0) {
+      const orphanNames = orphanedNodes
+        .map((id) => {
+          const r = results.find(
+            (r: unknown) => (r as { id?: string })?.id === id,
+          );
+          return (r as { name?: string })?.name || id;
+        })
+        .join(', ');
+      throw new BatchEarlyExit({
+        success: false,
+        completed: operations.length,
+        total: operations.length,
+        results,
+        errors: [
+          {
+            index: -1,
+            tool: 'orphan_check',
+            error: `${orphanedNodes.length} concept node(s) would be orphaned (no edges): ${orphanNames}. The entire batch has been rolled back. Add graph_connect operations that link every new concept to an existing or just-created node.`,
+          },
+        ],
+        message: `Batch rolled back: ${orphanedNodes.length} orphaned concept node(s) detected. No changes were persisted.`,
+        hint: 'Every concept node MUST have at least one edge. Check that graph_connect operations exist for every new concept.',
+      });
+    }
+
+    // Create commit record if message provided and batch had changes.
+    // Inside the transaction so a rollback also rolls back the commit row.
+    if (
+      commitMessage &&
+      (affectedNodeIds.length > 0 || affectedEdgeIds.length > 0)
+    ) {
+      const uniqueNodeIds = [...new Set(affectedNodeIds)];
+      const uniqueEdgeIds = [...new Set(affectedEdgeIds)];
+
+      const createdCommit = createCommit(
+        commitMessage,
+        uniqueNodeIds,
+        uniqueEdgeIds,
+        agentName,
+      );
+      commit = { id: createdCommit.id, message: createdCommit.message };
+    }
+
+    // Everything inside the transaction succeeded. COMMIT.
+    txnDb.exec('COMMIT');
+    txnCommitted = true;
+  } catch (err) {
+    // Roll back any uncommitted work. Either a real error from a sub-tool,
+    // or a BatchEarlyExit sentinel carrying a structured payload.
+    if (!txnCommitted) {
+      try {
+        txnDb.exec('ROLLBACK');
+      } catch {
+        // Swallow — if rollback itself fails the connection is wedged
+        // and there's nothing useful we can do here.
+      }
+    }
+    if (err instanceof BatchEarlyExit) {
+      // Intentional early exit — return its payload as the tool result.
+      return err.payload;
+    }
+    throw err;
   }
 
-  const hasErrors = errors.length > 0;
-
-  // Auto-regenerate affected document roots
+  // POST-COMMIT: doc auto-regeneration writes files (not the DB), and
+  // score-hint computation is read-only. Both are safe to do after commit.
   const regeneratedDocs: Array<{ rootId: string; outputPath: string }> = [];
   if (affectedDocRoots.size > 0) {
     const projectId = contextManager.getCurrentProjectId();
@@ -617,74 +891,6 @@ Or use source_commit with type: "thinking" nodes.`;
     } else if (avgEdges < 2) {
       scoreHint += `\n\n📊 ${avgEdges.toFixed(1)} avg edges per thinking (target: 2-3). Externalize more of the cognitive journey.`;
     }
-  }
-
-  // ORPHAN PREVENTION: Delete any concept nodes created in this batch that have no edges
-  const orphanedNodes: string[] = [];
-  const { edges: currentEdges } = store.getAll();
-  const connectedNodeIds = new Set<string>();
-  for (const edge of currentEdges) {
-    connectedNodeIds.add(edge.fromId);
-    connectedNodeIds.add(edge.toId);
-  }
-
-  for (const nodeId of affectedNodeIds) {
-    if (!nodeId.startsWith('n_')) continue;
-    const node = store.getNode(nodeId);
-    if (!node) continue;
-    // Skip document nodes (they have structural edges managed elsewhere)
-    if (node.fileType || node.isDocRoot) continue;
-    // Check if node has any edges
-    if (!connectedNodeIds.has(nodeId)) {
-      orphanedNodes.push(nodeId);
-      // Delete the orphan
-      store.archiveNode(nodeId);
-    }
-  }
-
-  if (orphanedNodes.length > 0) {
-    const orphanNames = orphanedNodes
-      .map((id) => {
-        const r = results.find(
-          (r: unknown) => (r as { id?: string })?.id === id,
-        );
-        return (r as { name?: string })?.name || id;
-      })
-      .join(', ');
-    return {
-      success: false,
-      completed: operations.length,
-      total: operations.length,
-      results,
-      errors: [
-        {
-          index: -1,
-          tool: 'orphan_check',
-          error: `${orphanedNodes.length} concept node(s) were orphaned (no edges): ${orphanNames}. They have been deleted. Ensure graph_connect operations succeed for all new concepts.`,
-        },
-      ],
-      message: `Batch failed: ${orphanedNodes.length} orphaned concept node(s) deleted. Add graph_connect calls with valid 'why' field.`,
-      hint: 'Every concept node MUST have at least one edge. Check that graph_connect calls include required fields (from, to, why).',
-    };
-  }
-
-  // Create commit record if message provided and batch had changes
-  let commit: { id: string; message: string } | undefined;
-  if (
-    commitMessage &&
-    (affectedNodeIds.length > 0 || affectedEdgeIds.length > 0)
-  ) {
-    // Deduplicate IDs
-    const uniqueNodeIds = [...new Set(affectedNodeIds)];
-    const uniqueEdgeIds = [...new Set(affectedEdgeIds)];
-
-    const createdCommit = createCommit(
-      commitMessage,
-      uniqueNodeIds,
-      uniqueEdgeIds,
-      agentName,
-    );
-    commit = { id: createdCommit.id, message: createdCommit.message };
   }
 
   return {

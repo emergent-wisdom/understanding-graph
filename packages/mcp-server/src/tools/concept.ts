@@ -59,9 +59,12 @@ PARAMETERS:
             'hypothesis',
             'model',
             'evaluation',
+            'decision',
+            'experiment',
+            'analysis',
           ],
           description:
-            'Why this concept is being added: foundation (core building block), surprise (unexpected), tension (creates conflict), consequence (has implications), repetition (frequently occurring), question (open question), serendipity (random synthesis), reference (pointer to another project/URL - REQUIRES references field), library (collection of references), prediction (forward-looking belief), hypothesis (explanatory theory), model (generalized pattern), evaluation (normative reflection)',
+            'Why this concept is being added: foundation (core building block), surprise (unexpected), tension (creates conflict), consequence (has implications), repetition (frequently occurring), question (open question), serendipity (random synthesis), reference (pointer to another project/URL - REQUIRES references field), library (collection of references), prediction (forward-looking belief), hypothesis (explanatory theory), model (generalized pattern), evaluation (normative reflection), decision (a choice between alternatives with rationale), experiment (a test that will yield information), analysis (structured breakdown of an existing concept). Note: trigger "thinking" is reserved for the synthesizer agent and is intentionally omitted here.',
         },
         references: {
           type: 'array',

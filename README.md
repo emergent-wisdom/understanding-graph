@@ -3,7 +3,8 @@
 **Persistent memory for AI agents. Shared cognition through stigmergy.**
 
 [![Paper](https://img.shields.io/badge/Paper-PDF-red)](paper/understanding_graph.pdf)
-[![npm version](https://badge.fury.io/js/understanding-graph.svg)](https://www.npmjs.com/package/understanding-graph)
+[![npm version](https://img.shields.io/npm/v/understanding-graph.svg)](https://www.npmjs.com/package/understanding-graph)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-blue)](https://registry.modelcontextprotocol.io/servers/io.github.emergent-wisdom/understanding-graph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Understanding Graph is an MCP server that gives AI agents structured, persistent memory. Unlike knowledge bases that store facts, it stores the *reasoning process* -- tensions, surprises, decisions, and how beliefs evolved over time. Multiple agents coordinate through the graph itself: each agent reads what others have written, builds on it, and leaves traces for the next -- stigmergy.
@@ -24,13 +25,23 @@ Understanding Graph is an MCP server that gives AI agents structured, persistent
 
 ## Quick Start
 
-### Claude Code (recommended)
+### Claude Code (zero-install)
 
-One command sets up everything -- MCP server, CLAUDE.md with agent instructions, and project directory:
+Add understanding-graph to Claude Code with one command -- no global install, nothing to clone:
+
+```bash
+claude mcp add ug -- npx -y understanding-graph mcp
+```
+
+`npx -y` downloads, caches, and runs the package on first invocation. After this, `ug` is available as an MCP server in every Claude Code session.
+
+### Claude Code with agent teams (one-command project setup)
+
+For projects where you want agent teams to share the graph automatically, run the init flow inside the project directory:
 
 ```bash
 cd your-project
-npx understanding-graph init
+npx -y understanding-graph init
 ```
 
 This creates:
@@ -39,6 +50,8 @@ This creates:
 - `projects/default/` -- Graph storage directory
 
 Now open Claude Code. Every session (and every agent team teammate) shares the same graph.
+
+Per-client setup guides: [integrations/claude-code.md](integrations/claude-code.md) · [integrations/claude-desktop.md](integrations/claude-desktop.md) · [integrations/cursor.md](integrations/cursor.md) · [integrations/mcporter.md](integrations/mcporter.md)
 
 ### Claude Desktop
 
@@ -77,26 +90,50 @@ Add to your MCP config:
 }
 ```
 
-### Docker (with Web UI)
+### Web UI / 3D visualization (build from source)
+
+The npm package ships only what the MCP server needs (~1.5 MB) so `npx -y understanding-graph mcp` stays fast. The web UI and 3D visualization require the frontend bundle (~160 MB of three.js + react + onnxruntime), which is not in the published tarball for v0.1.0. To run the UI, clone the repo:
 
 ```bash
-docker run -p 3000:3000 -v ~/understanding-data:/data ghcr.io/emergent-wisdom/understanding-graph
+git clone https://github.com/emergent-wisdom/understanding-graph.git
+cd understanding-graph
+npm install
+npm run build
+npm run start:web
+# open http://localhost:3000
 ```
 
-Open `http://localhost:3000` for the 3D visualization UI.
+### Optional: enable embedding-based search
+
+`graph_semantic_search`, `graph_similar`, `graph_semantic_gaps`, and `graph_backfill_embeddings` all rely on `@xenova/transformers` (a local embedding model, ~160 MB once compiled). It is declared as an *optional peer dependency* so the default install stays small. If you need those tools:
+
+```bash
+npm install -g @xenova/transformers
+```
+
+Without it, the rest of the graph (skeleton, history, batch, supersede, semantic_search via metadata, find_by_trigger, etc.) works fine — the embedding tools will return a clear error if you call them without installing the peer.
 
 ---
 
 ## How It Works
 
-Every mutation goes through `graph_batch` with a required `commit_message` -- git for cognition. Nodes are never deleted, only superseded. The commit stream becomes a metacognitive log that other agents can read to understand what happened and why.
+Every mutation goes through `graph_batch` with a required `commit_message` — git for cognition. The batch is wrapped in a SQLite transaction: if any operation fails, the entire batch rolls back as if it never ran. Nodes are never deleted, only superseded. The commit stream becomes a metacognitive log that other agents can read to understand what happened and why — each node's commit message becomes its *Origin Story*, the agent's inner monologue at the moment of creation.
 
 ```
-1. project_switch("my-project")        # Load a project
+1. project_switch("my-project")        # Load (or create) a project
 2. graph_skeleton()                     # Orient yourself (~150 tokens)
-3. graph_semantic_search({ query })     # Find relevant past reasoning
-4. graph_batch({ commit_message, ... }) # Mutate with intent
+3. graph_history()                      # See what other agents did recently
+4. graph_semantic_search({ query })     # Find relevant past reasoning (optional embeddings)
+5. graph_batch({ commit_message, ... }) # Mutate with intent — atomic
 ```
+
+### Atomic commits
+
+`graph_batch` is the only mutation entry point. Inside one batch you can chain `graph_add_concept`, `graph_connect`, `graph_question`, `graph_supersede`, `doc_create`, and others. The pre-validation check accepts both ID and *title* references for `graph_connect`, and computes transitive reachability (so a chain `A → B → existing` is valid even though A doesn't directly touch existing). On any failure mid-batch, the entire transaction rolls back; no half-state.
+
+### Cross-project references
+
+A graph node in one project can reference a node in another project via `graph_add_reference({ refProject, refNodeId })`. Other projects can then read it without switching via `graph_lookup_external` or find it by ID alone via `graph_global_lookup`. This is the substrate for the *Hierarchical Understanding Graph* used by the [entangled-alignment](https://github.com/emergent-wisdom/entangled-alignment) chronological annotation pipeline, where eras and documents draw cross-references.
 
 ---
 
@@ -106,6 +143,8 @@ Every mutation goes through `graph_batch` with a required `commit_message` -- gi
 
 Each node captures a moment of comprehension with a **trigger** marking *why* it was created:
 
+Triggers are *cognitive acts*, not categories — they capture *why* the agent created the node at this exact moment, not what kind of thing it is. The seven you'll use most often:
+
 | Trigger | When to Use |
 |---------|-------------|
 | `foundation` | Core concepts, axioms, starting points |
@@ -113,9 +152,10 @@ Each node captures a moment of comprehension with a **trigger** marking *why* it
 | `tension` | Conflict between ideas, unresolved |
 | `consequence` | Downstream implication |
 | `question` | Open question to explore |
-| `decision` | Choice made between alternatives |
-| `thinking` | Reasoning trace during reading |
-| `prediction` | Forward-looking belief |
+| `decision` | Choice made between alternatives, with rationale |
+| `prediction` | Forward-looking belief that can be validated later |
+
+Less common but available: `hypothesis`, `model`, `evaluation`, `analysis`, `experiment`, `serendipity`, `repetition`, `randomness`, `reference`, `library`. The `thinking` trigger is reserved for the synthesizer agent and rejected for normal use. The full set of 18 trigger types is documented in the [understanding-graph paper](paper/understanding_graph.pdf) (Section 3.1) and described as the *minimum* count for cognitive distinguishability — collapsing them would dissolve the Cognitive Guardrail.
 
 ### Edges (Connections)
 
@@ -142,12 +182,12 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 ## Tools Overview
 
 <details>
-<summary>80+ tools across 13 categories (click to expand)</summary>
+<summary>50+ top-level tools listed via <code>tools/list</code>, plus additional batch-only operations callable through <code>graph_batch</code> (click to expand)</summary>
 
 ### Batch Operations
 | Tool | Purpose |
 |------|---------|
-| `graph_batch` | Execute multiple operations atomically with commit message |
+| `graph_batch` | Execute multiple operations as an **atomic commit** with a required `commit_message`. Wrapped in a SQLite transaction: if any operation fails, the entire batch is rolled back. The `commit_message` is preserved as the node's *Origin Story* — future agents reading those nodes see not just the content but the intent that created it. |
 
 ### Concept & Node Management
 | Tool | Purpose |
@@ -315,7 +355,7 @@ The solver system persists in the SQLite database, so tasks survive across sessi
 ```
 packages/
   core/          # Graph logic, SQLite storage, embeddings
-  mcp-server/    # MCP server (80+ tools)
+  mcp-server/    # MCP server (~50 listed tools + batch-only operations)
   web-server/    # REST API + serves frontend
   frontend/      # 3D visualization (React + Three.js)
 ```
@@ -364,11 +404,41 @@ cd packages/frontend && npm run dev
 
 ## The Five Laws
 
-1. **Git for Cognition** -- Nodes are never deleted, only superseded. Every `graph_batch` requires a `commit_message`.
-2. **PURE Standard** -- Quality gates: **P**arsimonious, **U**nique, **R**ealizable, **E**xpansive.
-3. **Graph-First Context** -- Always check existing graph before creating new nodes.
-4. **Synthesize, Don't Transcribe** -- Capture implications, not just facts.
-5. **Delegate by Default** -- Break complex tasks into sub-tasks.
+1. **Git for Cognition** — Nodes are never deleted, only superseded. The supersession edge preserves the *epistemic journey*: a future agent reading the chain learns not just the current belief but the path from the wrong belief to the right one. Every `graph_batch` requires a `commit_message` that becomes the node's *Origin Story*.
+2. **PURE Standard** — Quality gates: **P**arsimonious, **U**nique, **R**ealizable, **E**xpansive. Non-compensatory: any RED gate halts.
+3. **Graph-First Context** — Always check existing graph before creating new nodes. Duplicate detection is a forcing function, not a check: it pulls prior cognition into the current moment.
+4. **Synthesize, Don't Transcribe** — Capture *implications* and *tensions*, not raw facts. The graph is for your understanding, not your input.
+5. **Delegate by Default** — Break complex tasks into sub-tasks via the solver system; let specialized agents (Skeptic, Connector, Synthesizer) coordinate stigmergically through the graph.
+
+---
+
+## Using with sema
+
+Understanding Graph gives your agents shared *episodic* memory — the reasoning trail behind a decision. [Sema](https://github.com/emergent-wisdom/sema) gives them shared *semantic* memory — a content-addressed vocabulary of cognitive patterns. They compose:
+
+```bash
+# Add both to Claude Code
+claude mcp add ug   -- npx -y understanding-graph mcp
+claude mcp add sema -- uvx --from semahash sema mcp
+```
+
+With both installed, an agent can:
+
+1. Reference a sema pattern hash (e.g. `StateLock#7859`) inside an understanding-graph node's `mechanism` field to pin the meaning of a coordination primitive.
+2. Use `graph_semantic_search` to find all graph nodes that reference a given sema pattern, across projects and agent teams.
+3. Call `sema_handshake` to verify that two agents share the *same* definition of a pattern *before* building on each other's thinking in the graph — the fail-closed handshake prevents silent semantic drift.
+
+Full walkthrough: [docs/using-with-sema.md](docs/using-with-sema.md)
+
+### Coding inside the graph
+
+A concrete end-to-end example: build a Bloom filter entirely as graph
+nodes — design as `foundation` + `decision` concepts grounded in sema
+`Check#1544`, implementation as a `.py` doc tree, empirical verification
+as an `evaluation` node — then `doc_generate` it to a runnable file
+whose self-test prints `AcceptSpec#70dd: PASS`.
+
+See [docs/coding-inside-the-graph.md](docs/coding-inside-the-graph.md).
 
 ---
 

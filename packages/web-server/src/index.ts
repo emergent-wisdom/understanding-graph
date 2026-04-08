@@ -109,6 +109,20 @@ app.use('/api', graphRouter);
 app.use('/api', databaseRouter);
 app.use('/api', conversationRouter);
 
+// MCP Registry discovery: serve the package's server.json at the 2026
+// well-known path so agents can auto-discover understanding-graph.
+// server.json lives at the repo root (4 levels up from dist/index.js:
+// dist/index.js -> dist -> web-server -> packages -> repo root).
+const packageRoot = path.resolve(__dirname, '../../..');
+const serverJsonPath = path.join(packageRoot, 'server.json');
+app.get('/.well-known/mcp/server.json', (_req, res) => {
+  if (fs.existsSync(serverJsonPath)) {
+    res.setHeader('Content-Type', 'application/json');
+    return res.sendFile(serverJsonPath);
+  }
+  res.status(404).json({ error: 'server.json not found' });
+});
+
 // Catch-all for SPA
 app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));

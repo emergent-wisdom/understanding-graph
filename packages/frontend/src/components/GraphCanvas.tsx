@@ -96,12 +96,28 @@ export function GraphCanvas() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
 
-  // Track container dimensions for responsive rendering
+  // Track container dimensions for responsive rendering.
+  //
+  // NOTE: We read the initial dimensions SYNCHRONOUSLY in the effect, then
+  // hand off to ResizeObserver for subsequent changes. The earlier version
+  // relied on the observer's first callback to set dimensions, but that
+  // callback is not guaranteed to fire on initial observation in every
+  // browser/headless context — when it didn't, dimensions stayed at {0, 0}
+  // and the `dimensions.width > 0 && dimensions.height > 0` gate further
+  // down kept ForceGraph3D unmounted forever, leaving the central canvas
+  // black even though the data was loaded and the surrounding UI rendered.
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
     if (!containerRef.current) return
+
+    // Seed dimensions from the current layout so the canvas mounts on the
+    // very first paint, not whenever the resize observer happens to fire.
+    const initial = containerRef.current.getBoundingClientRect()
+    if (initial.width > 0 && initial.height > 0) {
+      setDimensions({ width: initial.width, height: initial.height })
+    }
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {

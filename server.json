@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.emergent-wisdom/understanding-graph",
+  "description": "Persistent reasoning memory for AI agents via typed cognitive nodes and supersedes edges.",
+  "version": "0.1.5",
+  "repository": {
+    "url": "https://github.com/emergent-wisdom/understanding-graph",
+    "source": "github"
+  },
+  "websiteUrl": "https://emergentwisdom.org/entangled-alignment/",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "understanding-graph",
+      "version": "0.1.5",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "-y"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

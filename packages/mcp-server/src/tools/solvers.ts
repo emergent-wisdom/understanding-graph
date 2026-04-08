@@ -357,7 +357,7 @@ Coloring anchors:
   {
     name: 'solver_lock',
     description:
-      'Acquire a lock on resources for exclusive work. Prevents other agents from modifying locked nodes. Locks auto-expire.',
+      'Cooperative subtree-partition lock for parallel cognition. Records "agent X is working on resource R (or the subtree rooted at R) until time T" in a shared table. The intended use is to PARTITION the graph among cooperating agents — Agent A locks the "Economics" subtree, Agent B locks the "Ethics" subtree, and they refactor in parallel without colliding. Use scope="subtree" to lock an entire branch atomically. Cooperating agents query solver_list_locks before mutating to honor each other\'s claims. Honest caveat: the lock is advisory at the storage layer — graph_batch and the other mutation tools do NOT check the lock table, so an uncooperative or unaware agent can still write through it. This is by design (cooperative coordination, not kernel mutex), but worth knowing if you\'re building against adversarial actors. Locks auto-expire (default 5 min, max 30) so a crashed agent can\'t deadlock the partition.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -389,7 +389,8 @@ Coloring anchors:
   },
   {
     name: 'solver_unlock',
-    description: 'Release locks you hold on resources.',
+    description:
+      'Release advisory locks you hold on resources. See solver_lock for the cooperative-vs-mutex caveat.',
     inputSchema: {
       type: 'object',
       properties: {

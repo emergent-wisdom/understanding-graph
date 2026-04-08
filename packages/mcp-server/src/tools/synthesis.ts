@@ -386,7 +386,7 @@ WHY THIS WORKS: Seeds become axioms. A blind agent treats [CAPITALISM] in place 
   {
     name: 'graph_evaluate_variations',
     description:
-      'Phase 3 Parallel Selection: Rank multiple narrative variations by Novelty Score (S_N). Calculates Semantic Divergence via embeddings, combines with Coherence to find optimal bridge between chaos and structure. Returns ranked winner.',
+      'Rank a list of candidate texts (alternative phrasings, alternative designs, alternative reasoning paths) by a Novelty Score that combines (a) semantic divergence from existing graph content, measured via embedding distance, and (b) internal coherence. Returns the candidates ranked best-to-worst with the chosen winner and per-candidate scores. Use this when you want to pick between several variations and want a reason rooted in the current graph rather than picking arbitrarily. Originally designed as the selection phase of a chaos-injection serendipity pipeline (see graph_chaos / graph_discover).',
     inputSchema: {
       type: 'object',
       properties: {

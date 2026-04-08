@@ -1,6 +1,7 @@
 {
   "name": "understanding-graph",
-  "version": "1.0.0",
+  "version": "0.1.5",
+  "mcpName": "io.github.emergent-wisdom/understanding-graph",
   "description": "Persistent understanding graphs for AI agents - structured memory with MCP support",
   "author": "Henrik Westerberg",
   "license": "MIT",
@@ -34,19 +35,14 @@
     "packages/core/package.json",
     "packages/mcp-server/dist/",
     "packages/mcp-server/package.json",
-    "packages/web-server/dist/",
-    "packages/web-server/package.json",
-    "packages/frontend/dist/",
-    "packages/frontend/package.json",
     "prompts/",
+    "server.json",
     "README.md",
     "LICENSE"
   ],
   "bundledDependencies": [
     "@understanding-graph/core",
-    "@understanding-graph/mcp-server",
-    "@understanding-graph/web-server",
-    "@understanding-graph/frontend"
+    "@understanding-graph/mcp-server"
   ],
   "workspaces": [
     "packages/*"
@@ -62,6 +58,7 @@
     "dev": "npm run dev -w @understanding-graph/web-server",
     "dev:web": "npm run dev -w @understanding-graph/web-server",
     "clean": "rm -rf packages/*/dist",
+    "test": "npm run test --workspaces --if-present",
     "typecheck": "tsc --noEmit",
     "lint": "biome check packages/*/src",
     "lint:fix": "biome check --write packages/*/src",

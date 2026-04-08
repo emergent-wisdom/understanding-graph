@@ -1,6 +1,6 @@
 {
   "name": "@understanding-graph/web-server",
-  "version": "1.0.0",
+  "version": "0.1.5",
   "description": "Web server for understanding graph visualization",
   "type": "module",
   "main": "dist/index.js",

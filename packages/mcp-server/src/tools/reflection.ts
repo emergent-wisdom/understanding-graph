@@ -466,7 +466,8 @@ export const reflectionTools: Tool[] = [
   },
   {
     name: 'graph_history',
-    description: 'See how understanding evolved over time.',
+    description:
+      'Read the recent activity feed for the current project: who created/revised which nodes and edges, with their commit messages, in chronological order. Returns XML so structure is preserved when other agents quote from it. Use this at the start of every session to see what teammates have done since you last looked.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -487,7 +488,8 @@ export const reflectionTools: Tool[] = [
   },
   {
     name: 'project_switch',
-    description: 'Switch to a different project.',
+    description:
+      'Switch to a different project, creating it if it does not exist yet. The project becomes the active target for all subsequent graph mutations and queries. Pass the projectId you want to use; the matching directory + SQLite database are loaded (or created) on demand.',
     inputSchema: {
       type: 'object',
       properties: {

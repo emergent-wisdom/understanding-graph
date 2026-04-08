@@ -68,7 +68,24 @@ export function setCurrentProject(projectId: string): void {
   currentProjectId = projectId;
 }
 
-// Initialize SQLite for a specific project
+// Initialize SQLite for a specific project.
+//
+// IDEMPOTENT: if a connection for this project already exists in the
+// `databases` Map, return it instead of opening a new one. The earlier
+// version unconditionally created `new Database(dbPath)` on every call,
+// which orphaned the old connection (still alive, still holding any file
+// locks) and put a fresh connection in the Map. Two open connections to
+// the same SQLite file in journal mode produced "database is locked"
+// errors on writes — most visibly, INSIDE graph_batch's BEGIN/COMMIT
+// transaction wrapper, where the inner createNode call was hitting a
+// different connection than the outer txnDb. This broke the v0.1.2
+// atomicity guarantee in production despite the in-process vitest test
+// passing.
+//
+// The duplicate-init pattern was triggered by ContextManager's
+// initializeContext, which calls initDatabase whenever a project context
+// needs to be (re)initialized — even for projects that the MCP server's
+// start() had already loaded via initAllDatabases.
 export function initDatabase(projectPath: string): DatabaseType {
   const dbPath = path.join(projectPath, 'store.db');
   const projectId = path.basename(projectPath);
@@ -76,6 +93,13 @@ export function initDatabase(projectPath: string): DatabaseType {
   // Ensure project directory exists
   if (!fs.existsSync(projectPath)) {
     fs.mkdirSync(projectPath, { recursive: true });
+  }
+
+  // Reuse an existing connection rather than orphaning it.
+  const existing = databases.get(projectId);
+  if (existing) {
+    currentProjectId = projectId;
+    return existing;
   }
 
   const db = new Database(dbPath);
@@ -506,12 +530,14 @@ export function getDb(projectId?: string): DatabaseType {
   const id = projectId ?? currentProjectId;
   if (!id) {
     throw new Error(
-      'No project specified and no current project set. Call initDatabase or setCurrentProject first.',
+      'No active project. Call the project_switch tool with a projectId (e.g. project_switch({ projectId: "default" })) before mutating the graph. If the project does not exist yet, project_switch creates it on first use.',
     );
   }
   const db = databases.get(id);
   if (!db) {
-    throw new Error(`Project not loaded: ${id}`);
+    throw new Error(
+      `Project "${id}" exists but its database is not loaded yet. Call project_switch({ projectId: "${id}" }) to load it.`,
+    );
   }
   return db;
 }

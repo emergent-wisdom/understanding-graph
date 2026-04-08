@@ -238,9 +238,51 @@ export class DocumentWriter {
   ): string {
     const lines: string[] = [];
 
-    // Title from root node
-    lines.push(`# ${rootNode.title}`);
-    lines.push('');
+    // Strip any leading markdown header markers + whitespace from a node title.
+    // Without this, agents that pass titles like "## Constraints" end up with
+    // double-headed output like "## ## Constraints" because the generator
+    // ALSO prefixes its own depth-based heading. Treat titles as plain text
+    // and let depth control the heading level.
+    const stripHeading = (raw: string): string =>
+      raw.replace(/^\s*#+\s*/, '').trim();
+
+    // Does `content` already start with a markdown heading whose text equals
+    // `expectedTitle` (after stripping the heading marker)? Used to suppress
+    // the generator's own title emission when the agent baked the same
+    // heading into the content. Catches both `# Auth Design` (root h1) and
+    // `## Decision` (child h2+) cases — without this check, agents that
+    // include their headings inline get them rendered twice.
+    const contentStartsWithMatchingHeading = (
+      content: string | null | undefined,
+      expectedTitle: string,
+    ): boolean => {
+      if (!content || !expectedTitle) return false;
+      const firstLine = content.split('\n', 1)[0]?.trim() ?? '';
+      const match = firstLine.match(/^#+\s+(.+)$/);
+      if (!match) return false;
+      return match[1].trim() === expectedTitle;
+    };
+
+    // Title from root node — emit only if:
+    //   (a) the root content doesn't already start with the same heading, AND
+    //   (b) the title isn't a filename (e.g. "AUTH-DESIGN.md"). Filenames are
+    //       metadata used for filename generation, not document headings — if
+    //       the agent set a filename as the title and provided real content
+    //       with its own h1, we'd otherwise emit the filename as a stray h1
+    //       above the actual title.
+    const rootTitle = stripHeading(rootNode.title);
+    const titleLooksLikeFilename = /\.[a-z0-9]{1,8}$/i.test(rootTitle);
+    const contentHasOwnH1 =
+      !!rootNode.content &&
+      /^#\s+\S/.test(rootNode.content.split('\n', 1)[0]?.trim() ?? '');
+    const shouldEmitRootTitle =
+      rootTitle &&
+      !contentStartsWithMatchingHeading(rootNode.content, rootTitle) &&
+      !(titleLooksLikeFilename && contentHasOwnH1);
+    if (shouldEmitRootTitle) {
+      lines.push(`# ${rootTitle}`);
+      lines.push('');
+    }
 
     if (this.includeMetadata) {
       lines.push(`> Generated: ${new Date().toISOString()}`);
@@ -266,10 +308,20 @@ export class DocumentWriter {
       const headingLevel = Math.min(depth + 1, 6); // Max h6
       const heading = '#'.repeat(headingLevel);
 
-      // Node title
-      if (node.title && node.title !== node.content?.slice(0, 50)) {
-        lines.push(`${heading} ${node.title}`);
-        lines.push('');
+      const childTitle = node.title ? stripHeading(node.title) : '';
+
+      // Emit the title as a heading unless the content already starts with
+      // the same heading line (the agent embedded it inline).
+      if (
+        childTitle &&
+        !contentStartsWithMatchingHeading(node.content, childTitle)
+      ) {
+        // Defensive duplicate-suppression: skip the title line if it's just
+        // the first sentence of the content.
+        if (childTitle !== node.content?.slice(0, childTitle.length)) {
+          lines.push(`${heading} ${childTitle}`);
+          lines.push('');
+        }
       }
 
       // Node content - prefer content, fall back to understanding

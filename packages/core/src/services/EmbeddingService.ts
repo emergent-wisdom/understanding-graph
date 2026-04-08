@@ -14,7 +14,13 @@ const MODEL_NAME = 'Xenova/all-MiniLM-L6-v2'; // 384 dimensions, fast, good qual
 const EMBEDDING_DIM = 384;
 
 /**
- * Initialize the embedding pipeline (lazy loading)
+ * Initialize the embedding pipeline (lazy loading).
+ *
+ * `@xenova/transformers` is a peerDependency so a fresh `npx -y understanding-graph`
+ * install does NOT pay the ~160MB onnxruntime download cost up front. Embedding
+ * features (semantic search, similar nodes, semantic gaps, backfill) are opt-in:
+ * if you call them without installing the peer, you get a clear error pointing
+ * at the install command instead of a cryptic "Cannot find module" stack.
  */
 // biome-ignore lint/suspicious/noExplicitAny: transformers.js types are dynamic
 async function getEmbeddingPipeline(): Promise<any> {
@@ -23,8 +29,21 @@ async function getEmbeddingPipeline(): Promise<any> {
   }
 
   if (!pipeline) {
-    const transformers = await import('@xenova/transformers');
-    pipeline = transformers.pipeline;
+    try {
+      const transformers = await import('@xenova/transformers');
+      pipeline = transformers.pipeline;
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        'Embedding features (graph_semantic_search, graph_similar, ' +
+          'graph_semantic_gaps, graph_backfill_embeddings) require the optional ' +
+          '@xenova/transformers peer dependency, which is not installed. ' +
+          'Install it with:  npm install @xenova/transformers  (or  npm install -g @xenova/transformers  ' +
+          'if you launched understanding-graph via npx). For keyword-only search without embeddings, ' +
+          'use graph_search_metadata or graph_find_by_trigger instead. ' +
+          `Original import error: ${reason}`,
+      );
+    }
   }
 
   console.error(`[EmbeddingService] Loading model ${MODEL_NAME}...`);

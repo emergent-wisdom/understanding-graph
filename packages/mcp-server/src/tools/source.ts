@@ -235,10 +235,23 @@ export async function handleSourceTools(
       // NOTE: Signing gate removed - the Gatekeeper agent provides organic review
       // through the messaging system instead of hard-blocking source reads.
       const sourceId = args.sourceId as string;
+      // Only default `chars` if NONE of chars/lines/until were specified.
+      // Earlier code unconditionally defaulted chars to 2000, which made the
+      // `if (chars) ... else if (lines) ... else if (until) ...` chain in
+      // readTextSource always take the chars branch — silently ignoring
+      // every `until` and `lines` request the agent ever sent.
+      const charsArg = args.chars as number | undefined;
+      const linesArg = args.lines as number | undefined;
+      const untilArg = args.until as string | undefined;
       const result = readTextSource(sourceId, {
-        chars: (args.chars as number | undefined) || 2000,
-        lines: args.lines as number | undefined,
-        until: args.until as string | undefined,
+        chars:
+          charsArg !== undefined
+            ? charsArg
+            : linesArg === undefined && untilArg === undefined
+              ? 2000
+              : undefined,
+        lines: linesArg,
+        until: untilArg,
       });
 
       if (!result) {
