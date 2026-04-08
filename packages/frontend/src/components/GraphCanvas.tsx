@@ -384,7 +384,6 @@ export function GraphCanvas() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     selectNode,
-    setHoveredNode,
     updateCamera,
     selectedNodeId,
     sortedNodeIds,
@@ -571,7 +570,7 @@ export function GraphCanvas() {
       }
       document.body.style.cursor = node ? 'pointer' : 'default'
     },
-    [setHoveredNode, apiData?.nodes],
+    [apiData?.nodes],
   )
 
   const handleLinkClick = useCallback(
@@ -583,20 +582,17 @@ export function GraphCanvas() {
     [selectEdge],
   )
 
-  const handleLinkHover = useCallback(
-    (link: Link3D | null) => {
-      setHoveredEdgeId(link?.edgeData?.id || null)
-      if (link?.edgeData) {
-        setHoveredEdge(link.edgeData)
-        setHoveredNode(null) // Clear node hover when hovering edge
-        setHoveredNodeId(null)
-      } else {
-        setHoveredEdge(null)
-      }
-      document.body.style.cursor = link ? 'pointer' : 'default'
-    },
-    [setHoveredNode],
-  )
+  const handleLinkHover = useCallback((link: Link3D | null) => {
+    setHoveredEdgeId(link?.edgeData?.id || null)
+    if (link?.edgeData) {
+      setHoveredEdge(link.edgeData)
+      setHoveredNode(null) // Clear node hover when hovering edge
+      setHoveredNodeId(null)
+    } else {
+      setHoveredEdge(null)
+    }
+    document.body.style.cursor = link ? 'pointer' : 'default'
+  }, [])
 
   if (!currentProject) {
     return (
