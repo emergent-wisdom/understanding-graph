@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { GraphNode, Project, TriggerType } from '@/types/graph'
+import type { Project, TriggerType } from '@/types/graph'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -69,10 +69,6 @@ interface AppState {
   clearPendingFly: () => void
   clearPendingDocumentView: () => void
   clearSelection: () => void
-
-  // Hovered state (for tooltips)
-  hoveredNode: GraphNode | null
-  setHoveredNode: (node: GraphNode | null) => void
 
   // Highlighted state (for commit hover)
   highlightedNodeIds: Set<string>
@@ -202,9 +198,9 @@ export const useAppStore = create<AppState>()(
       clearPendingDocumentView: () => set({ pendingDocumentViewId: null }),
       clearSelection: () => set({ selectedNodeId: null, selectedEdgeId: null }),
 
-      // Hover
-      hoveredNode: null,
-      setHoveredNode: (node) => set({ hoveredNode: node }),
+      // (hoveredNode used to live here; moved to GraphCanvas local state
+      // so hover events don't fire store updates that re-render every
+      // component subscribed without a selector — see GraphCanvas.tsx.)
 
       // Highlighted (for commit hover)
       highlightedNodeIds: new Set(),

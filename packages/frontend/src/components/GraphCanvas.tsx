@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { useGraph } from '@/hooks/useApi'
 import { DEFAULT_COLOR_HEX, triggerColorsHex } from '@/lib/colors'
 import { ALL_TRIGGER_TYPES, useAppStore } from '@/stores/appStore'
-import type { GraphEdge, TriggerType } from '@/types/graph'
+import type { GraphEdge, GraphNode, TriggerType } from '@/types/graph'
 import { SearchBar } from './SearchBar'
 
 const TRIGGER_COLORS = triggerColorsHex as Record<TriggerType, string>
@@ -68,7 +68,6 @@ export function GraphCanvas() {
     selectEdge,
     selectAndFlyToNode,
     selectedNodeId,
-    setHoveredNode,
     currentProject,
     nodeLimit,
     hiddenTriggerTypes,
@@ -95,29 +94,24 @@ export function GraphCanvas() {
   const [hoveredEdge, setHoveredEdge] = useState<GraphEdge | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null)
+  // Local hovered-node tooltip state. Used to live in the Zustand store
+  // (useAppStore's hoveredNode/setHoveredNode), but hover events fire many
+  // times per second — especially during a 1s camera-fly animation, when
+  // the raycaster keeps finding different nodes under a stationary cursor
+  // as the scene slides past. Any component subscribed to the store (such
+  // as DetailsPanel, which historically did `useAppStore()` without a
+  // selector) would re-render on every one of those hovers and remount
+  // the <NodeLink> the user was hovering/clicking, producing the
+  // "node link flicker after one click" bug. Keeping hover state local to
+  // GraphCanvas means only GraphCanvas + HoverTooltip re-render on hover.
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null)
 
-  // Track container dimensions for responsive rendering.
-  //
-  // NOTE: We read the initial dimensions SYNCHRONOUSLY in the effect, then
-  // hand off to ResizeObserver for subsequent changes. The earlier version
-  // relied on the observer's first callback to set dimensions, but that
-  // callback is not guaranteed to fire on initial observation in every
-  // browser/headless context — when it didn't, dimensions stayed at {0, 0}
-  // and the `dimensions.width > 0 && dimensions.height > 0` gate further
-  // down kept ForceGraph3D unmounted forever, leaving the central canvas
-  // black even though the data was loaded and the surrounding UI rendered.
+  // Track container dimensions for responsive rendering
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
     if (!containerRef.current) return
-
-    // Seed dimensions from the current layout so the canvas mounts on the
-    // very first paint, not whenever the resize observer happens to fire.
-    const initial = containerRef.current.getBoundingClientRect()
-    if (initial.width > 0 && initial.height > 0) {
-      setDimensions({ width: initial.width, height: initial.height })
-    }
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -129,6 +123,76 @@ export function GraphCanvas() {
     resizeObserver.observe(containerRef.current)
     return () => resizeObserver.disconnect()
   }, [])
+
+  // --- three.js OrbitControls pointer-tracking bug workaround ---
+  // Upstream bug in three/examples/jsm/controls/OrbitControls.js (at least
+  // through three@0.182): `onPointerUp` case 1 reads
+  // `this._pointerPositions[pointerId].x` without checking whether the
+  // position was ever populated. `_trackPointer` is only called from
+  // `_onTouchStart`, which only runs for `pointerType === 'touch'`, so
+  // mouse/pen pointers that went through `_onMouseDown` are never added
+  // to `_pointerPositions`. On multi-pointer flows — touch-screen laptops
+  // that fire a trailing touch pointer, pen + trackpad, stale captured
+  // pointer after tab focus changes, or the browser replaying events on
+  // re-focus — a pointerup that reduces `_pointers` to length 1 tries to
+  // transition back into touch mode with the remaining pointer and crashes
+  // with `Cannot read properties of undefined (reading 'x')`, taking the
+  // whole canvas with it. The crash happens intermittently when clicking
+  // node links in the right sidebar because that click path releases a
+  // pointer capture the canvas was still holding.
+  //
+  // Fix: attach a capture-phase `pointerdown` listener on the canvas's
+  // dom element that pre-populates `_pointerPositions[pointerId]` with a
+  // THREE.Vector2 before OrbitControls' own pointerdown handler runs.
+  // `_trackPointer` will overwrite the coordinates later for touch/move
+  // events via `position.set(…)`, so seeding with a real Vector2 (not a
+  // plain `{x, y}`) keeps the .set path alive on subsequent moves.
+  useEffect(() => {
+    if (dimensions.width === 0 || dimensions.height === 0) return
+    let cleanup: (() => void) | null = null
+    let cancelled = false
+
+    const tryPatch = () => {
+      if (cancelled || cleanup) return
+      const fg = fgRef.current
+      if (!fg || typeof fg.controls !== 'function') {
+        requestAnimationFrame(tryPatch)
+        return
+      }
+      // biome-ignore lint/suspicious/noExplicitAny: reaching into OrbitControls
+      const controls: any = fg.controls()
+      if (!controls || !controls.domElement || !controls._pointerPositions) {
+        requestAnimationFrame(tryPatch)
+        return
+      }
+
+      const seedPointerPosition = (e: PointerEvent) => {
+        if (controls._pointerPositions[e.pointerId] !== undefined) return
+        controls._pointerPositions[e.pointerId] = new THREE.Vector2(
+          e.pageX,
+          e.pageY,
+        )
+      }
+      controls.domElement.addEventListener(
+        'pointerdown',
+        seedPointerPosition as EventListener,
+        true,
+      )
+      cleanup = () => {
+        controls.domElement.removeEventListener(
+          'pointerdown',
+          seedPointerPosition as EventListener,
+          true,
+        )
+      }
+    }
+
+    tryPatch()
+    return () => {
+      cancelled = true
+      if (cleanup) cleanup()
+    }
+  }, [dimensions.width, dimensions.height])
 
   // Keyboard navigation - track camera angle in ref
   const cameraAngle = useRef({ theta: 0, phi: Math.PI / 2, distance: 500 })
@@ -691,7 +755,7 @@ export function GraphCanvas() {
           <CopyContextButton />
         </div>
 
-        <HoverTooltip hoveredEdge={hoveredEdge} />
+        <HoverTooltip hoveredEdge={hoveredEdge} hoveredNode={hoveredNode} />
       </div>
 
       {/* Timeline footer */}
@@ -1366,9 +1430,13 @@ function TimelineBar({
   )
 }
 
-function HoverTooltip({ hoveredEdge }: { hoveredEdge: GraphEdge | null }) {
-  const hoveredNode = useAppStore((s) => s.hoveredNode)
-
+function HoverTooltip({
+  hoveredEdge,
+  hoveredNode,
+}: {
+  hoveredEdge: GraphEdge | null
+  hoveredNode: GraphNode | null
+}) {
   // Show edge tooltip
   if (hoveredEdge) {
     return (

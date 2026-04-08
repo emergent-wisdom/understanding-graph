@@ -1,7 +1,29 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import type { Conversation, Document, GraphData, Project } from '@/types/graph'
 
 const API_BASE = '/api'
+
+// Polling intervals for the "live dev tool" use-case. When the frontend is
+// deployed as a read-only snapshot (e.g. the public emergentwisdom.org
+// site, where the backend is replaced by prebaked static JSON), polling is
+// worse than useless: every refetch returns identical data but creates new
+// object references, which rebuilds the 3D node meshes and re-renders the
+// DetailsPanel. That re-render unmounts and recreates the <NodeLink> spans
+// that the user is currently hovering or clicking, producing a very
+// visible hover/click "flicker" on every interval tick. Setting
+// VITE_DISPLAY_ONLY=true at build time disables all polling so the static
+// site renders once and stays put.
+const DISPLAY_ONLY =
+  // biome-ignore lint/suspicious/noExplicitAny: import.meta.env is Vite-injected
+  (import.meta as any).env?.VITE_DISPLAY_ONLY === 'true' ||
+  // biome-ignore lint/suspicious/noExplicitAny: Vite replaces this at build time
+  (import.meta as any).env?.VITE_DISPLAY_ONLY === true
+const pollInterval = (ms: number): number | false => (DISPLAY_ONLY ? false : ms)
 
 // Transform snake_case API response to camelCase
 // biome-ignore lint/suspicious/noExplicitAny: Generic transformation
@@ -88,9 +110,9 @@ export function useGraph(enabled = true, showSuperseded = false) {
         `/graph${showSuperseded ? '?showSuperseded=true' : ''}`,
       ),
     enabled,
-    refetchInterval: 3000, // Poll every 3 seconds
+    refetchInterval: pollInterval(3000), // Poll every 3 seconds (off in display-only)
     refetchIntervalInBackground: false, // Don't poll when tab is hidden
-    staleTime: 1000, // Consider data fresh for 1 second
+    staleTime: DISPLAY_ONLY ? Infinity : 1000, // Consider data fresh for 1 second
   })
 }
 
@@ -100,8 +122,8 @@ export function useConversations(enabled = true) {
     queryKey: queryKeys.conversations,
     queryFn: () => fetchJsonCamel<Conversation[]>('/conversations'),
     enabled,
-    refetchInterval: 5000,
-    staleTime: 2000,
+    refetchInterval: pollInterval(5000),
+    staleTime: DISPLAY_ONLY ? Infinity : 2000,
   })
 }
 
@@ -110,6 +132,10 @@ export function useConversation(id: string | null) {
     queryKey: queryKeys.conversation(id || ''),
     queryFn: () => fetchJsonCamel<Conversation>(`/conversations/${id}`),
     enabled: !!id,
+    // Avoid the same flicker as useNode — the DetailsPanel pulls the
+    // conversation for the active node and would otherwise blank out
+    // momentarily on every selection change.
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -143,26 +169,41 @@ export function useDocumentRoots(enabled = true) {
       return response.roots
     },
     enabled,
-    refetchInterval: 5000,
-    staleTime: 2000,
+    refetchInterval: pollInterval(5000),
+    staleTime: DISPLAY_ONLY ? Infinity : 2000,
   })
 }
 
-// Node details
+// Node details.
+// placeholderData=keepPreviousData is load-bearing for NodeLink clicks in the
+// DetailsPanel: when the user clicks a <NodeLink> in the currently-displayed
+// node's content, `selectedNodeId` flips to the new id, React Query treats
+// that as a brand-new query (no cache), and without placeholder data the
+// hook briefly returns `{ data: undefined, isLoading: true }`. The
+// DetailsPanel then renders its `if (nodeLoading) return <Loading/>` branch,
+// which unmounts the clicked <NodeLink> out from under the user — the span
+// you were hovering/clicking disappears, then reappears inside the newly
+// fetched node's content. Visually this reads as a "flicker" on every
+// subsequent click after the first. Keeping previous data around means
+// `data` never goes undefined on queryKey change, so `isLoading` stays
+// false, the DetailsPanel never falls into the Loading branch, and the
+// panel smoothly swaps contents once the new fetch resolves.
 export function useNode(id: string | null) {
   return useQuery({
     queryKey: queryKeys.node(id || ''),
     queryFn: () => fetchJson<GraphData['nodes'][0]>(`/graph/nodes/${id}`),
     enabled: !!id,
+    placeholderData: keepPreviousData,
   })
 }
 
-// Edge details
+// Edge details — same rationale as useNode for placeholderData.
 export function useEdge(id: string | null) {
   return useQuery({
     queryKey: queryKeys.edge(id || ''),
     queryFn: () => fetchJson<GraphData['edges'][0]>(`/graph/edges/${id}`),
     enabled: !!id,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -251,8 +292,8 @@ export function useDbStats(enabled = true) {
     queryKey: ['db-stats'],
     queryFn: () => fetchJson<DbStats>('/db/stats'),
     enabled,
-    refetchInterval: 10000, // Poll every 10 seconds
-    staleTime: 5000,
+    refetchInterval: pollInterval(10000), // Poll every 10 seconds
+    staleTime: DISPLAY_ONLY ? Infinity : 5000,
   })
 }
 
@@ -303,7 +344,7 @@ export function useCommits(limit = 500) {
       // API returns array directly (not wrapped)
       return fetchJsonCamel<Commit[]>(`/commits?limit=${limit}`)
     },
-    refetchInterval: 5000,
-    staleTime: 2000,
+    refetchInterval: pollInterval(5000),
+    staleTime: DISPLAY_ONLY ? Infinity : 2000,
   })
 }
