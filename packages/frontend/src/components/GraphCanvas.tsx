@@ -14,6 +14,35 @@ const DOCUMENT_COLOR = '#e4e4e7' // Off-white/light grey for document nodes
 const DOCUMENT_ROOT_COLOR = '#71717a' // Darker grey for document root nodes
 const THINKING_NODE_COLOR = '#a78bfa' // Purple for thinking/reasoning trace nodes
 
+// --- Three.js resource sharing ---
+// react-force-graph-3d calls our `nodeThreeObject` callback whenever node
+// objects need to be (re)built — every graph-data change, every filter
+// toggle, every hover. THREE.js geometries and materials live on the GPU and
+// are NOT reclaimed by JavaScript GC; they must be `.dispose()`d explicitly.
+// Allocating fresh `SphereGeometry` + `MeshLambertMaterial` per call leaks
+// GPU memory monotonically until the WebGL context exhausts and the browser
+// tab freezes. Fix: one shared geometry for every node, plus a small cache
+// of materials keyed by (color, opacity). Bounded: about a dozen distinct
+// trigger colors × two opacities (1 and 0.25 for superseded).
+const SHARED_NODE_GEOMETRY = new THREE.SphereGeometry(4, 16, 16)
+const NODE_MATERIAL_CACHE = new Map<string, THREE.MeshLambertMaterial>()
+function getNodeMaterial(
+  color: string,
+  opacity: number,
+): THREE.MeshLambertMaterial {
+  const key = `${color}|${opacity}`
+  let mat = NODE_MATERIAL_CACHE.get(key)
+  if (!mat) {
+    mat = new THREE.MeshLambertMaterial({
+      color,
+      transparent: opacity < 1,
+      opacity,
+    })
+    NODE_MATERIAL_CACHE.set(key, mat)
+  }
+  return mat
+}
+
 interface Node3D {
   id: string
   name: string
@@ -523,7 +552,10 @@ export function GraphCanvas() {
             }}
             nodeRelSize={6}
             nodeThreeObject={(node: Node3D) => {
-              // Use custom Three.js objects - superseded nodes are transparent
+              // Use custom Three.js objects - superseded nodes are transparent.
+              // Geometry and material are shared/cached at module scope to
+              // avoid the GPU memory leak that comes from `new`ing them per
+              // call (see SHARED_NODE_GEOMETRY / NODE_MATERIAL_CACHE above).
               const isHovered = node.id === hoveredNodeId
               const isHighlighted = highlightedNodeIds.has(node.id)
               const baseColor = isHovered
@@ -531,13 +563,11 @@ export function GraphCanvas() {
                 : isHighlighted
                   ? '#fbbf24'
                   : node.color || DEFAULT_COLOR
-              const geometry = new THREE.SphereGeometry(4, 16, 16)
-              const material = new THREE.MeshLambertMaterial({
-                color: baseColor,
-                transparent: true,
-                opacity: node.isSuperseded ? 0.25 : 1,
-              })
-              return new THREE.Mesh(geometry, material)
+              const opacity = node.isSuperseded ? 0.25 : 1
+              return new THREE.Mesh(
+                SHARED_NODE_GEOMETRY,
+                getNodeMaterial(baseColor, opacity),
+              )
             }}
             nodeThreeObjectExtend={false}
             // Link styling - highlight on hover or when connected to hovered node
