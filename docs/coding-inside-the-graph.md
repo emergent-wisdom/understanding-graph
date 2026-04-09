@@ -1,16 +1,20 @@
 # Coding Inside the Graph
 
-A walkthrough showing how to build a small algorithm — a Bloom filter —
-**entirely as understanding-graph nodes**, with sema patterns as the
-cognitive primitives the design is grounded in, then `doc_generate` it
-to a real `.py` file that runs and self-verifies.
+A walkthrough showing how to build a small algorithm, a Bloom filter, **entirely as understanding-graph nodes**, with sema patterns as the cognitive primitives the design is grounded in, then `doc_generate` it to a real `.py` file that runs and self-verifies.
 
-This is the coding pattern the
-[entangled-alignment paper](https://github.com/emergent-wisdom/entangled-alignment)
-calls *Causal Faithfulness*: the design and the code can't drift because
-they're the same artifact, and a future agent reading the source can
-re-handshake on the sema hashes embedded in the docstrings to verify
-the pattern definitions haven't shifted.
+This is the coding pattern the [entangled-alignment paper](https://github.com/emergent-wisdom/entangled-alignment) calls *Causal Faithfulness*: the design and the code can't drift because they're the same artifact, and a future agent reading the source can re-handshake on the sema hashes embedded in the docstrings to verify the pattern definitions haven't shifted.
+
+## Before you follow this tutorial: pick the right workflow
+
+Understanding Graph supports two very different workflows, and confusing them is the most common failure mode:
+
+**Design-First (this tutorial).** You have a concrete target. The design legitimately comes before the artifact, because the artifact will be evaluated against the design. One batch for the scaffold, one for the source as a doc tree, one for the post-hoc evaluation. This is the right pattern for code, schemas, protocols, migrations, and anything with a falsifiable "does it work" test at the end.
+
+**Thinking-in-Flight (the other pattern).** You have a question, not a target. Writing an essay, reading a paper, exploring a problem, drafting a proof. Here the thinking IS the work, and the plan is unreliable until you have written the thing. The right pattern is one section or one reading chunk per batch, with a `PAUSE and FEEL` step between batches (what surprised me? what shifted? what question just opened?), and the shifts captured in the same batch as the prose they produced. Retroactive capture of "the thinking behind" a finished document is rationalization, not thinking.
+
+**If you try to apply this Bloom-filter tutorial's pattern to an essay or a reading session, the graph will look right (you'll have concept nodes and doc nodes and edges) but the graph will be crystalline, not metabolic.** The reasoning trail will be absent. The init-generated `CLAUDE.md` under "Two Workflows" has a minimal thinking-in-flight example you can use as a starting point for that pattern instead.
+
+The Bloom filter below is genuinely a Design-First task: the algorithm is textbook, the constraints are known in advance, and the hypothesis (measured FPR within 10% of target) can be validated by running the generated file. That is exactly when this tutorial's pattern earns its keep.
 
 The output of this walkthrough is a real, runnable file:
 

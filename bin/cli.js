@@ -16,25 +16,16 @@ const webServer = path.join(packageRoot, 'packages/web-server/dist/index.js');
 const mcpServer = path.join(packageRoot, 'packages/mcp-server/dist/index.js');
 
 if (command === 'start') {
-  // The npm package ships only what `mcp` needs (~1.5 MB). The web UI / 3D
-  // visualization (`start`) requires the frontend bundle and web-server dist,
-  // which together pull in ~160 MB of onnxruntime + three.js + react. To keep
-  // `npx -y understanding-graph mcp` fast and small, those are NOT in the
-  // published tarball for v0.1.0. If you want the web UI, clone the repo.
+  // Web UI + 3D visualization. As of v0.1.6 the frontend bundle (~2.3 MB
+  // minified) and the web-server dist (~200 KB) are shipped in the npm
+  // package, so this works straight from `npx -y understanding-graph start`
+  // without cloning the repo.
   if (!fs.existsSync(webServer)) {
     console.error(
-      "The 'start' command (web UI + 3D visualization) is not included in the\n" +
-      "npm package for v0.1.0 because the frontend bundle is ~160 MB and most\n" +
-      "users only need the MCP server.\n\n" +
-      "To run the web UI, clone the repo and build from source:\n\n" +
-      "  git clone https://github.com/emergent-wisdom/understanding-graph.git\n" +
-      "  cd understanding-graph\n" +
-      "  npm install\n" +
-      "  npm run build\n" +
-      "  npm run start:web\n\n" +
-      "Then open http://localhost:3000\n\n" +
-      "If you only need the MCP server (the primary use case), use:\n" +
-      "  understanding-graph mcp\n"
+      "The 'start' command needs packages/web-server/dist/index.js, but it\n" +
+      "was not found in this install. This usually means you installed an\n" +
+      "older version of understanding-graph that did not ship the web UI.\n" +
+      "Upgrade with: npm install -g understanding-graph@latest\n"
     );
     process.exit(2);
   }
@@ -207,87 +198,96 @@ function init() {
 function getClaudeMdSection() {
   return `# Understanding Graph
 
-This project uses an Understanding Graph for persistent memory and multi-agent coordination.
-All agents (including agent team teammates) share the same graph automatically via MCP.
+This project uses an Understanding Graph as persistent, shared cognitive memory. Without it, you are amnesic. With it, your thinking becomes durable, and future sessions (including teammate agents) can re-inhabit it instead of starting over.
 
-## Every Session
+## The living memory principle
 
-Start each session with these three calls:
+The graph is **metabolic, not crystalline**. It stores comprehension (shifts in your understanding) rather than facts (frozen final states). When your thinking moves, a surprise, a tension, a decision, a foundation becoming explicit, capture the movement as a node in the same batch as the artifact it produced. Make the invisible visible.
 
-1. \`graph_skeleton\` — orient yourself (~150 tokens; shows regions, hubs, recent activity)
-2. \`graph_semantic_search\` with the topic of your task — find relevant past reasoning
-3. \`graph_history\` — see what other agents did recently and why
+The operational question, asked before and after every batch:
 
-## Rules
+> **What changed in my understanding just now? What did I believe before, and what do I believe after?**
 
-- **All mutations go through \`graph_batch\`** with a \`commit_message\` explaining intent. graph_batch is an **atomic commit**: if any operation in the batch fails, the entire batch is rolled back as if it never ran — the graph stays in exactly the state it was in before. The \`commit_message\` is preserved as each node's *Origin Story* so future agents see the intent that created it, not just the result.
-- **Include your name** in commit messages (e.g., "Backend Agent: mapped auth flow") so teammates can follow your reasoning trail.
-- **Check before creating** — call \`graph_semantic_search\` first to avoid creating duplicates of existing concepts.
-- **Never delete, only supersede** — use \`graph_supersede\` when understanding evolves. The old node stays in history.
-- **Synthesize, don't transcribe** — capture implications and tensions, not raw facts. The graph is for your *understanding*, not your input.
+If you can't answer it, the batch is premature. Pause and name the thing that actually shifted, or hold off on the batch until something does.
 
-## Triggers (when to use which)
+**Your gradual understanding belongs in the graph, not just the artifacts you produce with it.** The graph is the record of your learning, not a place you file outputs. When you come to understand the task differently than you did an hour ago, that is a node. When the user corrects a mistake you didn't know you were making, that is a node. When you realize your approach was wrong and you need to restart, that is a node. When a tool you thought you understood behaves surprisingly, that is a node. These are not "meta" work that happens outside the graph; they are the gradual understanding that is the whole point of having an Understanding Graph in the first place.
 
-Every concept node carries a \`trigger\` that classifies *why* it was created. The seven you'll use most often:
+Two failure modes you should recognize in yourself:
 
-- \`foundation\` — A core concept, axiom, or starting point for a region of the graph
-- \`surprise\` — Something unexpected; contradicts a prior belief
-- \`tension\` — Two ideas in conflict, not yet resolved
-- \`consequence\` — A downstream implication of an existing concept
-- \`question\` — An open question to come back to (use \`graph_question\` for this)
-- \`decision\` — A choice made between alternatives, with rationale
-- \`prediction\` — A forward-looking belief that can be checked later
+- **Filing, not thinking.** You pre-wrote a plan and are dumping it into the graph as a single scaffold. The graph will look organized but dead. The reasoning trail is absent because there was no reasoning in flight, only retrieval from your already-made-up mind.
+- **Retroactive rationalization.** You finished a thing and are now writing "decision" nodes to explain what you chose. Those nodes are rationalization, not thinking. If you catch yourself doing this, stop and notice that the next unit of real work is the place to capture shifts as they happen, not to keep adding explanatory debt to the already-done work.
 
-Less common but available: \`hypothesis\`, \`model\`, \`evaluation\`, \`analysis\`, \`experiment\`, \`serendipity\`, \`repetition\`, \`randomness\`, \`reference\`, \`library\`. See \`graph_add_concept\` tool docs for the full set.
+## Every session: orient before acting
 
-Note: the \`thinking\` trigger is reserved for the synthesizer agent and will be rejected for normal use. Pick another trigger that classifies the *why* of your contribution.
+1. \`graph_skeleton\`: orient yourself (~150 tokens). Shows regions, hubs, recent activity.
+2. \`graph_history\` with a small limit: see what shifted recently and why. Commit messages are the reasoning trail.
+3. \`graph_semantic_search\` with your task's keywords: find relevant prior thinking you can extend instead of duplicating.
 
-## Example: a minimal first commit
+You wake up with no memory. These three calls give you back yesterday.
 
-\`graph_add_concept\` requires four fields: \`title\`, \`trigger\`, \`understanding\` (your synthesis), and \`why\` (why it matters). Here is a real two-node, one-edge commit:
+## The primitives
 
-\`\`\`
-graph_batch with:
-  commit_message: "Researcher: capture initial auth flow understanding"
-  agent_name: "Researcher"
-  operations:
-    - tool: graph_add_concept
-      params:
-        title: "Session token storage"
-        trigger: "foundation"
-        understanding: "Tokens live in httpOnly cookies, not localStorage."
-        why: "Foundation for every later auth decision; needs to be visible upfront."
-    - tool: graph_add_concept
-      params:
-        title: "XSS vs UX tension"
-        trigger: "tension"
-        understanding: "httpOnly cookies block XSS but make cross-tab logout harder."
-        why: "Unresolved trade-off that the team will hit when implementing logout."
-    - tool: graph_connect
-      params:
-        fromTitle: "XSS vs UX tension"
-        toTitle: "Session token storage"
-        type: "questions"
-\`\`\`
+**All mutations go through \`graph_batch\`**, with a required \`commit_message\` that explains the intent of the batch. Each batch is atomic: if any operation fails, the whole batch rolls back as if it never ran. The commit message is preserved as each node's *Origin Story*.
 
-Use \`graph_connect\` to link new work into existing concepts. Orphan nodes are rejected by graph_batch.
+- Include your agent name in the message: \`"Writer: opened with 'tired' after the planned abstract opening felt cold by sentence three."\`
+- Check before creating. \`graph_semantic_search\` first; if a similar node exists, \`graph_revise\` over duplicate.
+- Never delete. Use \`graph_supersede\` when understanding evolves. The old node stays in history with a \`supersedes\` edge pointing from the new one.
+- No orphans. Every new concept must connect to at least one existing or just-created node through a graph_connect operation in the same batch.
 
-## Agent Team Coordination
+## Triggers: the *why* of a node
 
-When working as part of an agent team:
-- Read \`graph_history\` first to see what teammates have done and why
-- Use \`graph_question\` to flag open questions for teammates to pick up
-- Use \`graph_find_by_trigger\` with \`question\` or \`tension\` to find work that needs you
-- Triggers + commit messages are the entire coordination protocol. There is no chat channel.
+Every concept node carries a \`trigger\` that classifies why it was created. The seven you'll use most often:
 
-## Long-Running Coordination
+- \`foundation\`: bedrock. The thing other nodes rest on.
+- \`surprise\`: "wait, that's not what I expected."
+- \`tension\`: two ideas in conflict, not yet resolved.
+- \`consequence\`: "so therefore..."
+- \`question\`: a real uncertainty, not a rhetorical device. Use \`graph_question\` as a shortcut.
+- \`decision\`: a choice made, with rationale.
+- \`prediction\`: forward-looking belief that can be validated later.
 
-For tasks that span multiple sessions or need async handoff between specialist agents:
+Also available: \`hypothesis\`, \`model\`, \`evaluation\`, \`analysis\`, \`experiment\`, \`serendipity\`, \`repetition\`, \`randomness\`, \`reference\`, \`library\`. The \`thinking\` trigger is reserved for the synthesizer agent.
 
-- \`solver_spawn\` — register a specialist (e.g., "SecurityReviewer")
-- \`solver_delegate\` — post a task to the queue
-- \`solver_claim_task\` — pick up pending work
-- \`solver_complete_task\` — submit results
-- \`solver_lock\` / \`solver_unlock\` — cooperative *subtree-partition* locks for parallel cognition. Use \`scope: "subtree"\` to claim an entire branch (e.g. one agent locks the "Economics" subtree, another locks "Ethics", and they refactor in parallel without colliding). Storage-layer advisory: cooperating agents check before mutating; the mutation path does not enforce the lock against an adversary.
+Pick the trigger that most honestly classifies *why* the node exists. If none of them fit, the node probably shouldn't exist yet.
+
+## Edges: the *how* of relation
+
+Every \`graph_connect\` edge needs a type and a \`why\` string. Common types:
+
+- \`refines\`: X adds precision to Y.
+- \`supersedes\`: X replaces Y; Y stays in history.
+- \`contradicts\`: X and Y are in unresolved conflict.
+- \`learned_from\`: X was arrived at by engaging with Y. Cognitive lineage.
+- \`answers\` / \`questions\`: X resolves or raises Y.
+- \`expresses\`: a doc node renders a concept.
+- \`validates\` / \`invalidates\`: later evidence confirms or refutes a prediction or hypothesis.
+
+If you can't articulate in one sentence *why* two nodes connect, don't connect them.
+
+## How you batch is up to you
+
+The tool is yours. How many operations per batch, how fine-grained to capture shifts, how to balance prose and thinking, when to commit: these are your judgment calls, not the tool's prescription. The rules above (atomic batches, commit messages, no orphans, never delete) are the minimum; everything else is your call.
+
+That said, a few red flags to watch for in your own batches:
+
+- **A batch with only \`doc_create\` operations.** You're treating the graph as a file store, not a reasoning memory. Did something in your thinking shift while you drafted that prose? If yes, the shift belongs in the same batch as the prose.
+- **A batch with only concept nodes and no connection to anything you're actually making.** You're planning in the graph rather than thinking in it. Plans made this way tend to be reverse-engineered from assumptions you haven't examined.
+- **A very large batch (many sections of prose plus many concept nodes).** It probably means you drafted the artifact in your head first and are now filing it. The reasoning trail you would have captured between sections is missing.
+
+None of these are forbidden. Occasionally they are the right shape for the work. But if you notice them, pause and ask whether the batch is actually alive or just convenient.
+
+## Coordination with other agents
+
+When working with teammates, future-you, or parallel solvers, the graph is the coordination protocol. There is no chat channel.
+
+- \`graph_history\` shows what they did and why.
+- \`graph_find_by_trigger\` with \`question\` or \`tension\` finds threads waiting for an answer or a resolution.
+- Commit messages let you follow the reasoning trail across sessions.
+
+For long-running handoff across sessions, use the solver tools: \`solver_spawn\`, \`solver_delegate\`, \`solver_claim_task\`, \`solver_complete_task\`, and \`solver_lock\` / \`solver_unlock\` for cooperative subtree-partition locks.
+
+---
+
+*This file was generated by \`npx understanding-graph init\`. Edit freely. For a walkthrough of one specific way the primitives were used to build a Bloom filter, see \`docs/coding-inside-the-graph.md\` in the understanding-graph repository. Your task will be different; use the primitives however fits your work.*
 `;
 }

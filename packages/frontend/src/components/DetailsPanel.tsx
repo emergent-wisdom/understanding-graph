@@ -841,6 +841,41 @@ function Markdown({
               </code>
             )
           }
+          // Inline code: if the content is exactly a sema handle
+          // (e.g. `Parsimony#2578`), render it as a clickable link to
+          // semahash.org. Sema handles are PascalCase + '#' + 4 hex.
+          // The backticked convention means agents write sema handles
+          // inside `` `` `` pairs by default, so they arrive here as
+          // inline <code>.
+          const inlineText =
+            typeof children === 'string'
+              ? children
+              : Array.isArray(children) &&
+                  children.length === 1 &&
+                  typeof children[0] === 'string'
+                ? children[0]
+                : null
+          if (inlineText) {
+            const semaMatch = inlineText.match(
+              /^([A-Z][A-Za-z]{2,})#[0-9a-f]{4}$/,
+            )
+            if (semaMatch) {
+              const name = semaMatch[1]
+              return (
+                <a
+                  href={`https://semahash.org/graph?node=${encodeURIComponent(name)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Open ${inlineText} on semahash.org`}
+                  className="no-underline"
+                >
+                  <code className="bg-bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-accent hover:underline">
+                    {children}
+                  </code>
+                </a>
+              )
+            }
+          }
           return (
             <code className="bg-bg-muted px-1.5 py-0.5 rounded text-xs font-mono">
               {children}

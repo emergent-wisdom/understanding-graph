@@ -1,6 +1,6 @@
 {
   "name": "understanding-graph",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "mcpName": "io.github.emergent-wisdom/understanding-graph",
   "description": "Persistent understanding graphs for AI agents - structured memory with MCP support",
   "author": "Henrik Westerberg",
@@ -35,6 +35,9 @@
     "packages/core/package.json",
     "packages/mcp-server/dist/",
     "packages/mcp-server/package.json",
+    "packages/web-server/dist/",
+    "packages/web-server/package.json",
+    "packages/frontend/dist/",
     "prompts/",
     "server.json",
     "README.md",
@@ -42,7 +45,8 @@
   ],
   "bundledDependencies": [
     "@understanding-graph/core",
-    "@understanding-graph/mcp-server"
+    "@understanding-graph/mcp-server",
+    "@understanding-graph/web-server"
   ],
   "workspaces": [
     "packages/*"
