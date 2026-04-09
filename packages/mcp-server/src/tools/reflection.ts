@@ -397,15 +397,10 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_skeleton',
     description:
-      'Ultra-minimal graph overview (~150 tokens). Shows regions with sizes, hub nodes, and recent activity. Use for initial orientation before drilling into regions.',
+      'Ultra-minimal graph overview (~150 tokens) of the CURRENTLY ACTIVE project. Shows regions with sizes, hub nodes, and recent activity. Use for initial orientation before drilling into regions. To inspect a different project, call project_switch first — graph_skeleton always reports on whatever project is active at call time.',
     inputSchema: {
       type: 'object',
-      properties: {
-        project: {
-          type: 'string',
-          description: 'Project ID (optional)',
-        },
-      },
+      properties: {},
     },
   },
   {
@@ -1367,8 +1362,16 @@ export async function handleReflectionTools(
     }
 
     case 'graph_skeleton': {
-      const projectId =
-        (args.project as string) || contextManager.getCurrentProjectId();
+      // graph_skeleton always reports on whatever project is currently
+      // active — the old `project` param was a schema lie: the singleton
+      // GraphStore and the underlying sqlite.getDb() both route through
+      // currentProjectId, so a per-call project override is unsafe under
+      // concurrency (two parallel graph_skeleton calls racing on the
+      // mutation of currentProjectId would both see the last writer).
+      // Callers who need another project's skeleton must call
+      // project_switch first. The param is no longer declared in the
+      // input schema; if an older client still sends it, we ignore it.
+      const projectId = contextManager.getCurrentProjectId();
       await contextManager.getContext(projectId); // Ensure initialized
 
       return generateSkeletonContext(projectId);
