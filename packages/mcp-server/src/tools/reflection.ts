@@ -1,4 +1,3 @@
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import {
   AnalysisService,
   ContextService,
@@ -9,7 +8,8 @@ import {
   queryEdges,
   queryNodes,
   sqlite,
-} from '@understanding-graph/core';
+} from '@emergent-wisdom/understanding-graph-core';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
 
 /**

@@ -1,11 +1,11 @@
 import path from 'node:path';
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import {
   createCommit,
   createDocumentWriter,
   getGraphStore,
   sqlite,
-} from '@understanding-graph/core';
+} from '@emergent-wisdom/understanding-graph-core';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
 import { handleToolCall } from './index.js';
 

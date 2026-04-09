@@ -1,9 +1,9 @@
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import {
   createCommit,
   getGraphStore,
   type TriggerType,
-} from '@understanding-graph/core';
+} from '@emergent-wisdom/understanding-graph-core';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
 
 // Similarity thresholds for duplicate detection

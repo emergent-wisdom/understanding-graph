@@ -1,5 +1,5 @@
+import { getGraphStore } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { getGraphStore } from '@understanding-graph/core';
 import type { ContextManager } from '../context-manager.js';
 
 export const connectionTools: Tool[] = [

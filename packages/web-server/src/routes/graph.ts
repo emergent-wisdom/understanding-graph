@@ -8,7 +8,7 @@ import {
   getGraphStore,
   sqlite,
   type TriggerType,
-} from '@understanding-graph/core';
+} from '@emergent-wisdom/understanding-graph-core';
 import { type Request, Router } from 'express';
 
 export const graphRouter = Router();

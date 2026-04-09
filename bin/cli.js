@@ -6,14 +6,20 @@ const path = require('path');
 const command = process.argv[2];
 const args = process.argv.slice(3);
 
-// Resolve paths relative to the package root via require.resolve so that
-// npx, global installs, and symlinked dev checkouts all work correctly.
-// Using __dirname + '../packages/...' fails when the bin file is symlinked
-// into a global bin directory because the relative path resolves from the
-// symlink's location, not the real package directory.
+// Resolve the MCP server and web server entry points via require.resolve
+// on their scoped package names. Since v0.1.8 the three workspace
+// packages (@emergent-wisdom/understanding-graph-core,
+// @emergent-wisdom/understanding-graph-mcp-server, and
+// @emergent-wisdom/understanding-graph-web-server) are published as
+// separate npm packages under the @emergent-wisdom scope. Global
+// installs, npx, and local checkouts all resolve via the normal npm
+// dependency tree.
+//
+// The frontend bundle is still shipped inside the root package at
+// packages/frontend/dist (static assets, served by the web-server).
 const packageRoot = path.dirname(require.resolve('../package.json'));
-const webServer = path.join(packageRoot, 'packages/web-server/dist/index.js');
-const mcpServer = path.join(packageRoot, 'packages/mcp-server/dist/index.js');
+const mcpServer = require.resolve('@emergent-wisdom/understanding-graph-mcp-server');
+const webServer = require.resolve('@emergent-wisdom/understanding-graph-web-server');
 
 if (command === 'start') {
   // Web UI + 3D visualization. As of v0.1.6 the frontend bundle (~2.3 MB
@@ -33,8 +39,16 @@ if (command === 'start') {
   console.log('Starting Understanding Graph (Web + Frontend)...');
   console.log('Open http://localhost:' + (process.env.PORT || 3000));
 
-  // Pass through environment variables like PORT and PROJECT_DIR
-  spawn('node', [webServer], { stdio: 'inherit' });
+  // The frontend bundle lives in the root understanding-graph package
+  // (packages/frontend/dist/). Pass its path to web-server via
+  // UG_FRONTEND_DIR so the server can serve static assets regardless of
+  // whether it was installed as a standalone package or via the
+  // monolithic root package.
+  const frontendDir = path.join(packageRoot, 'packages/frontend/dist');
+  spawn('node', [webServer], {
+    stdio: 'inherit',
+    env: { ...process.env, UG_FRONTEND_DIR: frontendDir },
+  });
 
 } else if (command === 'mcp') {
   // Silent mode for MCP (stdio is used for JSON-RPC)

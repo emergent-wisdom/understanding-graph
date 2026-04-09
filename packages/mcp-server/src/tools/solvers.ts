@@ -1,5 +1,5 @@
+import { sqlite } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { sqlite } from '@understanding-graph/core';
 import { MODE_PROTOCOLS } from '../instructions.js';
 
 const { getDb, saveConversation, updateConversationResponse } = sqlite;

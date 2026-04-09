@@ -1,4 +1,4 @@
-import { sqlite } from '@understanding-graph/core';
+import { sqlite } from '@emergent-wisdom/understanding-graph-core';
 import { Router } from 'express';
 
 export const conversationRouter = Router();

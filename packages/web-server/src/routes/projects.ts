@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { resetGraphStore, sqlite } from '@understanding-graph/core';
+import {
+  resetGraphStore,
+  sqlite,
+} from '@emergent-wisdom/understanding-graph-core';
 import { Router } from 'express';
 
 export const projectRouter = Router();

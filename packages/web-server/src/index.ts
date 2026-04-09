@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 // Load .env from project root (3 levels up from dist/index.js)
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-import { sqlite } from '@understanding-graph/core';
+import { sqlite } from '@emergent-wisdom/understanding-graph-core';
 import cors from 'cors';
 import express from 'express';
 import { conversationRouter } from './routes/conversations.js';
@@ -27,8 +27,15 @@ const PROJECT_DIR =
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from client directory
-app.use(express.static(path.join(__dirname, '../../frontend/dist')));
+// Serve static files from client directory. By default, look in the
+// sibling packages/frontend/dist directory (works for local dev and
+// workspace installs). When this package is installed standalone from
+// npm, the root `understanding-graph` CLI passes UG_FRONTEND_DIR so
+// the web server can find the frontend bundle shipped in the root
+// package.
+const FRONTEND_DIR =
+  process.env.UG_FRONTEND_DIR || path.join(__dirname, '../../frontend/dist');
+app.use(express.static(FRONTEND_DIR));
 
 // Store current project in app.locals
 app.locals.projectId = 'default';
@@ -125,7 +132,7 @@ app.get('/.well-known/mcp/server.json', (_req, res) => {
 
 // Catch-all for SPA
 app.get('*', (_req, res) => {
-  res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
+  res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
 });
 
 // Error handler

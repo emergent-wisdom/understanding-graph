@@ -1,4 +1,3 @@
-import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import {
   createTextSource,
   deleteTextSource,
@@ -9,7 +8,8 @@ import {
   readTextSource,
   sqlite,
   updateTextSource,
-} from '@understanding-graph/core';
+} from '@emergent-wisdom/understanding-graph-core';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
 import { MODE_PROTOCOLS } from '../instructions.js';
 import { handleBatchTools } from './batch.js';

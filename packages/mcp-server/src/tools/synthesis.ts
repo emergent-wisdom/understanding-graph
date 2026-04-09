@@ -1,8 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  EmbeddingService,
+  getGraphStore,
+} from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { EmbeddingService, getGraphStore } from '@understanding-graph/core';
 import type { ContextManager } from '../context-manager.js';
 
 // ESM equivalent of __dirname

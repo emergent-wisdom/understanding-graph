@@ -4,7 +4,7 @@ import {
   getGraphStore,
   resetGraphStore,
   sqlite,
-} from '@understanding-graph/core';
+} from '@emergent-wisdom/understanding-graph-core';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface ConversationContext {
