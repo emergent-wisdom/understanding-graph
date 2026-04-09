@@ -3,6 +3,7 @@
 **Persistent memory for AI agents. Shared cognition through stigmergy.**
 
 [![Paper](https://img.shields.io/badge/Paper-PDF-red)](paper/understanding_graph.pdf)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19462908.svg)](https://doi.org/10.5281/zenodo.19462908)
 [![npm version](https://img.shields.io/npm/v/understanding-graph.svg)](https://www.npmjs.com/package/understanding-graph)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-blue)](https://registry.modelcontextprotocol.io/servers/io.github.emergent-wisdom/understanding-graph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -441,6 +442,23 @@ whose self-test prints `AcceptSpec#70dd: PASS`.
 See [docs/coding-inside-the-graph.md](docs/coding-inside-the-graph.md).
 
 ---
+
+## Citing
+
+```bibtex
+@misc{westerberg2026understanding,
+  title        = {Understanding Graph: Persisting the Invisible Thinking},
+  author       = {Westerberg, Henrik},
+  year         = {2026},
+  month        = apr,
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.19462908},
+  url          = {https://doi.org/10.5281/zenodo.19462908}
+}
+```
+
+See [`CITATION.cff`](CITATION.cff) for the machine-readable version (GitHub
+renders a "Cite this repository" button from it).
 
 ## License
 

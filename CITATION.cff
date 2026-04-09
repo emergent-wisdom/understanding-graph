@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: >-
+  If you use Understanding Graph in your research, please cite the
+  preprint below. The software metadata at the top of this file is
+  also valid as a standalone software citation.
+title: "Understanding Graph: Persisting the Invisible Thinking"
+abstract: >-
+  Understanding Graph is an MCP server that gives AI agents structured,
+  persistent memory. Rather than storing facts, it stores the reasoning
+  process — tensions, surprises, decisions, and how beliefs evolved
+  over time. Multiple agents coordinate through the graph itself via
+  stigmergy: each agent reads what others have written, builds on it,
+  and leaves traces for the next.
+authors:
+  - family-names: Westerberg
+    given-names: Henrik
+type: software
+url: "https://github.com/emergent-wisdom/understanding-graph"
+repository-code: "https://github.com/emergent-wisdom/understanding-graph"
+license: MIT
+keywords:
+  - multi-agent-systems
+  - ai-memory
+  - reasoning-capture
+  - stigmergy
+  - mcp
+  - knowledge-graph
+preferred-citation:
+  type: article
+  title: "Understanding Graph: Persisting the Invisible Thinking"
+  authors:
+    - family-names: Westerberg
+      given-names: Henrik
+  year: 2026
+  month: 4
+  publisher:
+    name: Zenodo
+  doi: 10.5281/zenodo.19462908
+  url: "https://doi.org/10.5281/zenodo.19462908"
