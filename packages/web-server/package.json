@@ -1,6 +1,6 @@
 {
   "name": "@emergent-wisdom/understanding-graph-web-server",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Web server for understanding graph visualization",
   "type": "module",
   "main": "dist/index.js",

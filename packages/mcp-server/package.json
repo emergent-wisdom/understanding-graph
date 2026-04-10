@@ -1,6 +1,6 @@
 {
   "name": "@emergent-wisdom/understanding-graph-mcp-server",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "MCP server for building understanding graphs - persistent AI memory that captures comprehension, not just facts",
   "type": "module",
   "main": "dist/index.js",
