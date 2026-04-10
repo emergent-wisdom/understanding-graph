@@ -2932,7 +2932,8 @@ export class GraphStore {
       title: input.title,
       trigger: input.trigger || 'foundation',
       why: 'Document node',
-      understanding: input.summary || input.content.slice(0, 200),
+      understanding:
+        input.summary || input.content?.slice(0, 200) || input.title,
       content: input.content,
       summary: input.summary,
       level: input.level,

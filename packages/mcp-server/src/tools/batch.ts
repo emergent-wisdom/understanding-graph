@@ -262,7 +262,7 @@ function validateNoOrphans(
   }> = [];
   for (let i = 0; i < operations.length; i++) {
     const op = operations[i];
-    if (NODE_CREATING_TOOLS.includes(op.tool) && op.tool !== 'doc_create') {
+    if (NODE_CREATING_TOOLS.includes(op.tool)) {
       nodeCreatingOps.push({
         index: i,
         title: conceptToolName(op),
@@ -305,19 +305,9 @@ function validateNoOrphans(
     if (existingNodeIds.has(handle) || existingNodeTitles.has(handle))
       return ANCHOR;
     if (aliasOf.has(handle)) return aliasOf.get(handle) ?? null;
-    // Unknown handle. Could be a doc_create $N.id back-ref to an earlier op
-    // in the same batch — those are treated as anchors (doc roots are
-    // structural).
-    if (handle.startsWith('$')) {
-      const match = handle.match(/^\$(\d+)\.(\w+)$/);
-      if (match) {
-        const refIndex = Number.parseInt(match[1], 10);
-        if (refIndex < operations.length) {
-          const refOp = operations[refIndex];
-          if (refOp.tool === 'doc_create') return ANCHOR;
-        }
-      }
-    }
+    // All node-creating ops (including doc_create) are now in aliasOf,
+    // so $N.id refs to them are resolved above. Unknown handles are
+    // treated conservatively as unrecognized.
     return null;
   };
 
@@ -365,6 +355,19 @@ function validateNoOrphans(
     const questionKey = canonicalize(questionHandle);
     const answerKey = canonicalize(answerHandle);
     if (questionKey && answerKey) addEdge(questionKey, answerKey);
+  }
+  // doc_create with parentId creates an implicit `contains` edge from parent
+  // to the new doc node. Child doc nodes are anchored through their parent.
+  // Root doc nodes (no parentId) need an explicit graph_connect.
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
+    if (op.tool !== 'doc_create' || !op.params.parentId) continue;
+    const parentHandle = op.params.parentId as string;
+    const docEntry = nodeCreatingOps.find((nco) => nco.index === i);
+    if (!docEntry) continue;
+    const docKey = docEntry.title || docEntry.idRef;
+    const parentKey = canonicalize(parentHandle);
+    if (parentKey) addEdge(docKey, parentKey);
   }
 
   // BFS from ANCHOR through the adjacency list.
@@ -747,8 +750,6 @@ export async function handleBatchTools(
       if (!nodeId.startsWith('n_')) continue;
       const node = sweepStore.getNode(nodeId);
       if (!node) continue;
-      // Skip document nodes (they have structural edges managed elsewhere)
-      if (node.fileType || node.isDocRoot) continue;
       // Check if node has any edges
       if (!sweepConnectedIds.has(nodeId)) {
         // Allow exactly one seed node when the batch started against an empty graph.

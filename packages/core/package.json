@@ -1,6 +1,6 @@
 {
   "name": "@emergent-wisdom/understanding-graph-core",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Core business logic for understanding graph",
   "type": "module",
   "main": "dist/index.js",
