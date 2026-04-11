@@ -853,21 +853,32 @@ export async function handleBatchTools(
   const allEdges = store.getAll().edges;
   const thinkingNodes = allNodes.filter((n) => n.trigger === 'thinking');
 
-  // Check if batch created document nodes without any thinking nodes
-  const hasDocCreates = operations.some((op) => op.tool === 'doc_create');
-  const batchCreatedThinkingNode = results.some((r) => {
-    const result = r as Record<string, unknown>;
-    return result?.trigger === 'thinking';
-  });
+  // Check if batch created document nodes without any concept nodes.
+  // The understanding process requires that artifacts (doc nodes) are entangled
+  // with reasoning (concept nodes). A batch of pure doc_create ops with no
+  // accompanying concept node means the agent's reasoning is lost.
+  const hasDocCreates = operations.some(
+    (op) => op.tool === 'doc_create' && op.params.content,
+  );
+  const CONCEPT_TOOLS = [
+    'graph_add_concept',
+    'graph_question',
+    'graph_supersede',
+    'graph_answer',
+  ];
+  const batchCreatedConceptNode = operations.some((op) =>
+    CONCEPT_TOOLS.includes(op.tool),
+  );
 
   let scoreHint = '';
 
-  // Warn if doc_create was used but no thinking nodes were created in this batch
-  if (hasDocCreates && !batchCreatedThinkingNode) {
-    scoreHint = `\n\n⚠️ MISSING THINKING NODES: You created document nodes but NO thinking nodes.
-Your reasoning process is LOST. Interleave thinking nodes to capture understanding:
-  graph_add_concept({ name: "...", trigger: "thinking", understanding: "What I noticed/learned..." })
-Or use source_commit with type: "thinking" nodes.`;
+  // Warn if doc_create (with content) was used but no concept nodes exist in the batch
+  if (hasDocCreates && !batchCreatedConceptNode) {
+    scoreHint = `\n\n⚠️ MISSING CONCEPT NODES: You created document nodes but NO concept nodes in this batch.
+Your reasoning process is LOST. Every doc_create with content should be accompanied by a concept node
+explaining WHY — a decision, tension, surprise, or experiment result. Add one:
+  graph_add_concept({ title: "...", trigger: "decision", understanding: "What I decided and why...", why: "..." })
+Then connect the doc to it with an 'expresses' edge.`;
   }
 
   // Also check global thinking node health

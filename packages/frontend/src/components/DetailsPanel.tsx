@@ -75,10 +75,12 @@ function Linkify({
   // Ensure we have a string (might receive number or other primitives)
   const text = typeof children === 'string' ? children : String(children)
 
-  // Combined regex: URLs or node IDs (n_xxx or d_xxx)
-  const combinedRegex = /(https?:\/\/[^\s<]+|\b[nd]_[a-zA-Z0-9]+\b)/g
+  // Combined regex: URLs, node IDs (n_xxx or d_xxx), or sema handles (PascalCase#4hex)
+  const combinedRegex =
+    /(https?:\/\/[^\s<]+|\b[nd]_[a-zA-Z0-9]+\b|[A-Z][A-Za-z]{2,}#[0-9a-f]{4})/g
   const urlRegex = /^https?:\/\//
   const nodeIdRegex = /^[nd]_[a-zA-Z0-9]+$/
+  const semaRegex = /^([A-Z][A-Za-z]{2,})#[0-9a-f]{4}$/
 
   const parts = text.split(combinedRegex)
 
@@ -104,6 +106,24 @@ function Linkify({
 
         if (nodeIdRegex.test(part)) {
           return <NodeLink key={key} nodeId={part} flyOnly={flyOnly} />
+        }
+
+        const semaMatch = part.match(semaRegex)
+        if (semaMatch) {
+          return (
+            <a
+              key={key}
+              href={`https://semahash.org/graph?node=${encodeURIComponent(semaMatch[1])}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Open ${part} on semahash.org`}
+              className="no-underline"
+            >
+              <code className="bg-bg-muted px-1.5 py-0.5 rounded text-xs font-mono text-accent hover:underline">
+                {part}
+              </code>
+            </a>
+          )
         }
 
         return <Fragment key={key}>{part}</Fragment>

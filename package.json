@@ -1,6 +1,6 @@
 {
   "name": "understanding-graph",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "mcpName": "io.github.emergent-wisdom/understanding-graph",
   "description": "Persistent understanding graphs for AI agents - structured memory with MCP support",
   "author": "Henrik Westerberg",
