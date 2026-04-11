@@ -97,6 +97,7 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
     ...explorationTools,
     ...solverTools,
     ...sourceTools,
+    ...documentTools,
   ];
 }
 
