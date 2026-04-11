@@ -977,7 +977,10 @@ function CommitCard({
 }: {
   commit: Commit
   nodeMap: Map<string, string>
-  edgeMap: Map<string, { type: string; fromName: string; toName: string }>
+  edgeMap: Map<
+    string,
+    { type: string; fromId: string; fromName: string; toName: string }
+  >
 }) {
   const [expanded, setExpanded] = useState(false)
   const {
@@ -985,6 +988,7 @@ function CommitCard({
     clearHighlightedIds,
     selectAndFlyToNode,
     selectEdge,
+    flyToNode,
   } = useAppStore()
 
   const totalChanges =
@@ -1085,6 +1089,7 @@ function CommitCard({
                       onClick={(e) => {
                         e.stopPropagation()
                         selectEdge(edgeId)
+                        if (edgeInfo?.fromId) flyToNode(edgeInfo.fromId)
                       }}
                       onMouseEnter={() => setHighlightedIds([], [edgeId])}
                       onMouseLeave={() => clearHighlightedIds()}
@@ -1137,11 +1142,12 @@ function CommitsTab({ enabled }: { enabled: boolean }) {
   const edgeMap = React.useMemo(() => {
     const map = new Map<
       string,
-      { type: string; fromName: string; toName: string }
+      { type: string; fromId: string; fromName: string; toName: string }
     >()
     graphData?.edges?.forEach((e) => {
       map.set(e.id, {
         type: e.type,
+        fromId: e.from,
         fromName: nodeMap.get(e.from) || e.from,
         toName: nodeMap.get(e.to) || e.to,
       })
