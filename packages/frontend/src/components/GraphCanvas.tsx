@@ -713,8 +713,8 @@ export function GraphCanvas() {
           />
         )}
 
-        {/* Stats overlay */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-bg-surface/90 backdrop-blur-md px-4 py-2 rounded-lg text-xs border border-border-subtle shadow-md flex gap-3 items-center z-50">
+        {/* Stats overlay — hidden on mobile */}
+        <div className="hidden sm:flex absolute top-4 left-1/2 -translate-x-1/2 bg-bg-surface/90 backdrop-blur-md px-4 py-2 rounded-lg text-xs border border-border-subtle shadow-md gap-3 items-center z-50">
           <span className="text-text-muted">
             <strong className="text-text-primary">
               {graphData.nodes.length}
@@ -754,18 +754,20 @@ export function GraphCanvas() {
         <HoverTooltip hoveredEdge={hoveredEdge} hoveredNode={hoveredNode} />
       </div>
 
-      {/* Timeline footer */}
-      <TimelineBar
-        totalNodes={sortedNodeIds.length}
-        expanded={timelineExpanded}
-        range={timelineRange}
-        span={timelineSpan}
-        setExpanded={setTimelineExpanded}
-        setRange={setTimelineRange}
-        setSpan={setTimelineSpan}
-        sortedNodeIds={sortedNodeIds}
-        selectAndFlyToNode={selectAndFlyToNode}
-      />
+      {/* Timeline footer — hidden on mobile */}
+      <div className="hidden sm:block">
+        <TimelineBar
+          totalNodes={sortedNodeIds.length}
+          expanded={timelineExpanded}
+          range={timelineRange}
+          span={timelineSpan}
+          setExpanded={setTimelineExpanded}
+          setRange={setTimelineRange}
+          setSpan={setTimelineSpan}
+          sortedNodeIds={sortedNodeIds}
+          selectAndFlyToNode={selectAndFlyToNode}
+        />
+      </div>
     </div>
   )
 }

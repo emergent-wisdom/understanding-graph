@@ -100,24 +100,24 @@ function AppLayout() {
       {/* Graph Canvas - Full screen background */}
       <GraphCanvas />
 
-      {/* Left Sidebar */}
+      {/* Left Sidebar — hidden on mobile */}
       <aside
         className={cn(
-          'absolute top-0 left-0 h-full w-[280px] panel border-r transition-transform duration-300 ease-out z-50',
+          'hidden sm:block absolute top-0 left-0 h-full w-[280px] panel border-r transition-transform duration-300 ease-out z-50',
           !leftSidebarOpen && '-translate-x-full',
         )}
       >
         <Sidebar />
       </aside>
 
-      {/* Left Toggle Button */}
+      {/* Left Toggle Button — hidden on mobile */}
       <button
         type="button"
         onClick={toggleLeftSidebar}
         className={cn(
-          'absolute top-4 z-[100]',
+          'hidden sm:flex absolute top-4 z-[100]',
           'w-9 h-9 rounded-lg shadow-sm',
-          'flex items-center justify-center',
+          'items-center justify-center',
           'bg-bg-surface/60 text-text-muted border border-border-subtle',
           'hover:bg-bg-surface hover:text-text-primary hover:shadow-md hover:border-border-default',
           'opacity-50 hover:opacity-100',
@@ -135,24 +135,24 @@ function AppLayout() {
         />
       </button>
 
-      {/* Right Panel */}
+      {/* Right Panel — hidden on mobile */}
       <aside
         className={cn(
-          'absolute top-0 right-0 h-full w-[360px] panel border-l transition-transform duration-300 ease-out z-50',
+          'hidden sm:block absolute top-0 right-0 h-full w-[360px] panel border-l transition-transform duration-300 ease-out z-50',
           !rightSidebarOpen && 'translate-x-full',
         )}
       >
         <DetailsPanel />
       </aside>
 
-      {/* Right Toggle Button */}
+      {/* Right Toggle Button — hidden on mobile */}
       <button
         type="button"
         onClick={toggleRightSidebar}
         className={cn(
-          'absolute top-4 z-[100]',
+          'hidden sm:flex absolute top-4 z-[100]',
           'w-9 h-9 rounded-lg shadow-sm',
-          'flex items-center justify-center',
+          'items-center justify-center',
           'bg-bg-surface/60 text-text-muted border border-border-subtle',
           'hover:bg-bg-surface hover:text-text-primary hover:shadow-md hover:border-border-default',
           'opacity-50 hover:opacity-100',
