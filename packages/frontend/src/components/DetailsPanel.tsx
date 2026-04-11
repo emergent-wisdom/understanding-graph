@@ -1090,17 +1090,25 @@ function CommitCard({
                       onMouseLeave={() => clearHighlightedIds()}
                       className="w-full text-left px-2 py-1 text-xs rounded bg-bg-muted/50 hover:bg-accent/20 transition-colors"
                     >
-                      <div className="flex items-center gap-1 text-text-primary">
-                        <span className="truncate max-w-[80px]">
-                          {edgeInfo?.fromName || '?'}
-                        </span>
-                        <span className="text-accent text-[10px] px-1">
-                          →{edgeInfo?.type}→
-                        </span>
-                        <span className="truncate max-w-[80px]">
-                          {edgeInfo?.toName || '?'}
-                        </span>
-                      </div>
+                      {edgeInfo ? (
+                        <div className="flex items-center gap-1 text-text-primary">
+                          <span className="truncate max-w-[80px]">
+                            {edgeInfo.fromName}
+                          </span>
+                          <span className="text-accent text-[10px] px-1">
+                            →{edgeInfo.type}→
+                          </span>
+                          <span className="truncate max-w-[80px]">
+                            {edgeInfo.toName}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-text-muted font-mono">
+                          <span className="text-[10px]">
+                            {edgeId.slice(0, 10)}
+                          </span>
+                        </div>
+                      )}
                     </button>
                   )
                 })}
