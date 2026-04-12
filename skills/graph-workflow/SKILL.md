@@ -26,29 +26,38 @@ When the user asks you to do real work — coding, analysis, writing, problem-so
 
 This applies to everything, not just coding: research, analysis, creative writing, problem-solving. If the work is substantial enough to take more than one turn, it belongs in the graph.
 
+## STRICT parameter names — wrong names fail silently
+
+```
+graph_add_concept: { title, trigger, understanding, why }
+graph_connect:     { from, to, type, why }
+graph_revise:      { node, understanding, before, after, pivot, why }
+doc_create:        { title, content, fileType, isDocRoot, parentId, level }
+```
+
+**NEVER use:** `name` (→ `title`), `body` (→ `understanding`), `source` (→ `from`), `target` (→ `to`), `edgeType` (→ `type`)
+
 ## Correct graph_batch example — copy this pattern exactly
 
 ```javascript
 graph_batch({
   operations: [
     { tool: "graph_add_concept", params: {
-        title: "Example Concept",         // NOT name, NOT text
+        title: "Example Concept",
         trigger: "foundation",
-        understanding: "What this means",  // NOT body, NOT content
+        understanding: "What this means",
         why: "Why this matters"
     }},
     { tool: "graph_connect", params: {
-        from: "$0.id",                    // NOT source
-        to: "n_existing_node",            // NOT target
-        type: "refines",                  // NOT edgeType
+        from: "$0.id",
+        to: "n_existing_node",
+        type: "refines",
         why: "Why these connect"
     }}
   ],
   commit_message: "what shifted in your understanding"
 })
 ```
-
-**Common mistakes that fail silently:** `name` (use `title`), `body` (use `understanding`), `source`/`target` (use `from`/`to`), `edgeType` (use `type`).
 
 ## The five laws
 

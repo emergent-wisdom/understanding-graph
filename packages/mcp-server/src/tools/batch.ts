@@ -72,10 +72,14 @@ Use for:
 - Bulk concept/connection creation
 - Any multi-step modification that should land all-or-nothing
 
-EDGE QUALITY REMINDER: When using graph_connect, edges should aid cognition — help future agents think better. Don't create edges for bureaucracy or "completeness". Each edge should answer: "When reasoning about X, why should I consider Y?"
+PARAMETER NAMES (these are strict — wrong names fail silently):
+  graph_add_concept: { title, trigger, understanding, why }  — NOT name/body/text
+  graph_connect:     { from, to, type, why }                 — NOT source/target/edgeType
+  graph_revise:      { node, understanding, before, after, pivot, why }
+  doc_create:        { title, content, fileType, isDocRoot, parentId, afterId, level }
 
-Supports variable references: use "$N.field" to reference result N's field.
-Example: { parentId: "$0.id" } uses the id from the first operation's result.`,
+Supports variable references: use "$N.id" to reference result N's id (0-indexed, counts ALL operations).
+Example: { from: "$0.id", to: "$1.id" } connects first operation's result to second's.`,
     inputSchema: {
       type: 'object',
       properties: {
