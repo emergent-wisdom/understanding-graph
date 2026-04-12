@@ -179,6 +179,7 @@ Don't collapse to `foundation` and `decision`. The full palette:
 | `experiment` | Empirical tests, validation attempts | Testing belief against reality |
 | `analysis` | Agent-generated structured examination | Structured examination |
 | `serendipity` | Chaos-injected insights | Unexpected connection |
+| `thinking` | **RESERVED — synthesizer agent only.** Use `analysis` or `surprise` instead | — |
 | `reference` | Pointer to another project or URL | Citation |
 | `library` | Collection of references | Curated collection |
 | `prediction` | Forward-looking belief | Forecasting |

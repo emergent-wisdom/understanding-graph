@@ -57,17 +57,48 @@ Before creating a root doc, check `doc_list_roots`. If a doc covering the same s
 
 ### Weaving documents to concepts
 
-Always connect documents to what they discuss:
+Always connect documents to what they discuss. Here's a complete example with correct `$N.id` indices — count every operation, not just concepts or just docs:
 
 ```javascript
 graph_batch({
+  allowUnorderedDocs: true,
   operations: [
-    { tool: "doc_create", params: { title: "Analysis", content: "...", isDocRoot: true }},
-    { tool: "graph_connect", params: { from: "$0.id", to: "n_target_concept", type: "expresses", why: "this doc articulates the concept" }}
+    // $0 — concept node
+    { tool: "graph_add_concept", params: {
+        title: "Why this approach", trigger: "decision",
+        understanding: "...", why: "..."
+    }},
+    // $1 — doc root
+    { tool: "doc_create", params: {
+        title: "My Story", content: "A story about...",
+        isDocRoot: true, fileType: "md"
+    }},
+    // $2 — doc child (parentId references $1)
+    { tool: "doc_create", params: {
+        title: "Chapter 1", content: "...",
+        parentId: "$1.id"
+    }},
+    // $3 — doc child
+    { tool: "doc_create", params: {
+        title: "Chapter 2", content: "...",
+        parentId: "$1.id"
+    }},
+    // $4 — edge: doc expresses existing concept
+    { tool: "graph_connect", params: {
+        from: "$1.id", to: "n_existing_concept",
+        type: "expresses", why: "this doc articulates the concept"
+    }},
+    // $5 — edge: concept learned from decision
+    { tool: "graph_connect", params: {
+        from: "$0.id", to: "n_prior_node",
+        type: "learned_from", why: "this insight came from that"
+    }}
   ],
-  commit_message: "weaving analysis doc into the concept web"
+  commit_message: "story + the creative decision behind it"
 })
 ```
+
+**$N.id counts ALL operations** — concepts, docs, and edges alike. `$0` is the first op, `$1` is the second, regardless of type.
 
 ## Capture experiments
 
