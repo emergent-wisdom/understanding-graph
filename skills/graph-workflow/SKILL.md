@@ -10,6 +10,22 @@ user-invocable: false
 
 # Graph Workflow
 
+## The graph is your working memory — use it for ALL substantial work
+
+When the user asks you to do real work — coding, analysis, writing, problem-solving — the graph is how you think, not something you do afterward. Before writing a single line of code or prose:
+
+1. **Search the graph** — `graph_semantic_search` for prior thinking on this topic. Don't start from zero.
+2. **Search sema** (if available) — find patterns that structure the problem. A city optimizer is a `Strategy#47a4` problem with `Feedback#9b5c` loops. Name them.
+3. **Commit your design decisions as concept nodes** — `decision` for approach chosen, `tension` for tradeoffs, `question` for unknowns. Do this BEFORE or ALONGSIDE writing code, not after.
+4. **Write artifacts as doc trees** — code, prose, and analysis go in `doc_create` nodes inside the graph, connected to the concepts that motivated them.
+
+**The pattern:** think → commit understanding → build → commit artifacts → connect them.
+
+**Wrong:** user asks for code → you write a file → done. The graph was irrelevant.
+**Right:** user asks for code → you search graph/sema → commit design decisions → write code as doc tree → connect code to decisions → the graph records WHY, not just WHAT.
+
+This applies to everything, not just coding: research, analysis, creative writing, problem-solving. If the work is substantial enough to take more than one turn, it belongs in the graph.
+
 ## Correct graph_batch example — copy this pattern exactly
 
 ```javascript
