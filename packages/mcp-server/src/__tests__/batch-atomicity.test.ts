@@ -49,7 +49,7 @@ afterEach(() => {
 
 describe('graph_batch atomicity', () => {
   it('rolls back ALL prior ops when a later op throws (stopOnError: true)', async () => {
-    // Seed a foundation node so the graph is non-empty.
+    // Seed two connected nodes so the graph is non-empty.
     await handleToolCall(
       'graph_batch',
       {
@@ -63,6 +63,27 @@ describe('graph_batch atomicity', () => {
               trigger: 'foundation',
               understanding: 'Anchors the test graph.',
               why: 'Needed so the next batch is not against an empty graph.',
+              skipDuplicateCheck: true,
+            },
+          },
+          {
+            tool: 'graph_add_concept',
+            params: {
+              title: 'Open Question About Atomicity',
+              trigger: 'question',
+              understanding:
+                'What happens when a batch operation fails mid-way?',
+              why: 'Drives the atomicity test.',
+              skipDuplicateCheck: true,
+            },
+          },
+          {
+            tool: 'graph_connect',
+            params: {
+              from: '$0.id',
+              to: '$1.id',
+              type: 'questions',
+              why: 'The question challenges the foundation.',
             },
           },
         ],

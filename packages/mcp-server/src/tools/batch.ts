@@ -271,13 +271,6 @@ function validateNoOrphans(
     }
   }
 
-  // Empty-graph exemption: the very first concept in a previously-empty
-  // graph is allowed to land without an edge. The post-execution sweep
-  // honors the same exemption.
-  if (existingNodes.length === 0 && nodeCreatingOps.length > 0) {
-    return { valid: true };
-  }
-
   // Build a name → set-of-aliases map so we can normalize references.
   // Both the title and the $N.id form refer to the same logical new node.
   const aliasOf = new Map<string, string>(); // any handle → canonical key
@@ -371,33 +364,90 @@ function validateNoOrphans(
   }
 
   // BFS from ANCHOR through the adjacency list.
-  const queue: string[] = [ANCHOR];
-  while (queue.length > 0) {
-    const node = queue.shift();
-    if (node === undefined) break;
-    const neighbors = adjacency.get(node);
-    if (!neighbors) continue;
-    for (const next of neighbors) {
-      if (!reachable.has(next)) {
-        reachable.add(next);
-        queue.push(next);
-      }
-    }
-  }
+  // For empty graphs, there is no ANCHOR to reach — instead we check that
+  // all new nodes form a single connected component (every node must have
+  // at least one edge, and all must be mutually reachable).
+  const graphIsEmpty = existingNodes.length === 0;
 
-  // Any new node whose canonical key isn't in `reachable` is orphaned.
-  for (const op of nodeCreatingOps) {
-    const canonical = op.title || op.idRef;
-    if (!reachable.has(canonical)) {
-      const label = op.title || `operation ${op.index}`;
+  if (graphIsEmpty) {
+    // Every new node must appear in at least one edge.
+    // BFS from the first connected new node to verify full connectivity.
+    const firstConnected = nodeCreatingOps.find((op) => {
+      const key = op.title || op.idRef;
+      return adjacency.has(key);
+    });
+
+    if (!firstConnected) {
+      // No new node has any edge at all.
+      const label =
+        nodeCreatingOps[0]?.title || `operation ${nodeCreatingOps[0]?.index}`;
       return {
         valid: false,
         error:
-          `Concept "${label}" (operation ${op.index}) would be orphaned. ` +
-          `Every new concept must reach an EXISTING node in the graph through at least one chain of graph_connect operations in this batch. ` +
-          `Add a graph_connect that links this concept (directly or via another new concept) to an existing node — ` +
-          `you can use the existing node's title (e.g. to: "Existing Concept Title"), its ID (e.g. to: "n_abc123"), or a back-ref to an earlier op in this batch (e.g. to: "$0.id").`,
+          `Concept "${label}" (operation ${nodeCreatingOps[0]?.index}) would be orphaned. ` +
+          `Every node must have at least one edge — even in an empty graph. ` +
+          `Add at least two nodes with a graph_connect between them.`,
       };
+    }
+
+    const startKey = firstConnected.title || firstConnected.idRef;
+    const visited = new Set<string>([startKey]);
+    const queue: string[] = [startKey];
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      if (cur === undefined) break;
+      const neighbors = adjacency.get(cur);
+      if (!neighbors) continue;
+      for (const next of neighbors) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push(next);
+        }
+      }
+    }
+
+    for (const op of nodeCreatingOps) {
+      const canonical = op.title || op.idRef;
+      if (!visited.has(canonical)) {
+        const label = op.title || `operation ${op.index}`;
+        return {
+          valid: false,
+          error:
+            `Concept "${label}" (operation ${op.index}) would be orphaned. ` +
+            `Every node must have at least one edge. In an empty graph, all new nodes must ` +
+            `connect to each other through graph_connect operations in this batch.`,
+        };
+      }
+    }
+  } else {
+    const queue: string[] = [ANCHOR];
+    while (queue.length > 0) {
+      const node = queue.shift();
+      if (node === undefined) break;
+      const neighbors = adjacency.get(node);
+      if (!neighbors) continue;
+      for (const next of neighbors) {
+        if (!reachable.has(next)) {
+          reachable.add(next);
+          queue.push(next);
+        }
+      }
+    }
+
+    // Any new node whose canonical key isn't in `reachable` is orphaned.
+    for (const op of nodeCreatingOps) {
+      const canonical = op.title || op.idRef;
+      if (!reachable.has(canonical)) {
+        const label = op.title || `operation ${op.index}`;
+        return {
+          valid: false,
+          error:
+            `Concept "${label}" (operation ${op.index}) would be orphaned. ` +
+            `Every new concept must reach an EXISTING node in the graph through at least one chain of graph_connect operations in this batch. ` +
+            `Add a graph_connect that links this concept (directly or via another new concept) to an existing node — ` +
+            `you can use the existing node's title (e.g. to: "Existing Concept Title"), its ID (e.g. to: "n_abc123"), or a back-ref to an earlier op in this batch (e.g. to: "$0.id").`,
+        };
+      }
     }
   }
 
@@ -552,18 +602,6 @@ export async function handleBatchTools(
   // Snapshot whether the graph was empty BEFORE this batch ran. The
   // pre-validation step (validateNoOrphans) explicitly allows the very first
   // node into an empty graph — the post-execution orphan sweep below must
-  // honor the same exemption, otherwise it deletes the seed node and the
-  // user gets a paradoxical "your first concept can't exist because it has
-  // no edges, but there are no nodes for it to connect to" error.
-  const graphWasEmptyAtBatchStart = (() => {
-    try {
-      const store = getGraphStore();
-      return store.getAll().nodes.length === 0;
-    } catch {
-      return false;
-    }
-  })();
-
   // Hoisted out of the try block below so the post-commit return statement
   // can read them. `commit` is set inside the transaction, `hasErrors` is
   // computed after the loop but still inside the transactional section.
@@ -727,15 +765,10 @@ export async function handleBatchTools(
     hasErrors = errors.length > 0;
 
     // ORPHAN PREVENTION: detect any concept nodes created in this batch that
-    // have no edges. Exception: if the graph was empty when this batch started,
-    // the very first concept node is allowed to remain unconnected — by
-    // definition there's nothing for it to connect to yet. This matches
-    // validateNoOrphans's pre-check exemption.
+    // have no edges. Every node must have at least one edge — no exceptions.
     //
     // Inside the transaction. If we find orphans, throw BatchEarlyExit so
-    // the catch block ROLLBACKs the entire batch (no half-state). The
-    // pre-transaction version manually archived the orphan nodes and left
-    // everything else committed; the transactional version is cleaner.
+    // the catch block ROLLBACKs the entire batch (no half-state).
     const sweepStore = getGraphStore();
     const sweepEdges = sweepStore.getAll().edges;
     const sweepConnectedIds = new Set<string>();
@@ -745,18 +778,11 @@ export async function handleBatchTools(
     }
 
     const orphanedNodes: string[] = [];
-    let seedNodeAllowed = graphWasEmptyAtBatchStart;
     for (const nodeId of affectedNodeIds) {
       if (!nodeId.startsWith('n_')) continue;
       const node = sweepStore.getNode(nodeId);
       if (!node) continue;
-      // Check if node has any edges
       if (!sweepConnectedIds.has(nodeId)) {
-        // Allow exactly one seed node when the batch started against an empty graph.
-        if (seedNodeAllowed) {
-          seedNodeAllowed = false;
-          continue;
-        }
         orphanedNodes.push(nodeId);
       }
     }

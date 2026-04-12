@@ -44,6 +44,26 @@ async function seed() {
           trigger: 'foundation',
           understanding: 'Anchors the test graph.',
           why: 'Seed node.',
+          skipDuplicateCheck: true,
+        },
+      },
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Open Question About Testing',
+          trigger: 'question',
+          understanding: 'What invariants should orphan prevention enforce?',
+          why: 'Drives the test suite.',
+          skipDuplicateCheck: true,
+        },
+      },
+      {
+        tool: 'graph_connect',
+        params: {
+          from: '$0.id',
+          to: '$1.id',
+          type: 'questions',
+          why: 'The question challenges the seed concept.',
         },
       },
     ],
@@ -96,7 +116,7 @@ describe('orphan prevention — concept nodes', () => {
     expect(result.error).toBe('ORPHAN_PREVENTION');
   });
 
-  it('allows first concept in empty graph', async () => {
+  it('rejects single concept in empty graph (no edges)', async () => {
     const result = await batch([
       {
         tool: 'graph_add_concept',
@@ -105,6 +125,42 @@ describe('orphan prevention — concept nodes', () => {
           trigger: 'foundation',
           understanding: 'First.',
           why: 'First.',
+        },
+      },
+    ]);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('ORPHAN_PREVENTION');
+  });
+
+  it('allows two connected concepts in empty graph', async () => {
+    const result = await batch([
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'First Node',
+          trigger: 'foundation',
+          understanding: 'First.',
+          why: 'First.',
+          skipDuplicateCheck: true,
+        },
+      },
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Second Node',
+          trigger: 'tension',
+          understanding: 'Second.',
+          why: 'Second.',
+          skipDuplicateCheck: true,
+        },
+      },
+      {
+        tool: 'graph_connect',
+        params: {
+          from: '$0.id',
+          to: '$1.id',
+          type: 'refines',
+          why: 'Bootstrap edge.',
         },
       },
     ]);
@@ -154,7 +210,7 @@ describe('orphan prevention — doc_create nodes', () => {
     expect(result.error).toBe('ORPHAN_PREVENTION');
   });
 
-  it('allows doc root as first node in empty graph', async () => {
+  it('rejects doc root as sole node in empty graph (no edges)', async () => {
     const result = await batch([
       {
         tool: 'doc_create',
@@ -165,7 +221,8 @@ describe('orphan prevention — doc_create nodes', () => {
         },
       },
     ]);
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('ORPHAN_PREVENTION');
   });
 
   it('allows doc root with graph_connect edge', async () => {
@@ -277,6 +334,8 @@ describe('orphan prevention — doc_create nodes', () => {
 
 describe('doc_create — null content handling', () => {
   it('creates doc root without content (no crash)', async () => {
+    // Need a seed + edge since no empty-graph exemption
+    await seed();
     const result = await batch([
       {
         tool: 'doc_create',
@@ -286,14 +345,22 @@ describe('doc_create — null content handling', () => {
           isDocRoot: true,
         },
       },
+      {
+        tool: 'graph_connect',
+        params: {
+          from: '$0.id',
+          to: 'Seed Concept',
+          type: 'expresses',
+          why: 'Doc expresses seed concept.',
+        },
+      },
     ]);
-    // Should succeed (first node exemption) without crashing on null content
     expect(result.success).toBe(true);
     const nodeId = (result.results as Array<{ id?: string }>)?.[0]?.id;
     expect(nodeId).toBeTruthy();
 
-    const node = getGraphStore().getNode(nodeId!);
+    const node = getGraphStore().getNode(nodeId as string);
     expect(node).toBeTruthy();
-    expect(node!.title).toBe('Empty Root');
+    expect(node?.title).toBe('Empty Root');
   });
 });
