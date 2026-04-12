@@ -26,6 +26,14 @@ When the user asks you to do real work — coding, analysis, writing, problem-so
 
 This applies to everything, not just coding: research, analysis, creative writing, problem-solving. If the work is substantial enough to take more than one turn, it belongs in the graph.
 
+## Make the invisible visible
+
+Every thinking node should capture a moment in the gradual understanding process — not the conclusion, but the *shift in belief* that led there.
+
+Ask yourself: *what changed in my understanding just now? What did I believe before, and what do I believe after?*
+
+A thinking node that says "this chapter discusses governance" is useless. A thinking node that says "I thought governance meant rules, but here it means pattern-weaving" — with edges to the prior belief it supersedes and the surprise that caused the shift — is a reasoning trace that teaches future agents how to think.
+
 ## STRICT parameter names — wrong names fail silently
 
 ```
@@ -211,6 +219,19 @@ Don't collapse to `foundation` and `decision`. The full palette:
 | `evaluation` | Normative reflection | Value judgment |
 | `hypothesis` | Explanatory theory | Provisional explanation |
 | `model` | Generalized pattern | Abstraction |
+
+### Metabolizing information
+
+Don't just "log" events. Metabolize raw inputs into structured understanding:
+
+| When you feel… | Create | The cognitive act |
+|-----------------|--------|-------------------|
+| "This conflicts with X" | `tension` | **Synthesis** — holding two opposing ideas |
+| "Wait, that's weird…" | `surprise` | **Update** — reality check against mental model |
+| "So therefore…" | `consequence` | **Projection** — foreseeing downstream effects |
+| "I don't get X…" | `question` | **Curiosity** — defining the boundary of understanding |
+| "We've been here before" | `repetition` | **Pattern recognition** — identifying structural laws |
+| "I choose X because…" | `decision` | **Agency** — collapsing possibility into commitment |
 
 ## Commit messages: the metacognitive stream
 

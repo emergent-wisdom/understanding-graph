@@ -39,6 +39,23 @@ When you read the graph in a new conversation, you're not retrieving data. You'r
 
 ## The conversation is working memory. The graph is long-term memory.
 
+## Projects: separate work from autobiography
+
+`default` is your long-term autobiography — it persists across all conversations and accumulates your evolving understanding over time.
+
+When the user starts a **substantive task** (building something, researching a topic, analyzing a problem), create a dedicated project:
+
+```
+project_create({ name: "city-optimizer", description: "Genetic algorithm for city layout" })
+project_switch({ project: "city-optimizer" })
+```
+
+Do all work in the task project. When done, switch back to `default` and plant one `reference` node pointing at the task project — a breadcrumb for future-you.
+
+**When to create a new project:** The task has a clear scope, will produce multiple nodes, and isn't just a quick question. "Build a city optimizer" = new project. "What's a bloom filter?" = stays in default.
+
+**During orientation:** Check `project_list()` to see existing projects. If the user's request matches an existing project, switch to it instead of creating a new one.
+
 ## Orientation protocol
 
 1. **Ask if the user wants the graph UI** — if yes, launch it with `/understanding-graph:web-ui`
