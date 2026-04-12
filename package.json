@@ -30,9 +30,10 @@
     "understanding-graph": "./bin/cli.js"
   },
   "files": [
+    ".claude-plugin/",
     "bin/",
     "packages/frontend/dist/",
-    "prompts/",
+    "skills/",
     "server.json",
     "README.md",
     "LICENSE"

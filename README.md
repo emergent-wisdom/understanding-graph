@@ -36,6 +36,32 @@ claude mcp add ug -- npx -y understanding-graph mcp
 
 `npx -y` downloads, caches, and runs the package on first invocation. After this, `ug` is available as an MCP server in every Claude Code session.
 
+### Claude Code plugin (MCP server + skills)
+
+The npm package also ships as a Claude Code plugin — the MCP server plus skills that teach the agent how to use the graph effectively:
+
+```bash
+# From npm (when published)
+claude plugin install understanding-graph
+
+# Local development
+claude --plugin-dir /path/to/understanding-graph
+```
+
+This gives you the MCP server **and** 7 skills:
+
+| Skill | Invoke | What it teaches |
+|-------|--------|-----------------|
+| orient | `/understanding-graph:orient` | Read graph state at conversation start |
+| quality-check | `/understanding-graph:quality-check` | Score, analyze, thermostat |
+| reading-mode | `/understanding-graph:reading-mode` | Deep source reading with source_read |
+| serendipity | `/understanding-graph:serendipity` | Inject novelty via grounded/pure serendipity |
+| web-ui | `/understanding-graph:web-ui` | Launch 3D visualization at :3030 |
+| graph-workflow | *(auto-loaded)* | Five laws, batches, edges, triggers, API reference |
+| creative-work | *(auto-loaded)* | Two surfaces: concepts + doc trees |
+
+The MCP server works with any client. The skills are a Claude Code bonus — use whichever fits your setup.
+
 ### Claude Code with agent teams (one-command project setup)
 
 For projects where you want agent teams to share the graph automatically, run the init flow inside the project directory:
