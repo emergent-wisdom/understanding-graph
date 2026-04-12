@@ -55,14 +55,17 @@ app.use((req, res, next) => {
     return res.status(400).json({ error: 'Invalid project ID' });
   }
 
-  // Switch database to the requested project
-  const projectPath = path.join(PROJECT_DIR, projectId);
-  if (
-    fs.existsSync(projectPath) &&
-    fs.existsSync(path.join(projectPath, 'store.db'))
-  ) {
-    sqlite.initDatabase(projectPath);
-    sqlite.setCurrentProject(projectId);
+  // Switch database to the requested project (skip if already active)
+  if (projectId !== app.locals.projectId) {
+    const projectPath = path.join(PROJECT_DIR, projectId);
+    if (
+      fs.existsSync(projectPath) &&
+      fs.existsSync(path.join(projectPath, 'store.db'))
+    ) {
+      sqlite.initDatabase(projectPath);
+      sqlite.setCurrentProject(projectId);
+      app.locals.projectId = projectId;
+    }
   }
 
   next();
@@ -176,6 +179,8 @@ function start() {
       `Understanding Graph v2 Web Server running on http://localhost:${PORT}`,
     );
     console.log(`Project directory: ${PROJECT_DIR}`);
+    console.log(`Frontend directory: ${FRONTEND_DIR}`);
+    console.log(`Frontend exists: ${fs.existsSync(FRONTEND_DIR)}`);
   });
 }
 

@@ -36,6 +36,13 @@ if (command === 'start') {
     process.exit(2);
   }
 
+  if (!process.env.PROJECT_DIR) {
+    console.warn(`
+⚠  PROJECT_DIR not set — defaulting to ./projects relative to current directory.
+   If your MCP server uses a different path, the UI will show an empty graph.
+   Set PROJECT_DIR explicitly:  PROJECT_DIR=/path/to/projects npx understanding-graph start
+`);
+  }
   console.log('Starting Understanding Graph (Web + Frontend)...');
   console.log('Open http://localhost:' + (process.env.PORT || 3000));
 
