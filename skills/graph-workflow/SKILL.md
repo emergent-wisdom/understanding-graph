@@ -10,6 +10,30 @@ user-invocable: false
 
 # Graph Workflow
 
+## Correct graph_batch example — copy this pattern exactly
+
+```javascript
+graph_batch({
+  operations: [
+    { tool: "graph_add_concept", params: {
+        title: "Example Concept",         // NOT name, NOT text
+        trigger: "foundation",
+        understanding: "What this means",  // NOT body, NOT content
+        why: "Why this matters"
+    }},
+    { tool: "graph_connect", params: {
+        from: "$0.id",                    // NOT source
+        to: "n_existing_node",            // NOT target
+        type: "refines",                  // NOT edgeType
+        why: "Why these connect"
+    }}
+  ],
+  commit_message: "what shifted in your understanding"
+})
+```
+
+**Common mistakes that fail silently:** `name` (use `title`), `body` (use `understanding`), `source`/`target` (use `from`/`to`), `edgeType` (use `type`).
+
 ## The five laws
 
 1. **Git for cognition.** Nodes are never deleted, only superseded. `graph_revise` with before/after/pivot captures the shift. The `why` is your commit message.

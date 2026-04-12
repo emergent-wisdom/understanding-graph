@@ -7,7 +7,7 @@ user-invocable: true
 allowed-tools: |
   Bash(lsof -ti:3030 *)
   Bash(kill *)
-  Bash(npx -y understanding-graph start *)
+  Bash(PROJECT_DIR=* npx -y understanding-graph* start *)
   Bash(mkdir -p *)
 ---
 
@@ -15,23 +15,22 @@ allowed-tools: |
 
 Launch the understanding graph's 3D force-directed visualization.
 
+## CRITICAL: Run from the user's working directory
+
+The web server MUST read the same database as the MCP server. The MCP server resolves `PROJECT_DIR=./projects` relative to the user's cwd. So you MUST launch the web UI from the user's cwd too — **never** from the plugin cache directory or any other directory.
+
 ## Launch
 
+Run this exactly from the user's current working directory:
+
 ```bash
-# Ensure project directory exists
 mkdir -p projects/default
-
-# Kill any existing instance
 lsof -ti:3030 | xargs kill 2>/dev/null
-
-# Launch the web UI (runs in background, reads same DB as MCP server)
 PROJECT_DIR="$(pwd)/projects" PORT=3030 npx -y understanding-graph start &
 ```
 
 Then tell the user: **Open http://localhost:3030**
 
-## Troubleshooting
-
-If the UI shows an empty graph: the web server and MCP server are reading different databases. Make sure `PROJECT_DIR` in the launch command matches the `PROJECT_DIR` in your MCP server config.
+Do NOT `cd` to the plugin cache or any other directory before running this. The `$(pwd)` must resolve to the user's working directory so the web UI reads the same `projects/` folder as the MCP server.
 
 The UI updates live as you commit to the graph — the user can watch the graph grow while you work.
