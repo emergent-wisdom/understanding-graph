@@ -41,6 +41,10 @@ claude mcp add ug -- npx -y understanding-graph mcp
 The npm package also ships as a Claude Code plugin — the MCP server plus skills that teach the agent how to use the graph effectively:
 
 ```bash
+# One-time: add the Emergent Wisdom marketplace
+claude plugin marketplace add emergent-wisdom/marketplace
+
+# Install the plugin
 claude plugin install understanding-graph
 ```
 
