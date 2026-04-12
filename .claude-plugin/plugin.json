@@ -1,12 +1,12 @@
 {
   "name": "understanding-graph",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Persistent understanding graphs — metabolic memory for AI",
   "skills": "./skills/",
   "mcpServers": {
     "ug": {
-      "command": "npx",
-      "args": ["-y", "understanding-graph", "mcp"],
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/cli.js", "mcp"],
       "env": { "PROJECT_DIR": "./projects", "DEFAULT_PROJECT": "default" }
     }
   }
