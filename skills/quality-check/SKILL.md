@@ -64,6 +64,31 @@ graph_analyze({ include: ["gaps", "bridges", "questions", "conflicts"] })
 - **DIVERGE** — explore, generate variety, tolerate contradiction
 - **CONVERGE** — synthesize, resolve tensions, commit to positions
 
+### Trigger audit protocol
+Before closing a turn where you did substantive graph work, check which triggers you did NOT use. Run:
+```
+graph_find_by_trigger({ trigger: "question" })
+graph_find_by_trigger({ trigger: "tension" })
+graph_find_by_trigger({ trigger: "prediction" })
+```
+If any of these return empty and you've been doing real thinking, something is missing. Real understanding involves questions you can't answer yet, tensions you haven't resolved, and predictions about what comes next.
+
+### Diverge/converge action routing
+When `graph_thermostat` returns a recommendation:
+
+**DIVERGE (explore, generate variety):**
+- Use `graph_chaos()` to inject serendipity — random connections that break tunnel vision
+- Use `graph_discover()` for grounded exploration — finds related concepts you haven't connected yet
+- Create `serendipity` trigger nodes for unexpected connections
+- Tolerate contradiction — don't resolve tensions prematurely
+
+**CONVERGE (synthesize, resolve):**
+- Use `graph_analyze({ include: ["gaps", "bridges", "questions", "conflicts"] })` to find what needs connecting
+- Bridge disconnected clusters with synthesis nodes
+- Resolve or reaffirm open questions
+- Supersede stale beliefs
+- Commit to positions on tensions
+
 ## Coherence workflow
 
 Deploy when the graph needs consolidation:

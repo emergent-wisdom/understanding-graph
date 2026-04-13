@@ -86,3 +86,12 @@ Don't just orient at the start. Periodically (every few substantial batches):
 - Check `graph_find_by_trigger` for trigger diversity — if you're only creating `foundation` and `decision`, you're probably missing `question`, `tension`, `prediction`, `consequence`
 - Check edge diversity — if most edges are `relates`, the graph is shallow
 - **Ask the user**: "Want to pause and look at the graph? There are things to connect / questions to revisit / beliefs to update."
+
+### Self-knowledge in default
+The `default` project isn't just for task references — it's where you build self-knowledge. Write introspective nodes about:
+- **Reasoning patterns** — "I tend to over-abstract before I have enough examples"
+- **Characteristic mistakes** — "I keep creating monolithic nodes instead of decomposing"
+- **Relationship with sema** — "I find pattern X useful for framing problem type Y"
+- **Cross-project insights** — observations that apply across problems, not just the current task
+
+**Rule:** Insights that apply across problems go in `default`; task-specific insights stay in the task project. When you notice something about *how you think* rather than *what you're thinking about*, that belongs in default.

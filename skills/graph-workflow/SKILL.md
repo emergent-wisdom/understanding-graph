@@ -252,6 +252,35 @@ For real tasks: `project_create` + `project_switch` into a fresh project. Do all
 
 `default` is your long-term autobiography. Task projects hold reasoning for specific work.
 
+### Generated file path rules
+When using `doc_generate`, the file name is derived from the document root's title:
+- Title is hyphenated and lowercased: "My Paper Title" → `my-paper-title.md`
+- Do NOT put the file extension in the title — it's added from `fileType`
+- Example: title "Analysis Report", fileType "md" → `analysis-report.md`
+
+### Choosing edge types — decision tree
+`relates` is the fallback. Before using it, run through this decision tree:
+- New decision that builds on prior foundation → `refines`
+- Two strategy alternatives that can't both be true → `contradicts`
+- Later evidence confirms a prediction → `validates`
+- Later evidence refutes a prediction → `invalidates`
+- Newer understanding replaces older → `supersedes`
+- Abstract concept made concrete → `implements`
+- Concrete observation generalized → `abstracts_from`
+- "I understood X by studying Y" → `learned_from`
+- Document discusses a concept → `expresses`
+- Raises doubt → `questions`; resolves doubt → `answers`
+
+If none of these fit, `relates` is fine — but most edges have a more specific type.
+
+### Red flags in batches
+Watch for these patterns that indicate shallow graph work:
+- **Only `doc_create` operations** — you're using the graph as a file store, not a thinking tool. Where are the concept nodes that capture *why* you're writing this?
+- **Every `graph_connect` uses `relates`** — shallow linking. Run through the edge decision tree above.
+- **Zero sema handles in understanding text** — you're thinking without shared vocabulary. Search sema before substantive batches.
+- **Monolithic content** — a single massive node instead of decomposed thinking. Break large insights into connected smaller nodes.
+- **No questions or tensions** — you're only recording conclusions, not the doubt and conflict that led there.
+
 ## Document tools
 
 ### Creating documents
