@@ -89,6 +89,9 @@ interface AppState {
   // Thinking mode (Graph Mode vs Fluid Mode)
   thinkingMode: 'graph' | 'fluid'
   setThinkingMode: (mode: 'graph' | 'fluid') => void
+
+  // Project sync — true once backend project matches frontend after hydration
+  projectReady: boolean
 }
 
 // Apply theme to document
@@ -231,6 +234,9 @@ export const useAppStore = create<AppState>()(
       // Thinking mode
       thinkingMode: 'graph',
       setThinkingMode: (mode) => set({ thinkingMode: mode }),
+
+      // Project sync — starts false, set true after backend is in sync
+      projectReady: false,
     }),
     {
       name: 'app-settings',
@@ -243,12 +249,29 @@ export const useAppStore = create<AppState>()(
         if (state?.theme) {
           applyTheme(state.theme)
         }
-        // Reload project on backend when restoring from localStorage
-        if (state?.currentProject?.id) {
-          fetch(`/api/projects/${state.currentProject.id}/load`, {
-            method: 'POST',
-          }).catch(console.error)
+        // Sync frontend project state with backend before enabling graph queries
+        const sync = async () => {
+          if (state?.currentProject?.id) {
+            // Returning user — tell backend to load their project
+            await fetch(`/api/projects/${state.currentProject.id}/load`, {
+              method: 'POST',
+            })
+          } else {
+            // New user — ask backend which project is active and adopt it
+            const res = await fetch('/api/projects/current')
+            if (res.ok) {
+              const data = await res.json()
+              useAppStore
+                .getState()
+                .setCurrentProject({ id: data.id, name: data.name })
+            }
+          }
+          useAppStore.setState({ projectReady: true })
         }
+        sync().catch(() => {
+          // Even on error, unblock the UI so polling can recover
+          useAppStore.setState({ projectReady: true })
+        })
       },
     },
   ),

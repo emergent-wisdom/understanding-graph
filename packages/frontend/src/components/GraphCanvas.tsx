@@ -88,7 +88,8 @@ export function GraphCanvas() {
     setTimelineRange,
     setTimelineSpan,
   } = useAppStore()
-  const { data: apiData, isLoading } = useGraph(true, showSuperseded)
+  const projectReady = useAppStore((s) => s.projectReady)
+  const { data: apiData, isLoading } = useGraph(projectReady, showSuperseded)
 
   // Hovered state (for tooltips and visual highlighting)
   const [hoveredEdge, setHoveredEdge] = useState<GraphEdge | null>(null)
@@ -211,16 +212,18 @@ export function GraphCanvas() {
   )
 
   // Sort nodes by creation time for timeline (oldest first)
-  const sortedNodeIds = useMemo(() => {
+  const sortedNodes = useMemo(() => {
     const nodes = apiData?.nodes || []
-    return [...nodes]
-      .sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
-        return dateA - dateB // oldest first
-      })
-      .map((n) => n.id)
+    return [...nodes].sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return dateA - dateB // oldest first
+    })
   }, [apiData?.nodes])
+  const sortedNodeIds = useMemo(
+    () => sortedNodes.map((n) => n.id),
+    [sortedNodes],
+  )
 
   // Build neighbor connection map for ↑↓ navigation
   const neighborConnectionCounts = useMemo(() => {
@@ -764,6 +767,7 @@ export function GraphCanvas() {
           setExpanded={setTimelineExpanded}
           setRange={setTimelineRange}
           setSpan={setTimelineSpan}
+          sortedNodes={sortedNodes}
           sortedNodeIds={sortedNodeIds}
           selectAndFlyToNode={selectAndFlyToNode}
         />
@@ -780,6 +784,7 @@ function TimelineBar({
   setExpanded,
   setRange,
   setSpan,
+  sortedNodes,
   sortedNodeIds,
   selectAndFlyToNode,
 }: {
@@ -790,6 +795,7 @@ function TimelineBar({
   setExpanded: (expanded: boolean) => void
   setRange: (range: [number, number] | null) => void
   setSpan: (span: number) => void
+  sortedNodes: GraphNode[]
   sortedNodeIds: string[]
   selectAndFlyToNode: (id: string) => void
 }) {
@@ -820,6 +826,13 @@ function TimelineBar({
 
   // Reset evolution index when range START changes externally (not from build mode)
   const prevRangeStartRef = useRef<number | null>(null)
+  // Sync evolutionStartRef on first render so autoplay/navigation start correctly
+  useEffect(() => {
+    if (prevRangeStartRef.current === null) {
+      const initialStart = range ? range[0] : 0
+      evolutionStartRef.current = initialStart
+    }
+  }, [range])
   useEffect(() => {
     const newStart = range ? range[0] : 0
     // Only reset if the start actually changed and we're not in build mode
@@ -905,28 +918,27 @@ function TimelineBar({
 
   // Keep refs for interval callback to avoid stale closures
   const evolutionModeRef = useRef(evolutionMode)
+  const evolutionRangeRef = useRef(evolutionRange)
   const sortedNodeIdsRef = useRef(sortedNodeIds)
-  const totalNodesRef = useRef(totalNodes)
   useEffect(() => {
     evolutionModeRef.current = evolutionMode
   }, [evolutionMode])
   useEffect(() => {
+    evolutionRangeRef.current = evolutionRange
+  }, [evolutionRange])
+  useEffect(() => {
     sortedNodeIdsRef.current = sortedNodeIds
   }, [sortedNodeIds])
-  useEffect(() => {
-    totalNodesRef.current = totalNodes
-  }, [totalNodes])
 
   // Auto-play effect - only depends on isPlaying to avoid interval recreation
   useEffect(() => {
     if (isPlaying) {
       playIntervalRef.current = setInterval(() => {
         setEvolutionIndex((prev) => {
-          const start = evolutionStartRef.current
-          const maxCount = totalNodesRef.current - start
+          const { start, count } = evolutionRangeRef.current
           const nextRelativeIndex = prev + 1
 
-          if (nextRelativeIndex >= maxCount) {
+          if (nextRelativeIndex >= count) {
             setIsPlaying(false)
             return prev
           }
@@ -1026,16 +1038,18 @@ function TimelineBar({
       if (isDragging) return
       if (!trackRef.current) return
       if (isFiltering) return // Already filtering, use handles
+      if (totalNodes === 0) return
 
       const rect = trackRef.current.getBoundingClientRect()
       const clickPos = (e.clientX - rect.left) / rect.width
       const centerNode = Math.floor(clickPos * totalNodes)
-      const halfSpan = Math.floor(span / 2)
+      const effectiveSpan = Math.min(span, totalNodes)
+      const halfSpan = Math.floor(effectiveSpan / 2)
       const newStart = Math.max(
         0,
-        Math.min(centerNode - halfSpan, totalNodes - span),
+        Math.min(centerNode - halfSpan, totalNodes - effectiveSpan),
       )
-      setRange([newStart, newStart + span - 1])
+      setRange([newStart, newStart + effectiveSpan - 1])
     },
     [isDragging, isFiltering, totalNodes, span, setRange],
   )
@@ -1045,15 +1059,43 @@ function TimelineBar({
     setRange(null)
   }, [setRange])
 
-  // Mini bar heights - memoized to avoid recalculating
-  const miniBarHeights = useMemo(
-    () =>
-      Array.from(
-        { length: 50 },
-        (_, i) => 30 + Math.sin(i * 0.3) * 20 + (i % 7) * 3,
-      ),
-    [],
-  )
+  // Bucket sorted nodes into bars showing trigger type distribution
+  const NUM_BARS = 50
+  const barData = useMemo(() => {
+    if (totalNodes === 0) {
+      return Array.from({ length: NUM_BARS }, () => ({
+        height: 0,
+        color: DEFAULT_COLOR,
+      }))
+    }
+    return Array.from({ length: NUM_BARS }, (_, i) => {
+      const bucketStart = Math.floor((i / NUM_BARS) * totalNodes)
+      const bucketEnd = Math.floor(((i + 1) / NUM_BARS) * totalNodes)
+      const bucketNodes = sortedNodes.slice(
+        bucketStart,
+        Math.max(bucketEnd, bucketStart + 1),
+      )
+      // Height = number of nodes in bucket, scaled to fill the bar
+      const maxBucketSize = Math.ceil(totalNodes / NUM_BARS) + 1
+      const height = Math.max(15, (bucketNodes.length / maxBucketSize) * 100)
+      // Color = most common trigger type in this bucket
+      const counts = new Map<string, number>()
+      for (const n of bucketNodes) {
+        const t = n.trigger || 'unknown'
+        counts.set(t, (counts.get(t) || 0) + 1)
+      }
+      let topTrigger = 'unknown'
+      let topCount = 0
+      for (const [t, c] of counts) {
+        if (c > topCount) {
+          topTrigger = t
+          topCount = c
+        }
+      }
+      const color = TRIGGER_COLORS[topTrigger as TriggerType] || DEFAULT_COLOR
+      return { height, color }
+    })
+  }, [sortedNodes, totalNodes])
 
   // Keyboard shortcuts component - floats above timeline, blends into graph
   const KeyboardShortcuts = () => (
@@ -1306,16 +1348,18 @@ function TimelineBar({
           className="h-8 mx-3 my-2 relative cursor-pointer"
           onClick={handleTrackClick}
         >
-          {/* Background track with mini bars */}
+          {/* Background track with node distribution bars */}
           <div className="absolute inset-0 bg-bg-muted rounded overflow-hidden flex items-end">
-            {miniBarHeights.map((barHeight, i) => {
-              // Use index as key since miniBarHeights are stable computed values
+            {barData.map((bar, i) => {
               const barKey = `bar-${i}`
               return (
                 <div
                   key={barKey}
-                  className="flex-1 bg-border-subtle mx-px"
-                  style={{ height: `${barHeight}%` }}
+                  className="flex-1 mx-px rounded-t-sm opacity-60"
+                  style={{
+                    height: `${bar.height}%`,
+                    backgroundColor: bar.color,
+                  }}
                 />
               )
             })}

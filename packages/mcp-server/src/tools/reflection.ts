@@ -484,13 +484,18 @@ export const reflectionTools: Tool[] = [
   {
     name: 'project_switch',
     description:
-      'Switch to a different project, creating it if it does not exist yet. The project becomes the active target for all subsequent graph mutations and queries. Pass the projectId you want to use; the matching directory + SQLite database are loaded (or created) on demand.',
+      'Switch to a different project, creating it if it does not exist yet. The project becomes the active target for all subsequent graph mutations and queries. Pass the projectId you want to use; the matching directory + SQLite database are loaded (or created) on demand. Set goal to describe the project purpose (shown in the UI).',
     inputSchema: {
       type: 'object',
       properties: {
         project: {
           type: 'string',
           description: 'Project ID to switch to',
+        },
+        goal: {
+          type: 'string',
+          description:
+            'Short description of the project goal (e.g. "Deep reading ofErta Ale"). Saved to meta.json and shown in the frontend sidebar.',
         },
       },
       required: ['project'],
@@ -1456,7 +1461,8 @@ export async function handleReflectionTools(
 
     case 'project_switch': {
       const projectId = args.project as string;
-      const context = await contextManager.switchProject(projectId);
+      const goal = args.goal as string | undefined;
+      const context = await contextManager.switchProject(projectId, goal);
 
       // Get document roots for this project
       const store = getGraphStore();

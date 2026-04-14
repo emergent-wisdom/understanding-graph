@@ -72,6 +72,7 @@ export class ContextManager {
   private async initializeContext(
     projectId: string,
     allowCreate: boolean = false,
+    goal?: string,
   ): Promise<void> {
     // Validate projectId to prevent path traversal
     if (!/^[a-zA-Z0-9_-]+$/.test(projectId)) {
@@ -107,11 +108,22 @@ export class ContextManager {
       fs.mkdirSync(path.join(projectPath, 'generated'), { recursive: true });
 
       // Create meta.json for web UI compatibility
-      const meta = { name: actualProjectId, goal: '' };
+      const meta = { name: actualProjectId, goal: goal || '' };
       fs.writeFileSync(
         path.join(projectPath, 'meta.json'),
         JSON.stringify(meta, null, 2),
       );
+    } else if (goal !== undefined) {
+      // Update goal on existing project when explicitly provided
+      const metaPath = path.join(projectPath, 'meta.json');
+      let meta = { name: actualProjectId, goal: '' };
+      if (fs.existsSync(metaPath)) {
+        try {
+          meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+        } catch {}
+      }
+      meta.goal = goal;
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
     }
 
     // Initialize SQLite for this project (includes nodes/edges tables now)
@@ -137,8 +149,11 @@ export class ContextManager {
   }
 
   // Switch to a different project (creates if it doesn't exist)
-  async switchProject(projectId: string): Promise<ConversationContext> {
-    await this.initializeContext(projectId, true); // allowCreate=true
+  async switchProject(
+    projectId: string,
+    goal?: string,
+  ): Promise<ConversationContext> {
+    await this.initializeContext(projectId, true, goal); // allowCreate=true
     if (!this.currentContext) {
       throw new Error('Failed to initialize context');
     }
