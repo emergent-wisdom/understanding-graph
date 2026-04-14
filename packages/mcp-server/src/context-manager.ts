@@ -117,11 +117,9 @@ export class ContextManager {
       // Update goal on existing project when explicitly provided
       const metaPath = path.join(projectPath, 'meta.json');
       let meta = { name: actualProjectId, goal: '' };
-      if (fs.existsSync(metaPath)) {
-        try {
-          meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-        } catch {}
-      }
+      try {
+        meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      } catch {}
       meta.goal = goal;
       fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
     }

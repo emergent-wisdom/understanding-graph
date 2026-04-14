@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph3D from 'react-force-graph-3d'
 import * as THREE from 'three'
 import { useGraph } from '@/hooks/useApi'
-import { DEFAULT_COLOR_HEX, triggerColorsHex } from '@/lib/colors'
+import {
+  DEFAULT_COLOR_HEX,
+  getTriggerColorHex,
+  triggerColorsHex,
+} from '@/lib/colors'
 import { ALL_TRIGGER_TYPES, useAppStore } from '@/stores/appStore'
 import type { GraphEdge, GraphNode, TriggerType } from '@/types/graph'
 import { SearchBar } from './SearchBar'
@@ -827,12 +831,11 @@ function TimelineBar({
   // Reset evolution index when range START changes externally (not from build mode)
   const prevRangeStartRef = useRef<number | null>(null)
   // Sync evolutionStartRef on first render so autoplay/navigation start correctly
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only run on mount
   useEffect(() => {
-    if (prevRangeStartRef.current === null) {
-      const initialStart = range ? range[0] : 0
-      evolutionStartRef.current = initialStart
-    }
-  }, [range])
+    const initialStart = range ? range[0] : 0
+    evolutionStartRef.current = initialStart
+  }, [])
   useEffect(() => {
     const newStart = range ? range[0] : 0
     // Only reset if the start actually changed and we're not in build mode
@@ -1079,20 +1082,19 @@ function TimelineBar({
       const maxBucketSize = Math.ceil(totalNodes / NUM_BARS) + 1
       const height = Math.max(15, (bucketNodes.length / maxBucketSize) * 100)
       // Color = most common trigger type in this bucket
-      const counts = new Map<string, number>()
+      const counts = new Map<string | undefined, number>()
       for (const n of bucketNodes) {
-        const t = n.trigger || 'unknown'
-        counts.set(t, (counts.get(t) || 0) + 1)
+        counts.set(n.trigger, (counts.get(n.trigger) || 0) + 1)
       }
-      let topTrigger = 'unknown'
+      let topTrigger: string | null = null
       let topCount = 0
       for (const [t, c] of counts) {
         if (c > topCount) {
-          topTrigger = t
+          topTrigger = t ?? null
           topCount = c
         }
       }
-      const color = TRIGGER_COLORS[topTrigger as TriggerType] || DEFAULT_COLOR
+      const color = getTriggerColorHex(topTrigger)
       return { height, color }
     })
   }, [sortedNodes, totalNodes])

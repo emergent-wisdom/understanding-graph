@@ -495,7 +495,7 @@ export const reflectionTools: Tool[] = [
         goal: {
           type: 'string',
           description:
-            'Short description of the project goal (e.g. "Deep reading ofErta Ale"). Saved to meta.json and shown in the frontend sidebar.',
+            'Short description of the project goal (e.g. "Deep reading of Erta Ale"). Saved to meta.json and shown in the frontend sidebar.',
         },
       },
       required: ['project'],
