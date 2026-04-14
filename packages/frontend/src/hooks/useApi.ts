@@ -81,6 +81,7 @@ export function useProjects() {
   return useQuery({
     queryKey: queryKeys.projects,
     queryFn: () => fetchJson<Project[]>('/projects'),
+    refetchInterval: pollInterval(5000),
   })
 }
 
@@ -94,6 +95,7 @@ export function useLoadProject() {
       ),
     onSuccess: () => {
       // Invalidate graph and conversations when project changes
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects })
       queryClient.invalidateQueries({ queryKey: queryKeys.graph })
       queryClient.invalidateQueries({ queryKey: queryKeys.conversations })
       queryClient.invalidateQueries({ queryKey: queryKeys.documents })
