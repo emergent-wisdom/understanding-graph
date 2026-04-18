@@ -1,6 +1,6 @@
 {
   "name": "@emergent-wisdom/understanding-graph-web-server",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Web server for understanding graph visualization",
   "type": "module",
   "main": "dist/index.js",
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@emergent-wisdom/understanding-graph-core": "^0.1.8",
+    "@emergent-wisdom/understanding-graph-core": "^0.1.11",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",

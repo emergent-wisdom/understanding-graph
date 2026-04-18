@@ -169,7 +169,7 @@ graphRouter.get('/graph/export', (req, res, next) => {
 // BATCH ENDPOINT - The ONLY way to mutate the graph with commits
 graphRouter.post('/graph/batch', (req, res, next) => {
   try {
-    const { operations, commit_message, agent_name } = req.body;
+    const { operations, commit_message, agent_name, author } = req.body;
 
     // Enforce commit_message requirement
     if (!commit_message || commit_message.trim() === '') {
@@ -358,6 +358,8 @@ graphRouter.post('/graph/batch', (req, res, next) => {
         [...new Set(affectedNodeIds)],
         [...new Set(affectedEdgeIds)],
         agent_name,
+        undefined, // timestamp — default to now
+        author,
       );
       commit = { id: createdCommit.id, message: createdCommit.message };
     }

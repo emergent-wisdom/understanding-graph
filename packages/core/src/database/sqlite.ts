@@ -330,10 +330,15 @@ export function initDatabase(projectPath: string): DatabaseType {
 
     -- Commits: Atomic batches of graph changes with human-readable messages
     -- "Git for Cognition" - tracks changes to belief structures
+    -- agent_name is the tool that wrote the commit (e.g. "claude-code").
+    -- author is the human (or human-facing handle) responsible — hosts
+    -- that multiplex many users onto one engine set this per-request so
+    -- commits can be attributed properly.
     CREATE TABLE IF NOT EXISTS commits (
       id TEXT PRIMARY KEY,
       message TEXT NOT NULL,
       agent_name TEXT,
+      author TEXT,
       node_ids TEXT DEFAULT '[]',
       edge_ids TEXT DEFAULT '[]',
       created_at TEXT DEFAULT (datetime('now'))
@@ -341,6 +346,16 @@ export function initDatabase(projectPath: string): DatabaseType {
 
     CREATE INDEX IF NOT EXISTS idx_commits_created ON commits(created_at);
   `);
+
+  // Migrate older databases that predate the `author` column. SQLite's
+  // ALTER TABLE ADD COLUMN is idempotent-via-check only; swallow the
+  // duplicate-column error if this DB is already current.
+  try {
+    db.exec(`ALTER TABLE commits ADD COLUMN author TEXT`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/duplicate column/i.test(msg)) throw err;
+  }
 
   // Create FTS5 virtual table for full-text search on nodes
   // Using IF NOT EXISTS pattern for FTS5
@@ -753,6 +768,7 @@ export interface Commit {
   id: string;
   message: string;
   agentName: string | null;
+  author: string | null;
   nodeIds: string[];
   edgeIds: string[];
   createdAt: string;
@@ -761,6 +777,8 @@ export interface Commit {
 /**
  * Create a new commit record for a batch of graph changes.
  * @param timestamp - Optional ISO timestamp for retroactive commits
+ * @param agentName - The tool that wrote this (e.g. "claude-code").
+ * @param author   - The human-facing identity responsible (e.g. "@hwesterb").
  */
 export function createCommit(
   message: string,
@@ -768,18 +786,20 @@ export function createCommit(
   edgeIds: string[] = [],
   agentName?: string,
   timestamp?: string,
+  author?: string,
 ): Commit {
   const db = getDb();
   const id = `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
   const createdAt = timestamp || new Date().toISOString();
   const stmt = db.prepare(`
-    INSERT INTO commits (id, message, agent_name, node_ids, edge_ids, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO commits (id, message, agent_name, author, node_ids, edge_ids, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   stmt.run(
     id,
     message,
     agentName ?? null,
+    author ?? null,
     JSON.stringify(nodeIds),
     JSON.stringify(edgeIds),
     createdAt,
@@ -807,6 +827,7 @@ export function createCommit(
     id,
     message,
     agentName: agentName ?? null,
+    author: author ?? null,
     nodeIds,
     edgeIds,
     createdAt,
@@ -832,6 +853,7 @@ export function getCommitForNode(nodeId: string): Commit | null {
         id: string;
         message: string;
         agent_name: string | null;
+        author: string | null;
         node_ids: string;
         edge_ids: string;
         created_at: string;
@@ -844,6 +866,7 @@ export function getCommitForNode(nodeId: string): Commit | null {
     id: row.id,
     message: row.message,
     agentName: row.agent_name,
+    author: row.author ?? null,
     nodeIds: JSON.parse(row.node_ids || '[]'),
     edgeIds: JSON.parse(row.edge_ids || '[]'),
     createdAt: row.created_at,
@@ -863,6 +886,7 @@ export function getRecentCommits(limit = 50): Commit[] {
     id: string;
     message: string;
     agent_name: string | null;
+    author: string | null;
     node_ids: string;
     edge_ids: string;
     created_at: string;
@@ -872,6 +896,7 @@ export function getRecentCommits(limit = 50): Commit[] {
     id: row.id,
     message: row.message,
     agentName: row.agent_name,
+    author: row.author ?? null,
     nodeIds: JSON.parse(row.node_ids || '[]'),
     edgeIds: JSON.parse(row.edge_ids || '[]'),
     createdAt: row.created_at,
@@ -888,6 +913,7 @@ export function getCommit(id: string): Commit | null {
         id: string;
         message: string;
         agent_name: string | null;
+        author: string | null;
         node_ids: string;
         edge_ids: string;
         created_at: string;
@@ -900,6 +926,7 @@ export function getCommit(id: string): Commit | null {
     id: row.id,
     message: row.message,
     agentName: row.agent_name,
+    author: row.author ?? null,
     nodeIds: JSON.parse(row.node_ids || '[]'),
     edgeIds: JSON.parse(row.edge_ids || '[]'),
     createdAt: row.created_at,
@@ -920,6 +947,7 @@ export function getCommitsForNode(nodeId: string): Commit[] {
     id: string;
     message: string;
     agent_name: string | null;
+    author: string | null;
     node_ids: string;
     edge_ids: string;
     created_at: string;
@@ -929,6 +957,7 @@ export function getCommitsForNode(nodeId: string): Commit[] {
     id: row.id,
     message: row.message,
     agentName: row.agent_name,
+    author: row.author ?? null,
     nodeIds: JSON.parse(row.node_ids || '[]'),
     edgeIds: JSON.parse(row.edge_ids || '[]'),
     createdAt: row.created_at,
@@ -948,6 +977,7 @@ export function getCommitsForEdge(edgeId: string): Commit[] {
     id: string;
     message: string;
     agent_name: string | null;
+    author: string | null;
     node_ids: string;
     edge_ids: string;
     created_at: string;
@@ -957,6 +987,7 @@ export function getCommitsForEdge(edgeId: string): Commit[] {
     id: row.id,
     message: row.message,
     agentName: row.agent_name,
+    author: row.author ?? null,
     nodeIds: JSON.parse(row.node_ids || '[]'),
     edgeIds: JSON.parse(row.edge_ids || '[]'),
     createdAt: row.created_at,
