@@ -5,7 +5,7 @@
     "buildCommand": "npm install && npm run build"
   },
   "deploy": {
-    "startCommand": "PROJECT_DIR=./demo-projects DEFAULT_PROJECT=metamorphosis bash start.sh",
+    "startCommand": "bash start.sh",
     "healthcheckPath": "/",
     "restartPolicyType": "ON_FAILURE"
   }
