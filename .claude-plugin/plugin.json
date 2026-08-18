@@ -1,7 +1,7 @@
 {
   "name": "understanding-graph",
   "version": "0.1.28",
-  "description": "Persistent understanding graphs — metabolic memory for AI",
+  "description": "A persistent medium for fluid, emergent understanding",
   "skills": "./skills/",
   "mcpServers": {
     "ug": {

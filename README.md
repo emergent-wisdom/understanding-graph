@@ -26,19 +26,37 @@ Understanding Graph is an MCP server that gives AI agents structured, persistent
 
 ## Quick Start
 
-### Claude Code (zero-install)
+### Recommended: use your Codex or Claude subscription
 
-Add understanding-graph to Claude Code with one command -- no global install, nothing to clone:
+Run the initializer in the directory where you want the graph-backed work to
+live:
 
 ```bash
-claude mcp add ug -- npx -y understanding-graph mcp
+cd your-project
+npx -y understanding-graph@0.1.28 init
 ```
 
-`npx -y` downloads, caches, and runs the package on first invocation. After this, `ug` is available as an MCP server in every Claude Code session.
+It creates project-scoped MCP configuration for both Codex and Claude Code,
+installs the same fluid-understanding contract in `AGENTS.md` and
+`CLAUDE.md`, and creates a local SQLite graph under `projects/default/`. Open
+either client, sign in with your normal ChatGPT or Claude subscription, and ask
+for the actual research, writing, coding, or decision task. You do not need to
+say “use the graph.” The model runs in the subscription client; Understanding
+Graph itself makes no model API calls.
 
-### Claude Code plugin (MCP server + skills)
+[Codex is available through eligible ChatGPT plans](https://help.openai.com/en/articles/11369540-codex-and-chatgpt-plan-usage-limits), and [Claude Code can use Claude Pro or Max](https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan). Their normal plan limits still apply.
 
-The npm package also ships as a Claude Code plugin — the MCP server plus skills that teach the agent how to use the graph effectively:
+### Installable plugin (workflow skill + MCP server)
+
+The package ships both `.codex-plugin` and `.claude-plugin` manifests. The
+plugin combines the MCP capabilities with an `understanding-work` skill. While
+the mode is active, all communicable task understanding develops in the graph.
+The graph rolls a small state-dependent set of concrete next moves; the model
+judges their weights against the user task and freely chooses, combines, changes,
+or rejects them. The initializer above provides the same contract without
+waiting for a plugin-directory listing.
+
+For Claude Code, the existing marketplace flow is:
 
 ```bash
 # One-time: add the Emergent Wisdom marketplace
@@ -54,10 +72,11 @@ For local development:
 claude --plugin-dir /path/to/understanding-graph
 ```
 
-This gives you the MCP server **and** 9 skills:
+This gives you the MCP server and these skills:
 
 | Skill | Invoke | What it teaches |
 |-------|--------|-----------------|
+| understanding-work | *(auto-loaded)* | Fluid graph-mediated understanding with weighted, model-chosen provocations |
 | orient | `/understanding-graph:orient` | Read graph state at conversation start |
 | quality-check | `/understanding-graph:quality-check` | Score, analyze, thermostat |
 | reading-mode | `/understanding-graph:reading-mode` | Deep source reading with source_read |
@@ -68,23 +87,33 @@ This gives you the MCP server **and** 9 skills:
 | collaborative-code | *(auto-loaded)* | Code-subtree ownership, handoffs, locks, and integration evidence |
 | creative-work | *(auto-loaded)* | Books, prose, scripts, and editorial revision |
 
-The MCP server works with any client. The skills are a Claude Code bonus — use whichever fits your setup.
+The raw MCP server works with any compatible client, but the bundled skill or
+generated project instructions are the recommended experience. Tool schemas
+alone do not reliably activate a multi-step understanding workflow.
 
-### Claude Code project setup
-
-Run the init flow inside a project directory to add the MCP server and workflow guidance. It supports focused reading, coding, writing, general analysis, and agent teams when parallel work is actually useful:
-
-```bash
-cd your-project
-npx -y understanding-graph init
-```
+### What the initializer creates
 
 This creates:
-- `.claude/settings.local.json` -- MCP server config (with agent teams enabled)
-- `CLAUDE.md` -- Instructions that all agents and teammates follow automatically
+- `.codex/config.toml` -- Codex MCP configuration
+- `.claude/settings.local.json` -- Claude Code MCP configuration
+- `AGENTS.md` and `CLAUDE.md` -- the same canonical understanding workflow
 - `projects/default/` -- Graph storage directory
 
-Now open Claude Code. Every session—and any teammate you deliberately add—shares the same graph.
+Every session opened in the directory shares the same graph. Use additional
+agents only when the work has real independent seams.
+
+### Raw MCP configuration (advanced)
+
+If a client cannot install plugins or run the initializer, connect the MCP
+server directly:
+
+```bash
+claude mcp add ug -- npx -y understanding-graph@0.1.28 mcp
+```
+
+MCP initialization still supplies a concise graph-use contract, but client
+support for server instructions varies. For consistent behavior, also provide
+the bundled `understanding-work` skill or its generated project instructions.
 
 Per-client setup guides: [Claude Code](https://github.com/emergent-wisdom/understanding-graph/blob/main/integrations/claude-code.md) · [Claude Desktop](https://github.com/emergent-wisdom/understanding-graph/blob/main/integrations/claude-desktop.md) · [Cursor](https://github.com/emergent-wisdom/understanding-graph/blob/main/integrations/cursor.md) · [mcporter](https://github.com/emergent-wisdom/understanding-graph/blob/main/integrations/mcporter.md)
 
@@ -200,13 +229,19 @@ commit stream becomes an inspectable update log—each node's commit message
 becomes its *Origin Story*.
 
 ```
-1. project_switch("my-project")        # Load (or create) a project
-2. graph_skeleton()                     # Orient yourself (~150 tokens)
-3. graph_history()                      # See what other agents did recently
-4. graph_understand({ query, workflow: "coding" }) # Route the real workflow
-5. graph_semantic_search({ query })     # Hybrid or lexical fallback
-6. graph_batch({ commit_message, ... }) # Mutate with intent — atomic
+1. project_switch("my-project")
+2. graph_suggest_next({ task, workflow: "coding" })
+3. [judge the sampled concrete routes and their weights]
+4. [choose, combine, modify, reject, or invent a route]
+5. graph_batch({ commit_message, ... }) # preserve artifact + understanding
+6. [use batch.navigation.suggestedCall at the next real choice point]
 ```
+
+This chooser loop guides navigation; it does not prescribe the model's internal
+sequence. Suggestions are sampled server-side from graph- and workflow-weighted
+pressures, include concrete nodes or regions when possible, and temporarily
+down-weight recently suggested action kinds. The model remains responsible for
+task fit. It may always do something else or stop rather than manufacture work.
 
 ### Atomic commits
 
@@ -317,17 +352,19 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 | `graph_score` | Graph health metrics |
 | `graph_path` | Reasoning path between concepts |
 | `graph_centrality` | Most influential concepts |
-| `graph_thermostat` | Regulate graph density |
+| `graph_thermostat` | Legacy descriptive graph-state pulse; prefer `graph_suggest_next` |
 | `graph_history` | Commit history and changes |
 
 ### Synthesis & Exploration
 | Tool | Purpose |
 |------|---------|
-| `graph_discover` | Serendipity pipeline with chaos injection |
-| `graph_random` | Random insights from graph |
+| `graph_discover_grounded` | Default bounded comparison of distant graph material; no connection is valid |
+| `graph_discover_grounded_chaos` | Optional perturbation after a genuine grounded bridge (`full` mode) |
+| `graph_discover` | Explicitly speculative, ungrounded serendipity (`full` mode) |
+| `graph_random` | Concrete random provocations, including optional scrutinized Physics What-If forcing |
 | `graph_serendipity` | Batch-only: record a synthesis with source edges |
 | `graph_validate` | Batch-only: validate a proposed synthesis |
-| `graph_chaos` | Inject controlled randomness |
+| `graph_chaos` | Inject controlled randomness (`full` mode) |
 | `graph_decide` | Batch-only: record a typed decision over options |
 | `graph_evaluate_variations` | Compare alternative ideas |
 

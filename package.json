@@ -31,6 +31,8 @@
   },
   "files": [
     ".claude-plugin/",
+    ".codex-plugin/",
+    ".mcp.json",
     "bin/",
     "packages/frontend/dist/",
     "skills/",

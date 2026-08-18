@@ -1,0 +1,39 @@
+{
+  "name": "understanding-graph",
+  "version": "0.1.28",
+  "description": "Develop persistent, fluid understanding through a local graph.",
+  "author": {
+    "name": "Henrik Westerberg"
+  },
+  "homepage": "https://github.com/emergent-wisdom/understanding-graph#readme",
+  "repository": "https://github.com/emergent-wisdom/understanding-graph",
+  "license": "MIT",
+  "keywords": [
+    "understanding",
+    "graph",
+    "memory",
+    "mcp",
+    "research",
+    "writing",
+    "coding"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Understanding Graph",
+    "shortDescription": "Let persistent structure change the next thought.",
+    "longDescription": "Understanding Graph gives an agent a local, revisable medium in which research, writing, coding, decisions, and other substantive work can develop. The bundled skill teaches the agent to preserve all communicable task understanding, ask the graph for weighted concrete provocations, freely choose a route, and let accumulated structure produce later insight.",
+    "developerName": "Emergent Wisdom",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/emergent-wisdom/understanding-graph",
+    "defaultPrompt": [
+      "Help me investigate this question through the graph",
+      "Develop this draft through repeated graph re-entry",
+      "Build this software in graph-native units"
+    ]
+  }
+}

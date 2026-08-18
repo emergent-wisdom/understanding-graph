@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "ug": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "understanding-graph@0.1.28",
+        "mcp"
+      ],
+      "env": {
+        "PROJECT_DIR": "./projects",
+        "DEFAULT_PROJECT": "default"
+      }
+    }
+  }
+}

@@ -118,7 +118,31 @@ export function GraphCanvas() {
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
   useEffect(() => {
-    if (!containerRef.current) return
+    const el = containerRef.current
+    if (!el) return
+
+    // Measure synchronously on mount as well as through the observer.
+    //
+    // ForceGraph3D is gated on dimensions being non-zero, and ResizeObserver
+    // used to be the only writer. If the container is zero-sized when
+    // observation begins and never changes size afterwards, the callback
+    // fires once with 0x0 and never again: the canvas never mounts and the
+    // graph stays permanently blank with no error logged anywhere. That is
+    // the hidden-then-revealed case — a background tab, a display:none
+    // ancestor, or an iframe mounted hidden and shown later, which is exactly
+    // how Undergraph embeds this viewer.
+    const measure = () => {
+      const { width, height } = el.getBoundingClientRect()
+      if (width > 0 && height > 0) {
+        setDimensions((prev) =>
+          prev.width === width && prev.height === height
+            ? prev
+            : { width, height },
+        )
+      }
+    }
+
+    measure()
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -126,9 +150,19 @@ export function GraphCanvas() {
         setDimensions({ width, height })
       }
     })
+    resizeObserver.observe(el)
 
-    resizeObserver.observe(containerRef.current)
-    return () => resizeObserver.disconnect()
+    // A tab restored from the background can lay out without emitting a
+    // resize, so re-measure when the document becomes visible again.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') measure()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      resizeObserver.disconnect()
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [])
 
   // --- three.js OrbitControls pointer-tracking bug workaround ---
@@ -485,39 +519,72 @@ export function GraphCanvas() {
     }
   }, [apiData, nodeLimit, hiddenTriggerTypes, showDocuments, timelineFilter])
 
-  // Zoom to fit when data first loads
+  // Zoom to fit once the layout has actually settled.
+  //
+  // This used to fire on a fixed 500ms timer after data arrived. The force
+  // simulation is still running at that point, so every node is still bunched
+  // near the origin: zoomToFit framed that tiny cluster, and as the layout
+  // then expanded outward the camera stayed put. The result was opening
+  // *inside* the graph, looking at two enormous spheres and a few edges the
+  // width of girders — which reads as "the viewer is broken" rather than
+  // "the camera is close".
+  //
+  // onEngineStop fires when the simulation stabilises, so the bounding box is
+  // final. The ref guard keeps it to the first settle: refitting on every
+  // subsequent stop would yank the camera away from wherever the reader had
+  // navigated to.
   const hasData = graphData.nodes.length > 0
   const didInitialZoom = useRef(false)
+
+  const handleEngineStop = useCallback(() => {
+    if (didInitialZoom.current || !fgRef.current) return
+    didInitialZoom.current = true
+    fgRef.current.zoomToFit(400, 60)
+  }, [])
+
+  // Fallback: if the engine never reports a stop (a graph small enough to
+  // settle before the handler attaches, or a cooled-down simulation), still
+  // frame the graph rather than leaving the reader inside it.
   useEffect(() => {
-    if (hasData && !didInitialZoom.current && fgRef.current) {
+    if (!hasData || didInitialZoom.current) return
+    const t = setTimeout(() => {
+      if (didInitialZoom.current || !fgRef.current) return
       didInitialZoom.current = true
-      setTimeout(() => {
-        fgRef.current?.zoomToFit(400, 50)
-      }, 500)
-    }
+      fgRef.current.zoomToFit(400, 60)
+    }, 2500)
+    return () => clearTimeout(t)
   }, [hasData])
 
-  // Center view when project changes - keep zoom level, just recenter
+  // Re-frame when the project changes.
+  //
+  // This used to recenter on the origin while preserving the *current* camera
+  // distance. On the very first mount that distance is react-force-graph's
+  // default, chosen with no knowledge of how large this graph is — so it
+  // parked the camera inside the graph, showing two enormous spheres and
+  // girder-thick edges. Worse, it ran 500ms after mount, which is after
+  // onEngineStop had already fit correctly: the good framing was computed and
+  // then immediately thrown away, and the fallback below then skipped because
+  // the flag was set. Pressing R fixed it, which is how the real cause showed
+  // itself — zoomToFit was never broken, its result was being overwritten.
+  //
+  // Clearing the flag and letting the fit path run handles both cases: the
+  // first load and a genuine project switch both want the whole graph framed,
+  // and a preserved zoom level from a different graph means nothing anyway.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger on project change
   useEffect(() => {
     didInitialZoom.current = false
-    // Wait for new data to load, then center the view
-    setTimeout(() => {
-      const fg = fgRef.current
-      if (!fg) return
-
-      // Get current camera distance (zoom level)
-      const currentPos = fg.cameraPosition()
-      const distance =
-        Math.sqrt(
-          currentPos.x * currentPos.x +
-            currentPos.y * currentPos.y +
-            currentPos.z * currentPos.z,
-        ) || 300
-
-      // Move camera to look at origin (graph center) from current distance
-      fg.cameraPosition({ x: 0, y: 0, z: distance }, { x: 0, y: 0, z: 0 }, 500)
-    }, 500)
+    // Unconditional, and late enough that the force layout has spread out.
+    // An earlier fit (onEngineStop can fire while the graph is still a tight
+    // cluster) frames a bounding box that is about to grow, which is how the
+    // camera ends up inside the graph. Refitting here is exactly what the R
+    // key does, and R has always produced the correct view — that was the
+    // clue that zoomToFit was fine and only its timing was wrong.
+    const t = setTimeout(() => {
+      if (!fgRef.current) return
+      didInitialZoom.current = true
+      fgRef.current.zoomToFit(400, 60)
+    }, 3000)
+    return () => clearTimeout(t)
   }, [currentProject?.id])
 
   // Fly to node when requested (e.g., from navigation buttons)
@@ -655,6 +722,7 @@ export function GraphCanvas() {
               )
             }}
             nodeThreeObjectExtend={false}
+            onEngineStop={handleEngineStop}
             // Link styling - highlight on hover or when connected to hovered node
             linkColor={(link: Link3D) => {
               // Direct edge hover
