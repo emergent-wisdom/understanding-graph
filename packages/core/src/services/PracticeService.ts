@@ -1,6 +1,6 @@
 import * as sqlite from '../database/sqlite.js';
-import * as EmbeddingService from './EmbeddingService.js';
 import { analyzeGraph } from './AnalysisService.js';
+import * as EmbeddingService from './EmbeddingService.js';
 import { getGraphStore } from './GraphStore.js';
 
 /**
@@ -84,6 +84,83 @@ function ratio(numerator: number, denominator: number): string {
   return `${((numerator / denominator) * 100).toFixed(0)}%`;
 }
 
+/**
+ * Whether near-duplicate detection can actually do anything.
+ *
+ * This must mirror the real guard, which is `checkDuplicates` in the batch
+ * tool: `stats.withEmbedding === 0 || !EmbeddingService.isModelLoaded()`
+ * returns early and compares nothing. This diagnostic used to test only the
+ * second half of that condition, so it reported `active` in a state where the
+ * guard demonstrably refuses nothing — observed live on a graph holding 48
+ * nodes and 0 embeddings, after an unrelated call warmed the model.
+ *
+ * Extracted so it can be tested directly. The interesting states need the
+ * embedding model reported as loaded, and loading a real one inside a unit
+ * test would make the test slow and environment-dependent — the same reason
+ * the batch refusal composer is tested at the composer.
+ */
+export function describeDuplicateDetection(
+  modelLoaded: boolean,
+  stats: { total: number; withEmbedding: number; coverage: number },
+): PracticeDiagnostic {
+  const basis =
+    'the same two conditions the batch duplicate check guards on: whether the embedding model is loaded in this process, and whether any live node carries an embedding to compare against';
+
+  if (!modelLoaded) {
+    return {
+      key: 'duplicate_detection',
+      value: 'NOT RUNNING',
+      basis,
+      reading:
+        'The embedding model is not loaded IN THIS PROCESS, so duplicate detection is skipped silently on every write, and nothing will stop the same understanding being recorded twice under different titles. This is usually not a missing dependency: the model loads lazily and only graph_backfill_embeddings warms it, so a fresh session starts cold and stays cold until something asks. Call graph_backfill_embeddings once and the check runs for the rest of the session. Measured: a near-duplicate at 0.893 similarity entered a real graph during a cold session and was caught only afterwards.',
+    };
+  }
+
+  const { total, withEmbedding } = stats;
+
+  // Nothing is missing because nothing exists. Calling that a failure would
+  // teach the reader to skip this line on every new project.
+  if (total === 0) {
+    return {
+      key: 'duplicate_detection',
+      value: 'active',
+      basis,
+      reading:
+        'The model is loaded and the graph is empty, so there is nothing yet to duplicate. The first concepts written will be compared against each other as they arrive.',
+    };
+  }
+
+  // A warm model over an unembedded graph is the state worth naming: the
+  // model being loaded is not sufficient, because the guard also returns
+  // early when there is nothing to compare against. Reported as NOT RUNNING
+  // because that is what the guard does, and 'active' here is a false pass.
+  if (withEmbedding === 0) {
+    return {
+      key: 'duplicate_detection',
+      value: `NOT RUNNING — model loaded but 0 of ${total} nodes are embedded`,
+      basis,
+      reading: `The model is warm, so nodes written from here on WILL be embedded as they are created — but 0 of ${total} existing nodes carry one, so the check returns immediately and can refuse nothing. Creation-time embedding is itself conditional on the model being loaded, so everything written during a cold session is invisible to the check no matter how new it is. Run graph_backfill_embeddings to make the existing graph comparable; it is also what loads the model in the first place.`,
+    };
+  }
+
+  if (withEmbedding < total) {
+    return {
+      key: 'duplicate_detection',
+      value: `active over ${withEmbedding} of ${total} nodes (${ratio(withEmbedding, total)})`,
+      basis,
+      reading: `Near-duplicate concepts are refused before they are written, but only against the ${withEmbedding} nodes that carry an embedding. The other ${total - withEmbedding} were written while the model was cold — embeddings are generated at creation only when it is already loaded — so they are invisible to the check regardless of age, and a new concept duplicating one of them will be accepted in silence. Run graph_backfill_embeddings to close the gap.`,
+    };
+  }
+
+  return {
+    key: 'duplicate_detection',
+    value: 'active',
+    basis,
+    reading:
+      'Near-duplicate concepts are refused before they are written, and the refusal names which existing node they duplicate. Every live node carries an embedding, and while the model stays loaded each new node is embedded as it is created, so the comparison keeps covering the whole graph.',
+  };
+}
+
 export function assessPractice(): PracticeReport {
   const store = getGraphStore();
   const { nodes, edges } = store.getAll();
@@ -115,8 +192,7 @@ export function assessPractice(): PracticeReport {
   const writes = batches.calls - batches.refused;
   const reEntries = callCounts.graph_understand?.calls ?? 0;
 
-  const writesPerReEntry = (w: number, r: number) =>
-    r === 0 ? null : w / r;
+  const writesPerReEntry = (w: number, r: number) => (r === 0 ? null : w / r);
   const current = writesPerReEntry(writes, reEntries);
   let movement = '';
   if (previousCounts) {
@@ -147,7 +223,7 @@ export function assessPractice(): PracticeReport {
     reading:
       totalCalls === 0
         ? 'No tool calls recorded here, so this cannot be assessed. It is not zero.'
-        : 'Roughly one re-entry per handful of writes suggests the graph is being consulted. Ten or more writes per re-entry suggests it is being filled rather than used, which looks identical in every structural measure.',
+        : 'Roughly one re-entry per handful of writes suggests the graph is being consulted. Ten or more writes per re-entry suggests it is being filled rather than used, which looks identical in every structural measure. The low end is not a target: this is writes PER re-entry, so it falls just as fast by re-entering more, and an extra re-entry costs nothing and proves nothing. Lower it by writing less, never by reading more — and note that the figure cannot see whether any re-entry changed what you did next, which is the thing it is standing in for.',
   });
 
   // 2. Where the graph lives. The startup warning for this goes to stderr,
@@ -186,15 +262,12 @@ export function assessPractice(): PracticeReport {
   // Silence is the problem, not the condition. Embeddings are an optional peer
   // dependency and it is reasonable for the check to be unavailable; it is not
   // reasonable for an agent to be unable to find out.
-  const duplicateDetection = EmbeddingService.isModelLoaded();
-  worked.push({
-    key: 'duplicate_detection',
-    value: duplicateDetection ? 'active' : 'NOT RUNNING',
-    basis: 'whether the embedding model is loaded in this process',
-    reading: duplicateDetection
-      ? 'Near-duplicate concepts are refused before they are written, and the refusal names which existing node they duplicate.'
-      : 'The embedding model is not loaded, so duplicate detection is skipped silently on every write. Nothing will stop the same understanding being recorded twice under different titles, and no refusal will say so. Three of graph_batch\'s four guarantees still hold; this is the one that does not.',
-  });
+  worked.push(
+    describeDuplicateDetection(
+      EmbeddingService.isModelLoaded(),
+      store.getEmbeddingStats(),
+    ),
+  );
 
   // 4. What the understanding says that the artifact does not.
   //
@@ -246,21 +319,38 @@ export function assessPractice(): PracticeReport {
       .filter((e) => e.type === 'expresses' || e.type === 'inspired_by')
       .filter((e) => overturnedIds.has(e.toId));
 
+    // The composition matters as much as the count. This figure has a floor
+    // that is not zero: a verdict scoring a prediction, or a decision about
+    // the graph's own structure, is ABOUT the work rather than in it and can
+    // never be expressed by the artifact. Measured on a real project, the
+    // count fell from eight to five and every one of the five was a verdict —
+    // at which point the honest move is to stop, and an agent chasing zero
+    // would start forcing method-talk into the artifact. Naming the triggers
+    // lets that be seen instead of re-derived by hand each time.
+    const byTrigger = [...new Set(unbuilt.map((n) => n.trigger))]
+      .map((t) => ({
+        trigger: t as string,
+        count: unbuilt.filter((n) => n.trigger === t).length,
+      }))
+      .sort((a, b) => b.count - a.count || a.trigger.localeCompare(b.trigger))
+      .map(({ trigger, count }) => `${count} ${trigger}`)
+      .join(', ');
+
     worked.push({
       key: 'understanding_ahead_of_artifact',
       value:
         unbuilt.length === 0
           ? 'nothing decided is unexpressed'
-          : `${unbuilt.length} decision(s) nothing in the artifact expresses: ${unbuilt
+          : `${unbuilt.length} decision(s) nothing in the artifact expresses (${byTrigger}): ${unbuilt
               .slice(0, 3)
               .map((n) => `"${n.title}"`)
               .join(', ')}`,
       basis:
-        'live decision-shaped concepts with no inbound expresses or inspired_by edge',
+        'live decision-shaped concepts with no inbound expresses or inspired_by edge, grouped by trigger',
       reading:
         unbuilt.length === 0
           ? 'Every standing decision has something in the artifact answering to it.'
-          : 'These are usually the newest thinking, and the most likely candidates for what to build next. Some will be about the work rather than in it, and belong here unexpressed — but a central finding sitting in this list means the artifact has not caught up with what you know.',
+          : 'These are usually the newest thinking, and the most likely candidates for what to build next. Some will be about the work rather than in it, and belong here unexpressed — a residue that is entirely `evaluation` is usually verdicts scoring predictions, which the artifact has no way to express and which you should not try to make it express. A `model` or `decision` sitting in this list is the one worth acting on: it means the artifact has not caught up with what you know.',
     });
 
     worked.push({
@@ -326,7 +416,8 @@ export function assessPractice(): PracticeReport {
       predictions.length === 0
         ? 'no predictions made'
         : `${scored.length} of ${predictions.length} predictions carry a verdict`,
-    basis: 'prediction nodes with an inbound validates, invalidates or contradicts edge',
+    basis:
+      'prediction nodes with an inbound validates, invalidates or contradicts edge',
     reading:
       predictions.length === 0
         ? 'Nothing has been staked before looking, so nothing can have been wrong in a way the graph records.'
@@ -362,7 +453,7 @@ export function assessPractice(): PracticeReport {
         : `${overturning} of ${edges.length} edges overturn something (${ratio(overturning, edges.length)})`,
     basis: 'supersedes, contradicts and invalidates edges',
     reading:
-      'Near zero means nothing here has been revised against anything else. That is worth checking rather than celebrating: the corrections a graph holds are the part re-entry can actually use.',
+      'Near zero means nothing here has been revised against anything else. That is worth checking rather than celebrating: the corrections a graph holds are the part re-entry can actually use. A large share is its own problem and not a better one — if most edges retract something, little is accumulating and each round is mostly arguing with the last. Neither end is a target: what makes a correction worth having is that something downstream depended on the claim it retired.',
   });
 
   // 10. Edge vocabulary. `relates` records that two things are connected and

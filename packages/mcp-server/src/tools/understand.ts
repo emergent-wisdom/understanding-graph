@@ -851,10 +851,7 @@ function frameNode(
  * with each other while both remain live, and reporting that as overturned
  * would settle by fiat an argument the graph is holding open.
  */
-function overturnedBy(
-  store: GraphStore,
-  nodeId: string,
-): string | undefined {
+function overturnedBy(store: GraphStore, nodeId: string): string | undefined {
   const retiring = store
     .getAll()
     .edges.filter(
@@ -1516,7 +1513,14 @@ export async function handleUnderstandingTools(
     );
     if (resistsSelectedBaseline) continue;
 
-    const framed: BaselineNode = frameNode(item.node, { includeWhy: true });
+    // A retired claim has to say so here too. Baseline is the list a reader
+    // takes as settled ground, and the resistance list is capped — so once
+    // more claims are overturned than there are slots, the surplus arrives
+    // here, where an unmarked one reads as current.
+    const framed: BaselineNode = frameNode(item.node, {
+      includeWhy: true,
+      overturnedBy: overturnedBy(store, item.node.id),
+    });
     const previous = priorState(store, item.node);
     if (previous) framed.priorState = previous;
     baseline.push(framed);
@@ -1579,7 +1583,11 @@ export async function handleUnderstandingTools(
   // recent node that something later contradicted, invalidated or superseded:
   // the graph's freshest recorded "this turned out wrong", whether or not it
   // resembles what is being asked.
-  const OVERTURNING_TYPES = new Set(['invalidates', 'contradicts', 'supersedes']);
+  const OVERTURNING_TYPES = new Set([
+    'invalidates',
+    'contradicts',
+    'supersedes',
+  ]);
   const overturnedIds = new Set(
     edges
       .filter((edge) => OVERTURNING_TYPES.has(edge.type))

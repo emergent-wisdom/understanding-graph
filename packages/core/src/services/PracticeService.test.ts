@@ -337,3 +337,170 @@ describe('what the diagnostics see in a graph that was worked', () => {
     }
   });
 });
+
+describe('the unexpressed list names what it is made of', () => {
+  /**
+   * This figure has a floor that is not zero, and the floor is legible only
+   * from the composition. A verdict scoring a prediction is ABOUT the work
+   * rather than in it, and no artifact can express it. Measured on a real
+   * project the count fell from eight to five and all five were verdicts — the
+   * point at which the right move is to stop. An agent reading only the number
+   * would keep going and start forcing method-talk into the artifact.
+   */
+  it('groups the residue by trigger, commonest first', () => {
+    const store = initializeGraph();
+
+    // The artifact diagnostics are gated on the graph holding an artifact at
+    // all, which is right: "the artifact has not caught up" means nothing
+    // where there is no artifact.
+    store.createDocumentNode({
+      title: 'city_dwelling.py',
+      content: '# a module',
+      level: 'document',
+      isDocRoot: true,
+    });
+
+    for (const n of [1, 2]) {
+      store.createNode({
+        title: `Verdict: clause ${n} held under the wider test`,
+        trigger: 'evaluation',
+        why: 'Scores a prediction against what the run actually showed',
+        understanding:
+          'The wider city reproduced the movement, so the claim survives.',
+      });
+    }
+    store.createNode({
+      title: 'City shape sets the price of integration',
+      trigger: 'model',
+      why: 'Records a finding about the thing being modelled',
+      understanding:
+        'Holding households fixed and changing only geometry moves the price.',
+    });
+
+    const value = diagnostic('understanding_ahead_of_artifact')?.value ?? '';
+
+    // The count alone was all this ever reported, and it cannot distinguish a
+    // residue that should be acted on from one that should be left alone.
+    expect(value).toContain('3 decision(s)');
+    expect(value).toMatch(/\(2 evaluation, 1 model\)/);
+  });
+
+  it('shows a pure-verdict residue as such, which is the signal to stop', () => {
+    const store = initializeGraph();
+
+    // The artifact diagnostics are gated on the graph holding an artifact at
+    // all, which is right: "the artifact has not caught up" means nothing
+    // where there is no artifact.
+    store.createDocumentNode({
+      title: 'city_dwelling.py',
+      content: '# a module',
+      level: 'document',
+      isDocRoot: true,
+    });
+
+    for (const n of [1, 2, 3]) {
+      store.createNode({
+        title: `Verdict: prediction ${n} was refuted, which is the point of staking tight`,
+        trigger: 'evaluation',
+        why: 'Scores a prediction against what the run actually showed',
+        understanding:
+          'Refuted on the evidence, and the refutation is the useful part.',
+      });
+    }
+
+    const value = diagnostic('understanding_ahead_of_artifact')?.value ?? '';
+    expect(value).toMatch(/\(3 evaluation\)/);
+    expect(value).not.toContain('model');
+    // The reading has to tell the agent that this residue is not work.
+    expect(diagnostic('understanding_ahead_of_artifact')?.reading).toContain(
+      'verdicts scoring predictions',
+    );
+  });
+});
+
+describe('a reading that names one bad end names the other', () => {
+  /**
+   * A reading that names only ONE bad direction is an instruction to move the
+   * other way without limit. `re_entry` warned that ten or more writes per
+   * re-entry means the graph is being filled rather than used, and said
+   * nothing about the floor — while the metric is writes PER re-entry, so it
+   * falls just as fast by re-entering more, which costs nothing and proves
+   * nothing. `self_correction` warned that near zero means nothing was ever
+   * revised, and said nothing about a graph so churned that nothing settles.
+   *
+   * The list is explicit rather than derived because one-sidedness is not a
+   * defect by itself: no graph suffers from scoring too many of its
+   * predictions, so `scored_predictions` is correctly one-sided. Whether both
+   * ends can be bad is a judgement about the metric that no code here can
+   * infer, and hedging every reading would teach the reader to skip them.
+   */
+  const TWO_SIDED: Array<{ key: string; low: RegExp; high: RegExp }> = [
+    {
+      key: 're_entry',
+      high: /ten or more/i,
+      low: /re-entering more|reading more/i,
+    },
+    {
+      key: 'self_correction',
+      high: /large share|most edges/i,
+      low: /near zero/i,
+    },
+    // Already two-sided before any of this, and the template the other two
+    // were rewritten against. Pinned so it cannot quietly lose an end.
+    { key: 'refusals', high: /high share/i, low: /run with none/i },
+  ];
+
+  it('names both ends wherever both ends can be bad', () => {
+    const store = initializeGraph();
+    store.createNode({
+      title: 'Something to make the graph non-empty',
+      trigger: 'foundation',
+      why: 'Anchors a graph that has been worked at all',
+      understanding: 'Otherwise several diagnostics correctly report absence.',
+    });
+    // re_entry and refusals are computed from tool_calls. Without these rows
+    // both report 'not recorded' and the loop below skips them — which it did
+    // on the first run of this test, leaving it green while asserting on one
+    // key out of three.
+    sqlite.saveConversation('c_two_sided', 'session');
+    for (let i = 0; i < 4; i++) {
+      sqlite.logToolCall({
+        sessionId: 'c_two_sided',
+        toolName: 'graph_batch',
+        arguments: {},
+      });
+    }
+    sqlite.logToolCall({
+      sessionId: 'c_two_sided',
+      toolName: 'graph_batch',
+      arguments: {},
+      error: 'Concept would be unreachable. Entire batch rolled back.',
+    });
+    sqlite.logToolCall({
+      sessionId: 'c_two_sided',
+      toolName: 'graph_understand',
+      arguments: {},
+    });
+    const checked: string[] = [];
+    const skipped: string[] = [];
+    for (const { key, low, high } of TWO_SIDED) {
+      const d = assessPractice().worked.find((x) => x.key === key);
+      expect(d, `${key} is not reported at all`).toBeDefined();
+      const reading = String(d?.reading);
+      if (/cannot be assessed/i.test(reading)) {
+        skipped.push(key);
+        continue;
+      }
+      checked.push(key);
+      expect(reading, `${key} does not name its high end`).toMatch(high);
+      expect(reading, `${key} does not name its low end`).toMatch(low);
+    }
+    console.log(`two-sided CHECKED: [${checked}]  SKIPPED: [${skipped}]`);
+    // A skip-everything run would pass while asserting nothing, which is the
+    // failure this whole file keeps rediscovering.
+    expect(
+      checked.length,
+      'every key was skipped; this test asserted nothing',
+    ).toBe(TWO_SIDED.length);
+  });
+});
