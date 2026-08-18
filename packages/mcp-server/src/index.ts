@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
 import {
+  EmbeddingService,
   isEphemeralPath,
   sqlite,
 } from '@emergent-wisdom/understanding-graph-core';
@@ -64,6 +65,43 @@ async function handleToolCallWithLogging(
  */
 
 export { isEphemeralPath };
+
+/**
+ * Whether to warm the embedding model in the background at startup.
+ *
+ * Duplicate detection needs the model loaded in-process, and for most of this
+ * tool's life nothing loaded it: the model is lazy, only explicit embedding
+ * calls warmed it, and a session that never made one wrote its whole graph
+ * unchecked while graph_batch's description asserted the check was running.
+ * Measured cost of closing that gap: a cached load is ~205 ms and per-node
+ * embedding ~3 ms, so warming is nearly free — EXCEPT the first ever run on a
+ * machine, which downloads ~23 MB into node_modules. That is why this warms in
+ * the background and never blocks a write, and why it can be declined:
+ * embeddings remain an optional peer dependency, and setting
+ * DISABLE_EMBEDDING_WARMUP=1 restores the old lazy behaviour exactly.
+ */
+export function embeddingWarmupEnabled(
+  env: Record<string, string | undefined>,
+): boolean {
+  const flag = (env.DISABLE_EMBEDDING_WARMUP ?? '').trim().toLowerCase();
+  return !(flag === '1' || flag === 'true');
+}
+
+function warmEmbeddingsInBackground(): void {
+  EmbeddingService.preloadModel()
+    .then(() => {
+      console.error('[EmbeddingService] Warm: duplicate detection is active.');
+    })
+    .catch((error: unknown) => {
+      // Optional dependency, optional feature: a failed warmup must never
+      // take the server down, and the diagnostic already reports the cold
+      // state honestly. One line so a human reading logs knows why.
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[EmbeddingService] Warmup failed; duplicate detection stays off (${reason.slice(0, 200)})`,
+      );
+    });
+}
 
 function warnIfEphemeral(projectDir: string): void {
   if (!isEphemeralPath(projectDir)) return;
@@ -275,6 +313,12 @@ class UnderstandingGraphServer {
     await this.server.connect(transport);
 
     console.error('Understanding Graph MCP Server v2 running (SQLite-only)');
+
+    // After the transport is up, so a slow (or first-ever, ~23 MB) model load
+    // never delays readiness. Fire-and-forget on purpose.
+    if (embeddingWarmupEnabled(process.env)) {
+      warmEmbeddingsInBackground();
+    }
   }
 
   async stop(): Promise<void> {

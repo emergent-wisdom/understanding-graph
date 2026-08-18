@@ -112,7 +112,7 @@ export function describeDuplicateDetection(
       value: 'NOT RUNNING',
       basis,
       reading:
-        'The embedding model is not loaded IN THIS PROCESS, so duplicate detection is skipped silently on every write, and nothing will stop the same understanding being recorded twice under different titles. This is usually not a missing dependency: the model loads lazily and only graph_backfill_embeddings warms it, so a fresh session starts cold and stays cold until something asks. Call graph_backfill_embeddings once and the check runs for the rest of the session. Measured: a near-duplicate at 0.893 similarity entered a real graph during a cold session and was caught only afterwards.',
+        'The embedding model is not loaded IN THIS PROCESS, so duplicate detection is skipped silently on every write, and nothing will stop the same understanding being recorded twice under different titles. The MCP server warms the model in the background at startup, so seeing this there means the warmup is still in flight, failed (one line on stderr says why), or was declined via DISABLE_EMBEDDING_WARMUP — outside the server nothing loads the model until something asks. Call graph_backfill_embeddings to load it now; that also embeds existing nodes, which the warmup alone does not. Measured: a near-duplicate at 0.893 similarity entered a real graph during a cold session and was caught only afterwards.',
     };
   }
 
