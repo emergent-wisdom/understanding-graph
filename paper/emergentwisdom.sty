@@ -1,0 +1,24 @@
+% emergentwisdom.sty --- house typography for the Emergent Wisdom research series.
+% Text: XCharter. Sans: Helvetica (scaled). Mono: Inconsolata. Math: newtxmath (xcharter).
+% Load after document-structure packages (e.g., arxiv.sty). Do not load amssymb/amsfonts
+% alongside this package --- newtxmath provides the AMS symbol set itself. amsthm is
+% loaded here, before newtxmath, because that ordering is required; a later duplicate
+% \usepackage{amsthm} in a document is harmless.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{emergentwisdom}[2026/06/10 v1.0 Emergent Wisdom house typography]
+\RequirePackage[T1]{fontenc}
+\RequirePackage{XCharter}
+\RequirePackage[scaled=0.95]{helvet}
+\RequirePackage{inconsolata}
+\RequirePackage{iftex}
+\ifPDFTeX\else
+  % Under Xe/LuaTeX, xcharter switches the running encoding to TU, where the
+  % Type1-only zi4 (Inconsolata) family has no shapes --- monospace would
+  % silently fall back to LM Roman. Force tt back to its T1 incarnation.
+  \renewcommand{\ttfamily}{\fontencoding{T1}\fontfamily{zi4}\selectfont}
+\fi
+\RequirePackage{amsmath}
+\RequirePackage{amsthm}
+\RequirePackage[xcharter]{newtxmath}
+\RequirePackage{microtype}
+\endinput
