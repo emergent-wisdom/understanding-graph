@@ -246,14 +246,19 @@ open another cycle of understanding.`,
         speculation: {
           type: 'string',
           description:
-            'Your initial speculation or hypothesis about the answer',
+            'Your initial speculation or hypothesis about the answer. Required: a question node with nothing behind it records that you wondered, not what you thought.',
+        },
+        why: {
+          type: 'string',
+          description:
+            'One line naming what asking this opens — what it would settle, unblock, or put in doubt. Not "an open question": every question is that, so a line true of all of them carries nothing.',
         },
         project: {
           type: 'string',
           description: 'Project ID (optional)',
         },
       },
-      required: ['question'],
+      required: ['question', 'speculation', 'why'],
     },
   },
   {
@@ -944,12 +949,36 @@ export async function handleConceptTools(
     }
 
     case 'graph_question': {
+      // The schema said speculation was optional and the handler defaulted it
+      // to an empty string, which node validation then rejected — so an agent
+      // following the documented contract got ILLEGAL_CONCEPT_NODE and no hint
+      // that speculation was the missing piece. And `why` was a constant,
+      // 'Open question to explore', identical on every question node ever
+      // created: a field required everywhere else precisely because it names
+      // what a node DOES to the understanding around it, carrying zero
+      // information here because it could not vary.
+      const missing: string[] = [];
+      if (!(args.question as string)?.trim()) missing.push('question');
+      if (!(args.speculation as string)?.trim()) missing.push('speculation');
+      if (!(args.why as string)?.trim()) missing.push('why');
+      if (missing.length > 0) {
+        return {
+          success: false,
+          error: 'QUESTION_INCOMPLETE',
+          message:
+            `graph_question requires ${missing.join(', ')}. A question node ` +
+            'records what you wondered, what you already suspect, and what ' +
+            'answering it would settle — the last two are what a later ' +
+            'instance can actually use.',
+        };
+      }
+
       const store = getGraphStore();
       const node = store.createNode({
         title: args.question as string,
         trigger: 'question',
-        why: 'Open question to explore',
-        understanding: (args.speculation as string) || '',
+        why: args.why as string,
+        understanding: args.speculation as string,
         conversationId,
         toolCallId,
       });

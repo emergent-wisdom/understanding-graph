@@ -24,7 +24,7 @@ class BatchEarlyExit extends Error {
   }
 }
 
-function getExplicitToolFailure(result: unknown): string | null {
+export function getExplicitToolFailure(result: unknown): string | null {
   if (typeof result !== 'object' || result === null || Array.isArray(result)) {
     return null;
   }
@@ -34,8 +34,44 @@ function getExplicitToolFailure(result: unknown): string | null {
 
   const error = typeof payload.error === 'string' ? payload.error : null;
   const message = typeof payload.message === 'string' ? payload.message : null;
-  if (error && message && error !== message) return `${error}: ${message}`;
-  return error || message || 'Nested tool returned success: false';
+  // `hint` is where tools put the remedy — which node id to look up, which
+  // field to supply, which sibling tool to reach for instead. It was read
+  // nowhere, so every hint was discarded the moment a tool failed inside a
+  // batch. That became the whole story once the mutating document tools were
+  // made batch-only: a batch is now their only caller, so their hints had
+  // exactly one path to a reader and it dropped them. The refusal is the one
+  // moment an agent is definitely paying attention, and it was arriving with
+  // the diagnosis and without the treatment.
+  const hint = typeof payload.hint === 'string' ? payload.hint : null;
+  const head =
+    error && message && error !== message
+      ? `${error}: ${message}`
+      : error || message || 'Nested tool returned success: false';
+
+  // Some refusals carry their remedy as structure rather than prose. The
+  // near-duplicate block is the sharp case: it returns the id and title of the
+  // concept being duplicated, four concrete calls to make instead, and the
+  // escape hatch — and a batch reported only "extend or link to existing
+  // concept", without saying WHICH one. The agent is told to link to something
+  // it has not been shown.
+  const parts: string[] = [head];
+  if (hint) parts.push(hint);
+
+  const existing = payload.existingConcept;
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+    const e = existing as Record<string, unknown>;
+    if (typeof e.name === 'string' && typeof e.id === 'string') {
+      parts.push(`Existing: "${e.name}" (${e.id}).`);
+    }
+  }
+
+  const suggestions = payload.suggestions;
+  if (Array.isArray(suggestions)) {
+    const usable = suggestions.filter((s): s is string => typeof s === 'string');
+    if (usable.length > 0) parts.push(`Try: ${usable.join('; ')}.`);
+  }
+
+  return parts.join(' ');
 }
 
 function isThinkingLabel(value: unknown): boolean {
@@ -644,9 +680,20 @@ function validateNoOrphans(
   const documentAnchors = documentCreatingOps.map((op) => op.title || op.idRef);
   const graphIsEmpty = existingNodes.length === 0;
 
-  if (graphIsEmpty && documentAnchors.length === 0) {
-    // Preserve bootstrap behavior for a concept-only empty graph: all new
-    // concepts must form one connected component and none may stand alone.
+  if (graphIsEmpty) {
+    // Bootstrap: nothing pre-exists to ground against, so a batch is valid
+    // when its new concepts hang together — with any newly created document
+    // artifact counted as PART of that component rather than as a replacement
+    // for it.
+    //
+    // The document clause used to send this case down the else branch, which
+    // seeds only from document anchors. Two concepts connected to each other
+    // were accepted in an empty graph and then REFUSED once an unrelated
+    // doc_create joined the same batch: the batch got strictly larger and
+    // previously valid concepts became invalid. That is the first thing an
+    // author does in writing mode — create a root and a couple of concepts
+    // about it — and the clause meant to widen what counts as grounding was
+    // narrowing it instead.
     const firstConnected = conceptCreatingOps.find((op) => {
       const key = op.title || op.idRef;
       return adjacency.has(key);
@@ -667,8 +714,8 @@ function validateNoOrphans(
     }
 
     const startKey = firstConnected.title || firstConnected.idRef;
-    const visited = new Set<string>([startKey]);
-    const queue: string[] = [startKey];
+    const visited = new Set<string>([startKey, ...documentAnchors]);
+    const queue: string[] = [startKey, ...documentAnchors];
     while (queue.length > 0) {
       const cur = queue.shift();
       if (cur === undefined) break;

@@ -123,6 +123,31 @@ describe('the agent is told where its graph lives', () => {
   });
 });
 
+describe('a guarantee that is not running says so', () => {
+  it('reports whether duplicate detection is actually active', () => {
+    initializeGraph();
+    const dup = diagnostic('duplicate_detection');
+
+    // graph_batch is described as enforcing orphan prevention, duplicate
+    // detection, atomic rollback and commit provenance. Three always run. The
+    // fourth is guarded by EmbeddingService.isModelLoaded(), so it runs only
+    // when the embedding model happens to be loaded in-process and is skipped
+    // silently otherwise — a near-duplicate concept was written to a real
+    // project without a murmur while that guarantee was being asserted in
+    // writing. The condition is reasonable; the silence is not.
+    expect(['active', 'NOT RUNNING']).toContain(dup?.value);
+    if (dup?.value === 'NOT RUNNING') {
+      expect(
+        dup.reading,
+        'An inactive guard must say what it is failing to stop, not merely ' +
+          'that it is off.',
+      ).toContain('recorded twice');
+    } else {
+      expect(dup?.reading).toContain('refused before they are written');
+    }
+  });
+});
+
 describe('a refused write is not a write', () => {
   it('excludes refused batches from the write count and reports them', () => {
     initializeGraph();

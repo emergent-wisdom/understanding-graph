@@ -2892,10 +2892,20 @@ export async function handleDocumentTools(
       for (const nodeId of targetNodeIds) {
         const node = store.getNode(nodeId);
         if (!node) {
+          // graph_connect resolves a node by title; targetNodeIds does not,
+          // and its schema says so. But the two run side by side in the same
+          // batch, so passing a title here is the obvious mistake — I made it
+          // myself while auditing this tool, and "not found" sent me looking
+          // for a missing node rather than at the argument I had supplied.
+          // Naming the likely error costs a line and turns a dead end into a
+          // fix, the same reason the edge-type refusal lists the alternatives.
+          const looksLikeTitle = !/^n_[0-9a-f]+$/i.test(nodeId.trim());
           return {
             success: false,
             error: `Target node "${nodeId}" not found.`,
-            hint: 'Use a valid node returned by graph_understand, graph_semantic_search, or focused graph context.',
+            hint: looksLikeTitle
+              ? `targetNodeIds takes node IDs (n_…), not titles — unlike graph_connect, which resolves either. Look up the id for "${nodeId}" with graph_understand or graph_semantic_search, or reference it from earlier in this batch.`
+              : 'Use a valid node returned by graph_understand, graph_semantic_search, or focused graph context.',
           };
         }
         targetNodes.push({ id: node.id, title: node.title });

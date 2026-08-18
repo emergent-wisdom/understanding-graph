@@ -1,4 +1,5 @@
 import * as sqlite from '../database/sqlite.js';
+import * as EmbeddingService from './EmbeddingService.js';
 import { analyzeGraph } from './AnalysisService.js';
 import { getGraphStore } from './GraphStore.js';
 
@@ -145,7 +146,31 @@ export function assessPractice(): PracticeReport {
           : 'Outside the directories the OS clears on its own. That is not a backup; it only means the store is not scheduled for deletion.',
   });
 
-  // 3. Prose grounding. Passages arrive holding `contains` and `next`, so they
+  // 3. Whether duplicate detection is actually running.
+  //
+  // graph_batch is described — by its own documentation, and repeatedly in
+  // this project's commit messages — as enforcing orphan prevention,
+  // duplicate detection, atomic rollback and commit provenance. Three of
+  // those always run. The fourth is guarded by
+  // `!skipCheck && EmbeddingService.isModelLoaded()`, so it runs only when the
+  // embedding model happens to be loaded in-process, and says nothing at all
+  // when it is not. A near-duplicate concept was written to a real project
+  // without a murmur while that guarantee was being asserted in writing.
+  //
+  // Silence is the problem, not the condition. Embeddings are an optional peer
+  // dependency and it is reasonable for the check to be unavailable; it is not
+  // reasonable for an agent to be unable to find out.
+  const duplicateDetection = EmbeddingService.isModelLoaded();
+  worked.push({
+    key: 'duplicate_detection',
+    value: duplicateDetection ? 'active' : 'NOT RUNNING',
+    basis: 'whether the embedding model is loaded in this process',
+    reading: duplicateDetection
+      ? 'Near-duplicate concepts are refused before they are written, and the refusal names which existing node they duplicate.'
+      : 'The embedding model is not loaded, so duplicate detection is skipped silently on every write. Nothing will stop the same understanding being recorded twice under different titles, and no refusal will say so. Three of graph_batch\'s four guarantees still hold; this is the one that does not.',
+  });
+
+  // 4. Prose grounding. Passages arrive holding `contains` and `next`, so they
   //    can never register as orphans however little thought is attached.
   const documentCount = analysis.stats.artifactNodeCount ?? 0;
   const ungrounded = analysis.stats.ungroundedProseCount ?? 0;
@@ -162,7 +187,7 @@ export function assessPractice(): PracticeReport {
         : 'Ungrounded passages are prose that some thinking probably produced, where the link was never recorded. That state is indistinguishable from genuine thoughtlessness, and orphan prevention cannot see it.',
   });
 
-  // 4. Practice drift. Measured across two real projects: practices adopted at
+  // 5. Practice drift. Measured across two real projects: practices adopted at
   //    the start held at 100 per cent, and every practice retrofitted mid-way
   //    decayed. So the first few commits predict the rest, and the comparison
   //    is worth more than either figure alone.
@@ -181,7 +206,7 @@ export function assessPractice(): PracticeReport {
       'A practice that was present early and is absent now has decayed, and re-adopting it mid-project historically does not take. A practice absent from the start rarely arrives later.',
   });
 
-  // 5. Scored predictions. Staking a claim before looking is only worth
+  // 6. Scored predictions. Staking a claim before looking is only worth
   //    anything if the verdict is recorded afterwards, and an unscored
   //    prediction is indistinguishable from one that was quietly abandoned.
   const predictions = nodes.filter((n) => n.trigger === 'prediction');
@@ -201,7 +226,7 @@ export function assessPractice(): PracticeReport {
         : 'Unscored predictions accumulate as debt. A prediction whose verdict is never written cannot correct anything, and the graph keeps the confident half while losing the outcome.',
   });
 
-  // 6. Refusals. The most informative thing an agent does is the thing the
+  // 7. Refusals. The most informative thing an agent does is the thing the
   //    tool refuses, and none of it was recorded until refusals stopped being
   //    reported as completed calls. A guard that never fires is dead weight; a
   //    guard that fires constantly means the tool is fighting its users, and
@@ -219,7 +244,7 @@ export function assessPractice(): PracticeReport {
         : 'A steady trickle is the tool working. A long run with none may mean the guards are not reaching what you do; a high share means you are repeatedly asking for something the design forbids, which is worth reading as a question about the design.',
   });
 
-  // 7. Self-correction. A graph in which nothing was ever overturned is either
+  // 8. Self-correction. A graph in which nothing was ever overturned is either
   //    a record of unusual luck or a record that stopped arguing with itself.
   const overturning = edges.filter((e) => OVERTURNING.has(e.type)).length;
   worked.push({
@@ -233,7 +258,7 @@ export function assessPractice(): PracticeReport {
       'Near zero means nothing here has been revised against anything else. That is worth checking rather than celebrating: the corrections a graph holds are the part re-entry can actually use.',
   });
 
-  // 8. Edge vocabulary. `relates` records that two things are connected and
+  // 9. Edge vocabulary. `relates` records that two things are connected and
   //    nothing about how, so a graph leaning on it has recorded adjacency
   //    rather than relation.
   const generic = edges.filter((e) => e.type === 'relates').length;

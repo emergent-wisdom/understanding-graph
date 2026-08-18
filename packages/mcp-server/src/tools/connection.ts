@@ -291,6 +291,39 @@ export async function handleConnectionTools(
       // typed edges making influence inspectable. That is the whole argument
       // for making it a refusal instead of a sentence: advice this specific
       // did not move behaviour, and the failing batch does.
+      // An omitted type is not a relation, and `relates` must be asked for.
+      //
+      // The contract says to use specific typed edges, and the schema defaulted
+      // an absent `type` to `relates` — so the cheapest possible path, leaving
+      // a field out, produced exactly the generic edge the contract
+      // discourages, silently and with no refusal. That is the same shape as
+      // the passage-granularity defect: the advice sat in one place and the
+      // cheap route led somewhere else.
+      //
+      // Three levers have now been measured on this tool. Advising fails:
+      // agent_name was supplied in zero of seventy-seven commits while it was
+      // merely recommended. Refusing works: it has been supplied in every
+      // commit since it was required. Removing the alternative works: coarse
+      // passages stopped when doc_create ceased to be reachable, without the
+      // fine-grained path getting any cheaper. This takes the third lever.
+      // `relates` remains available to anyone who means it; it stops being
+      // what you get by accident.
+      if (args.type === undefined || args.type === null || args.type === '') {
+        return {
+          success: false,
+          error: 'EDGE_TYPE_REQUIRED',
+          message:
+            'graph_connect requires an explicit "type". An omitted type used ' +
+            'to become "relates", which records that two nodes are connected ' +
+            'without recording how — so following it later buys nothing a ' +
+            'search would not. Choose the relation you actually mean: ' +
+            'learned_from, refines, contradicts, questions, answers, ' +
+            'validates, invalidates, supersedes, implements, expresses, ' +
+            'inspired_by, diverse_from, contains, next — or "relates" ' +
+            'explicitly, if the connection genuinely has no better name.',
+        };
+      }
+
       const targetNode = store.getNode(toResolved.id);
       const VERDICT_TYPES = ['validates', 'invalidates', 'contradicts'];
       const requestedType = (args.type as string) || 'relates';
