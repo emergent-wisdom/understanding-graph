@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { PanelLeft, PanelRight } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { PanelLeft, PanelRight, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { DetailsPanel } from '@/components/DetailsPanel'
 import { GraphCanvas } from '@/components/GraphCanvas'
+import { SearchBar } from '@/components/SearchBar'
 import { Sidebar } from '@/components/Sidebar'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
@@ -16,7 +17,10 @@ const queryClient = new QueryClient({
   },
 })
 
+type MobilePanel = 'projects' | 'details' | null
+
 function AppLayout() {
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>(null)
   const {
     leftSidebarOpen,
     rightSidebarOpen,
@@ -100,14 +104,75 @@ function AppLayout() {
       {/* Graph Canvas - Full screen background */}
       <GraphCanvas />
 
-      {/* Left Sidebar — hidden on mobile */}
+      {/* Small-screen navigation remains useful without crowding the graph. */}
+      <div className="xl:hidden absolute top-2 left-2 right-2 z-[160] flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setMobilePanel('projects')}
+          className="shrink-0 w-10 h-10 rounded-lg shadow-md flex items-center justify-center bg-bg-surface/90 backdrop-blur-md text-text-secondary border border-border-default"
+          aria-label="Open projects"
+          title="Projects"
+        >
+          <PanelLeft size={18} />
+        </button>
+        <div className="min-w-0 flex-1 rounded-lg shadow-md bg-bg-surface/90 backdrop-blur-md">
+          <SearchBar compact enableShortcut={false} />
+        </div>
+        <button
+          type="button"
+          onClick={() => setMobilePanel('details')}
+          className={cn(
+            'shrink-0 w-10 h-10 rounded-lg shadow-md flex items-center justify-center',
+            'bg-bg-surface/90 backdrop-blur-md border border-border-default',
+            selectedNodeId || selectedEdgeId
+              ? 'text-accent border-accent'
+              : 'text-text-secondary',
+          )}
+          aria-label="Open graph details"
+          title="Graph details"
+        >
+          <PanelRight size={18} />
+        </button>
+      </div>
+
+      {mobilePanel && (
+        <button
+          type="button"
+          onClick={() => setMobilePanel(null)}
+          className="xl:hidden fixed inset-0 z-[180] bg-black/50"
+          aria-label="Close mobile panel"
+        />
+      )}
+
+      {/* Projects: fixed desktop sidebar, mobile drawer. */}
       <aside
         className={cn(
-          'hidden sm:block absolute top-0 left-0 h-full w-[280px] panel border-r transition-transform duration-300 ease-out z-50',
-          !leftSidebarOpen && '-translate-x-full',
+          'absolute top-0 left-0 h-full w-[min(92vw,360px)] xl:w-[280px] panel border-r',
+          'transition-transform duration-300 ease-out z-[200] xl:z-50',
+          mobilePanel === 'projects'
+            ? 'visible translate-x-0'
+            : 'invisible -translate-x-full',
+          leftSidebarOpen
+            ? 'xl:visible xl:translate-x-0'
+            : 'xl:invisible xl:-translate-x-full',
         )}
       >
-        <Sidebar />
+        <div className="xl:hidden h-12 px-4 flex items-center justify-between border-b border-border-subtle">
+          <span className="text-sm font-semibold text-text-primary">
+            Projects
+          </span>
+          <button
+            type="button"
+            onClick={() => setMobilePanel(null)}
+            className="p-2 -mr-2 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-muted"
+            aria-label="Close projects"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="h-[calc(100%-3rem)] xl:h-full">
+          <Sidebar onNavigate={() => setMobilePanel(null)} />
+        </div>
       </aside>
 
       {/* Left Toggle Button — hidden on mobile */}
@@ -115,7 +180,7 @@ function AppLayout() {
         type="button"
         onClick={toggleLeftSidebar}
         className={cn(
-          'hidden sm:flex absolute top-4 z-[100]',
+          'hidden xl:flex absolute top-4 z-[100]',
           'w-9 h-9 rounded-lg shadow-sm',
           'items-center justify-center',
           'bg-bg-surface/60 text-text-muted border border-border-subtle',
@@ -135,14 +200,35 @@ function AppLayout() {
         />
       </button>
 
-      {/* Right Panel — hidden on mobile */}
+      {/* Details: fixed desktop panel, mobile drawer. */}
       <aside
         className={cn(
-          'hidden sm:block absolute top-0 right-0 h-full w-[360px] panel border-l transition-transform duration-300 ease-out z-50',
-          !rightSidebarOpen && 'translate-x-full',
+          'absolute top-0 right-0 h-full w-[min(92vw,360px)] xl:w-[360px] panel border-l',
+          'transition-transform duration-300 ease-out z-[200] xl:z-50',
+          mobilePanel === 'details'
+            ? 'visible translate-x-0'
+            : 'invisible translate-x-full',
+          rightSidebarOpen
+            ? 'xl:visible xl:translate-x-0'
+            : 'xl:invisible xl:translate-x-full',
         )}
       >
-        <DetailsPanel />
+        <div className="xl:hidden h-12 px-4 flex items-center justify-between border-b border-border-subtle">
+          <span className="text-sm font-semibold text-text-primary">
+            Graph details
+          </span>
+          <button
+            type="button"
+            onClick={() => setMobilePanel(null)}
+            className="p-2 -mr-2 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-muted"
+            aria-label="Close graph details"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="h-[calc(100%-3rem)] xl:h-full">
+          <DetailsPanel />
+        </div>
       </aside>
 
       {/* Right Toggle Button — hidden on mobile */}
@@ -150,7 +236,7 @@ function AppLayout() {
         type="button"
         onClick={toggleRightSidebar}
         className={cn(
-          'hidden sm:flex absolute top-4 z-[100]',
+          'hidden xl:flex absolute top-4 z-[100]',
           'w-9 h-9 rounded-lg shadow-sm',
           'items-center justify-center',
           'bg-bg-surface/60 text-text-muted border border-border-subtle',

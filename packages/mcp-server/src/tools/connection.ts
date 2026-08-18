@@ -1,13 +1,38 @@
-import { getGraphStore } from '@emergent-wisdom/understanding-graph-core';
+import {
+  EDGE_TYPES,
+  type EdgeType,
+  getGraphStore,
+} from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
+import { hasAtomicDocumentRewireCapability } from './document-rewire-capability.js';
+
+const DOCUMENT_STRUCTURE_EDGE_TYPES = new Set<EdgeType>(['contains', 'next']);
+
+function rejectGenericDocumentStructureMutation(params: {
+  currentType?: string;
+  requestedType?: string;
+  authorized?: boolean;
+}): void {
+  if (params.authorized) return;
+  if (
+    (params.currentType &&
+      DOCUMENT_STRUCTURE_EDGE_TYPES.has(params.currentType as EdgeType)) ||
+    (params.requestedType &&
+      DOCUMENT_STRUCTURE_EDGE_TYPES.has(params.requestedType as EdgeType))
+  ) {
+    throw new Error(
+      'DOCUMENT_STRUCTURE_CHANGE_NOT_ALLOWED: contains/next relations are owned by atomic document tools. Use doc_create to append, doc_move to reorder/reparent, doc_merge to fuse siblings, or doc_split to divide a leaf.',
+    );
+  }
+}
 
 export const connectionTools: Tool[] = [
   {
     name: 'graph_connect',
     description: `Create edge between nodes.
 
-COGNITIVE PURPOSE: Edges are thinking scaffolds, not metadata. Only create an edge if it helps future agents reason better. Ask: "When thinking about X, should I also consider Y?" If yes, explain WHY in the relation field.
+COGNITIVE PURPOSE: Edges are thinking scaffolds, not metadata. Only create an edge if it helps future agents reason better. Ask: "When thinking about X, should I also consider Y?" If yes, explain WHY in the why field.
 
 Good edges: "this tension led to that insight", "this question was answered here", "this pattern repeats there"
 Bad edges: "both about topic X" (too vague), "for completeness" (doesn't aid thinking)
@@ -27,7 +52,7 @@ WARNING: edge type param is "type" (NOT "edgeType" - graph_disconnect uses edgeT
         relation: {
           type: 'string',
           description:
-            'How these concepts relate (e.g., "enables", "depends on", "contradicts")',
+            'Optional short label for how the concepts relate. The typed edge and why fields carry the durable semantics.',
         },
         why: {
           type: 'string',
@@ -54,6 +79,10 @@ SEMANTIC (for concepts):
 - "questions" - raises doubt about
 - "answers" - resolves a question
 
+CREATIVE PROVENANCE (document → graph material):
+- "inspired_by" - the target genuinely shaped a choice in this artifact unit
+  This is causal provenance, not a claim that the passage thematically expresses the target.
+
 EPISTEMIC (for learning trails):
 - "learned_from" - cognitive lineage: "I understood X by studying Y"
   Use to mark which concepts/sources led to understanding another.
@@ -62,31 +91,14 @@ EPISTEMIC (for learning trails):
 PREDICTIVE (for forecasts):
 - "validates" - later evidence confirms a prediction was correct
 - "invalidates" - later evidence refutes a prediction`,
-          enum: [
-            'relates',
-            'next',
-            'contains',
-            'expresses',
-            'supersedes',
-            'contradicts',
-            'diverse_from',
-            'refines',
-            'implements',
-            'abstracts_from',
-            'contextualizes',
-            'questions',
-            'answers',
-            'learned_from',
-            'validates',
-            'invalidates',
-          ],
+          enum: [...EDGE_TYPES],
         },
         project: {
           type: 'string',
           description: 'Project ID (optional)',
         },
       },
-      required: ['from', 'to', 'relation'],
+      required: ['from', 'to', 'type', 'why'],
     },
   },
   {
@@ -135,24 +147,7 @@ PREDICTIVE (for forecasts):
           type: 'string',
           description:
             'Edge type to remove. WARNING: param is "edgeType", NOT "type". Specify if multiple edges exist between nodes.',
-          enum: [
-            'relates',
-            'next',
-            'contains',
-            'expresses',
-            'supersedes',
-            'contradicts',
-            'diverse_from',
-            'refines',
-            'implements',
-            'abstracts_from',
-            'contextualizes',
-            'questions',
-            'answers',
-            'learned_from',
-            'validates',
-            'invalidates',
-          ],
+          enum: [...EDGE_TYPES],
         },
         project: {
           type: 'string',
@@ -180,24 +175,7 @@ PREDICTIVE (for forecasts):
         type: {
           type: 'string',
           description: 'New edge type',
-          enum: [
-            'relates',
-            'next',
-            'contains',
-            'expresses',
-            'supersedes',
-            'contradicts',
-            'diverse_from',
-            'refines',
-            'implements',
-            'abstracts_from',
-            'contextualizes',
-            'questions',
-            'answers',
-            'learned_from',
-            'validates',
-            'invalidates',
-          ],
+          enum: [...EDGE_TYPES],
         },
         explanation: {
           type: 'string',
@@ -260,11 +238,15 @@ export async function handleConnectionTools(
       );
 
       const store = getGraphStore();
+      rejectGenericDocumentStructureMutation({
+        requestedType: args.type as string | undefined,
+        authorized: hasAtomicDocumentRewireCapability(args),
+      });
       const edge = store.createEdge({
         fromId: fromResolved.id,
         toId: toResolved.id,
-        type: (args.type as string) || 'relates',
-        explanation: args.relation as string,
+        type: (args.type as EdgeType) || 'relates',
+        explanation: args.relation as string | undefined,
         why: args.why as string | undefined,
         conversationId,
         toolCallId,
@@ -275,7 +257,9 @@ export async function handleConnectionTools(
         id: edge.id,
         from: fromResolved.title,
         to: toResolved.title,
-        relation: args.relation,
+        relation: (args.relation as string | undefined) || edge.type,
+        affectedNodeIds: [fromResolved.id, toResolved.id],
+        affectedEdgeIds: [edge.id],
         message: `Connected "${fromResolved.title}" → "${toResolved.title}"`,
       };
     }
@@ -303,6 +287,7 @@ export async function handleConnectionTools(
       const edge = store.createEdge({
         fromId: answerNode.id,
         toId: questionResolved.id,
+        type: 'answers',
         explanation: 'answers',
         why: 'Resolves the question',
         conversationId,
@@ -316,6 +301,8 @@ export async function handleConnectionTools(
         questionId: questionResolved.id,
         questionName: questionResolved.title,
         edgeId: edge.id,
+        affectedNodeIds: [answerNode.id, questionResolved.id],
+        affectedEdgeIds: [edge.id],
         message: `Answered question "${questionResolved.title}" with "${answerNode.title}"`,
         hint: 'The question node remains in the graph with the answer connected to it',
       };
@@ -363,6 +350,13 @@ export async function handleConnectionTools(
         );
       }
 
+      for (const edge of toRemove) {
+        rejectGenericDocumentStructureMutation({
+          currentType: edge.type,
+          authorized: hasAtomicDocumentRewireCapability(args),
+        });
+      }
+
       // Archive all matching edges
       for (const edge of toRemove) {
         store.archiveEdge(edge.id, conversationId);
@@ -373,6 +367,8 @@ export async function handleConnectionTools(
         from: fromResolved.title,
         to: toResolved.title,
         removedCount: toRemove.length,
+        affectedNodeIds: [fromResolved.id, toResolved.id],
+        affectedEdgeIds: toRemove.map((edge) => edge.id),
         message: `Removed ${toRemove.length} edge(s) from "${fromResolved.title}" to "${toResolved.title}"`,
       };
     }
@@ -388,7 +384,7 @@ export async function handleConnectionTools(
       );
 
       const store = getGraphStore();
-      const newType = args.type as string | undefined;
+      const newType = args.type as EdgeType | undefined;
       const newExplanation = args.explanation as string | undefined;
 
       if (!newType && !newExplanation) {
@@ -404,9 +400,19 @@ export async function handleConnectionTools(
         );
       }
 
-      // Update the first edge (or we could require specifying which one)
+      if (edges.length > 1) {
+        throw new Error(
+          `Multiple edges found from "${fromResolved.title}" to "${toResolved.title}"; edge_update requires an unambiguous endpoint pair.`,
+        );
+      }
+
       const edge = edges[0];
       const oldType = edge.type;
+      rejectGenericDocumentStructureMutation({
+        currentType: oldType,
+        requestedType: newType,
+        authorized: hasAtomicDocumentRewireCapability(args),
+      });
 
       const updated = store.updateEdge(edge.id, {
         type: newType,
@@ -424,6 +430,8 @@ export async function handleConnectionTools(
         to: toResolved.title,
         oldType,
         newType: updated.type,
+        affectedNodeIds: [fromResolved.id, toResolved.id],
+        affectedEdgeIds: [updated.id],
         message: newType
           ? `Updated edge "${fromResolved.title}" → "${toResolved.title}": ${oldType} → ${newType}`
           : `Updated edge explanation for "${fromResolved.title}" → "${toResolved.title}"`,

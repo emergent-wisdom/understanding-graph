@@ -3,7 +3,7 @@ import { useDocumentRoots, useLoadProject, useProjects } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const { data: projects = [], isLoading } = useProjects()
   const loadProject = useLoadProject()
   const {
@@ -33,6 +33,7 @@ export function Sidebar() {
       name: result.meta?.name || id,
       goal: result.meta?.goal,
     })
+    onNavigate?.()
   }
 
   return (
@@ -43,8 +44,36 @@ export function Sidebar() {
           Understanding Graph
         </h1>
         <p className="text-xs text-text-muted mt-0.5">
-          Knowledge visualization
+          Trace how understanding develops
         </p>
+        <details className="mt-3 rounded-md border border-border-subtle bg-bg-muted/40">
+          <summary className="cursor-pointer px-2.5 py-2 text-xs font-medium text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent">
+            How to read this graph
+          </summary>
+          <dl className="space-y-2 border-t border-border-subtle px-2.5 py-2.5 text-xs leading-relaxed text-text-secondary">
+            <div>
+              <dt className="inline font-medium text-text-primary">Nodes</dt>
+              <dd className="inline">
+                {' '}
+                capture parts of the work and the understanding around them.
+              </dd>
+            </div>
+            <div>
+              <dt className="inline font-medium text-text-primary">Arrows</dt>
+              <dd className="inline">
+                {' '}
+                show what answers, refines, or informs what.
+              </dd>
+            </div>
+            <div>
+              <dt className="inline font-medium text-text-primary">History</dt>
+              <dd className="inline">
+                {' '}
+                shows how the graph changed over time.
+              </dd>
+            </div>
+          </dl>
+        </details>
       </div>
 
       {/* Projects list */}
@@ -63,7 +92,7 @@ export function Sidebar() {
               No projects yet.
               <br />
               <span className="text-text-muted/70">
-                Use Claude Code to create one.
+                Use an MCP client to create one.
               </span>
             </div>
           ) : (
@@ -113,7 +142,10 @@ export function Sidebar() {
                 <button
                   key={doc.id}
                   type="button"
-                  onClick={() => openDocumentView(doc.id)}
+                  onClick={() => {
+                    openDocumentView(doc.id)
+                    onNavigate?.()
+                  }}
                   className={cn(
                     'group relative p-3 rounded-lg text-left border transition-all duration-150',
                     'noise-subtle',

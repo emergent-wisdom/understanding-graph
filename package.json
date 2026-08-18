@@ -1,6 +1,6 @@
 {
   "name": "understanding-graph",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "mcpName": "io.github.emergent-wisdom/understanding-graph",
   "description": "Persistent understanding graphs for AI agents - structured memory with MCP support",
   "author": "Henrik Westerberg",
@@ -43,21 +43,23 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
-    "build:core": "npm run build -w @understanding-graph/core",
-    "build:mcp": "npm run build -w @understanding-graph/mcp-server",
-    "build:web": "npm run build -w @understanding-graph/web-server",
-    "start": "npm run start -w @understanding-graph/web-server",
-    "start:web": "npm run start -w @understanding-graph/web-server",
-    "start:mcp": "npm run start -w @understanding-graph/mcp-server",
-    "dev": "npm run dev -w @understanding-graph/web-server",
-    "dev:web": "npm run dev -w @understanding-graph/web-server",
+    "build:core": "npm run build -w @emergent-wisdom/understanding-graph-core",
+    "build:mcp": "npm run build -w @emergent-wisdom/understanding-graph-mcp-server",
+    "build:web": "npm run build -w @emergent-wisdom/understanding-graph-web-server",
+    "start": "npm run start -w @emergent-wisdom/understanding-graph-web-server",
+    "start:web": "npm run start -w @emergent-wisdom/understanding-graph-web-server",
+    "start:mcp": "npm run start -w @emergent-wisdom/understanding-graph-mcp-server",
+    "dev": "npm run dev -w @emergent-wisdom/understanding-graph-web-server",
+    "dev:web": "npm run dev -w @emergent-wisdom/understanding-graph-web-server",
     "clean": "rm -rf packages/*/dist",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "smoke:mcp": "node scripts/smoke-mcp.mjs",
     "lint": "biome check packages/*/src",
     "lint:fix": "biome check --write packages/*/src",
     "format": "biome format --write packages/*/src",
     "prepare": "husky",
+    "prepack": "npm run build",
     "prepublishOnly": "npm run build",
     "worker": "npx tsx scripts/autonomous-worker.ts",
     "worker:parallel": "concurrently \"npm run worker\" \"npm run worker\" \"npm run worker\"",
@@ -75,8 +77,8 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@emergent-wisdom/understanding-graph-core": "^0.1.11",
-    "@emergent-wisdom/understanding-graph-mcp-server": "^0.1.9",
-    "@emergent-wisdom/understanding-graph-web-server": "^0.1.10"
+    "@emergent-wisdom/understanding-graph-core": "0.1.12",
+    "@emergent-wisdom/understanding-graph-mcp-server": "0.1.12",
+    "@emergent-wisdom/understanding-graph-web-server": "0.1.11"
   }
 }

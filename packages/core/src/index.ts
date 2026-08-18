@@ -6,6 +6,7 @@ export * as sqlite from './database/sqlite.js';
 export {
   // Commits - "Git for Cognition"
   type Commit,
+  closeProjectDatabase,
   createCommit,
   // Cross-project
   createTextSource,
@@ -68,3 +69,12 @@ export {
   type SimilarNode,
 } from './services/GraphStore.js';
 export * from './types/index.js';
+// Mode-scoped visibility for reserved synthetic Reader/CMP artifacts.
+export {
+  type GraphVisibility,
+  graphNodeVisible,
+  isReservedThinkingNode,
+  reservedThinkingVisible,
+  withGraphVisibility,
+  withReservedThinkingVisibility,
+} from './visibility.js';

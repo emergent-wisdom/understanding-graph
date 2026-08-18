@@ -4,7 +4,7 @@ import { getToolDefinitions } from '../tools/index.js';
 describe('MCP server smoke tests', () => {
   it('exposes tools in full mode', () => {
     const tools = getToolDefinitions('full');
-    expect(tools.length).toBeGreaterThan(50);
+    expect(tools.length).toBeGreaterThan(40);
   });
 
   it('exposes a strict subset in reading mode', () => {

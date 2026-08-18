@@ -19,6 +19,7 @@ import {
   edgeColorsTailwind,
   triggerColorsTailwind,
 } from '@/lib/colors'
+import { decodeTextEntities } from '@/lib/text'
 import { cn, resolveReferences } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
 
@@ -1017,7 +1018,7 @@ function CommitCard({
         }
         onMouseLeave={() => clearHighlightedIds()}
       >
-        {commit.message}
+        {decodeTextEntities(commit.message)}
       </div>
 
       {/* Timestamp + expand toggle */}

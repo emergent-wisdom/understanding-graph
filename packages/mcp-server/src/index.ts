@@ -9,9 +9,11 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { ContextManager } from './context-manager.js';
 import { SERVER_INSTRUCTIONS } from './instructions.js';
+import { SerialTaskQueue } from './serial-task-queue.js';
 import {
   getToolDefinitions,
   handleToolCall,
+  TOOL_MODES,
   type ToolMode,
 } from './tools/index.js';
 
@@ -22,8 +24,15 @@ const PACKAGE_VERSION: string = (
   require('../package.json') as { version: string }
 ).version;
 
-// Tool mode from environment (default: full)
-const TOOL_MODE = (process.env.TOOL_MODE || 'full') as ToolMode;
+// Tool mode from environment (default: full). Fail closed to a known surface
+// instead of accepting an arbitrary string that silently produces a hybrid.
+const configuredToolMode = process.env.TOOL_MODE || 'full';
+if (!TOOL_MODES.includes(configuredToolMode as ToolMode)) {
+  throw new Error(
+    `Invalid TOOL_MODE "${configuredToolMode}". Choose one of: ${TOOL_MODES.join(', ')}`,
+  );
+}
+const TOOL_MODE = configuredToolMode as ToolMode;
 
 // Auto-log tool calls wrapper with two-phase logging for entity linking
 async function handleToolCallWithLogging(
@@ -32,12 +41,13 @@ async function handleToolCallWithLogging(
   contextManager: ContextManager,
 ): Promise<unknown> {
   // Simple pass-through - commits are tracked via graph_batch commit_message
-  return handleToolCall(name, args, contextManager);
+  return handleToolCall(name, args, contextManager, TOOL_MODE);
 }
 
 class UnderstandingGraphServer {
   private server: Server;
   private contextManager: ContextManager;
+  private toolCallQueue = new SerialTaskQueue();
 
   constructor() {
     this.server = new Server(
@@ -68,37 +78,40 @@ class UnderstandingGraphServer {
 
     // Handle tool calls (with auto-logging)
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
+      return this.toolCallQueue.run(async () => {
+        const { name, arguments: args } = request.params;
 
-      try {
-        const result = await handleToolCallWithLogging(
-          name,
-          args || {},
-          this.contextManager,
-        );
-        return {
-          content: [
-            {
-              type: 'text',
-              text:
-                typeof result === 'string'
-                  ? result
-                  : JSON.stringify(result, null, 2),
-            },
-          ],
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+        try {
+          const result = await handleToolCallWithLogging(
+            name,
+            args || {},
+            this.contextManager,
+          );
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text:
+                  typeof result === 'string'
+                    ? result
+                    : JSON.stringify(result, null, 2),
+              },
+            ],
+          };
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Error: ${message}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+      });
     });
   }
 

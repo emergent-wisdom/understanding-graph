@@ -1,4 +1,5 @@
-import type { TriggerType } from '../types/index.js';
+import { EDGE_TYPES, TRIGGER_TYPES, type TriggerType } from '../types/index.js';
+import { reservedThinkingVisible } from '../visibility.js';
 import { type GraphNodeData, getGraphStore } from './GraphStore.js';
 
 interface AnalysisNode {
@@ -177,29 +178,11 @@ export function analyzeGraph(
     .map((n) => ({ id: n.id, title: n.title }));
 
   // 7. Trigger distribution (include all types so curator can see what's missing)
-  const ALL_TRIGGER_TYPES: TriggerType[] = [
-    'foundation',
-    'surprise',
-    'repetition',
-    'consequence',
-    'tension',
-    'question',
-    'serendipity',
-    'decision',
-    'experiment',
-    'analysis',
-    'randomness',
-    'reference',
-    'library',
-    'thinking',
-    'prediction',
-    'evaluation',
-    'hypothesis',
-    'model',
-  ];
   const triggerCounts: Record<string, number> = {};
   // Initialize all types to 0
-  ALL_TRIGGER_TYPES.forEach((t) => {
+  TRIGGER_TYPES.filter(
+    (trigger) => reservedThinkingVisible() || trigger !== 'thinking',
+  ).forEach((t) => {
     triggerCounts[t] = 0;
   });
   // Count existing nodes
@@ -209,21 +192,9 @@ export function analyzeGraph(
   });
 
   // 7b. Edge type distribution (include all types so curator can see what's missing)
-  const ALL_EDGE_TYPES = [
-    'supersedes',
-    'contradicts',
-    'refines',
-    'learned_from',
-    'answers',
-    'questions',
-    'contains',
-    'next',
-    'expresses',
-    'relates',
-  ];
   const edgeTypeCounts: Record<string, number> = {};
   // Initialize all types to 0
-  ALL_EDGE_TYPES.forEach((t) => {
+  EDGE_TYPES.forEach((t) => {
     edgeTypeCounts[t] = 0;
   });
   // Count existing edges

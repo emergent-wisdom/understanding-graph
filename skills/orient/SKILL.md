@@ -5,6 +5,7 @@ description: |
   Use when beginning a new session or switching context.
 user-invocable: true
 allowed-tools: |
+  mcp__ug__graph_understand
   mcp__ug__graph_skeleton
   mcp__ug__graph_history
   mcp__ug__graph_semantic_search
@@ -46,8 +47,10 @@ When you read the graph in a new conversation, you're not retrieving data. You'r
 When the user starts a **substantive task** (building something, researching a topic, analyzing a problem), create a dedicated project:
 
 ```
-project_create({ name: "city-optimizer", description: "Genetic algorithm for city layout" })
-project_switch({ project: "city-optimizer" })
+project_switch({
+  project: "city-optimizer",
+  goal: "Genetic algorithm for city layout"
+})
 ```
 
 Do all work in the task project. When done, switch back to `default` and plant one `reference` node pointing at the task project — a breadcrumb for future-you.
@@ -60,24 +63,46 @@ Do all work in the task project. When done, switch back to `default` and plant o
 
 1. **Ask if the user wants the graph UI** — if yes, launch it with `/understanding-graph:web-ui`
 
-2. **Read the graph state:**
+2. **Select or create the project** — inspect `project_list()` and switch to the
+   existing project that matches the request before loading task context.
 
+3. **Route the workflow explicitly:**
+
+| Request | Workflow |
+|---------|----------|
+| Chronological book, paper, or article reading | `reading` |
+| One-contributor graph-native implementation or debugging | `coding` |
+| Concurrent multi-agent graph-native software work | `collaborative_coding` |
+| Book, story, essay, paper, or other drafting/revision | `writing` |
+| Everything else | `general` |
+
+Do not use `auto` here. Once routed, read the graph state and condition the
+concrete request:
+
+```javascript
+graph_skeleton()
+graph_history({ limit: 5 })
+graph_understand({
+  query: "the user's concrete request",
+  workflow: "general" // replace with the routed value above
+})
 ```
-graph_skeleton()                        # shape of your memory
-graph_history({ limit: 5 })             # recent commits
-graph_semantic_search({ query: "..." }) # prior thinking on the topic
+
+Use `graph_semantic_search` before creating nodes. If a similar node exists,
+extend or revise it instead of duplicating it.
+
+4. **Check structural health when useful:**
+```
+graph_score()                           # diagnostic, not a semantic-quality target
 ```
 
-If a similar node exists, **extend it** — don't duplicate.
+5. **Orient the user:** Summarize the relevant graph-carried baseline, strongest
+resistance, supporting evidence, and remaining uncertainty. Distinguish these
+from facts observed in the source, generated execution, or draft.
 
-3. **Check quality:**
-```
-graph_score()                           # structural quality, target 70+
-```
-
-4. **Orient the user:** Summarize what the graph contains, what's been explored, what questions remain open.
-
-5. **Flag maintenance needs:** If the graph has disconnected clusters, stale open questions, or low trigger/edge diversity — tell the user. Ask them to stop and think about the graph before diving into new work.
+6. **Flag maintenance needs without blocking the task:** Mention disconnected
+clusters or stale open questions when they bear on the request. Do not invent
+triggers or force a graph-maintenance detour solely to improve metrics.
 
 ## During work: periodic check-ins
 

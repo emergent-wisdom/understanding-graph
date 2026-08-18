@@ -2,12 +2,14 @@ import path from 'node:path';
 import {
   createCommit,
   createDocumentWriter,
+  EmbeddingService,
   getGraphStore,
   sqlite,
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
 import type { ContextManager } from '../context-manager.js';
-import { handleToolCall } from './index.js';
+import { handleToolCall, type ToolMode } from './index.js';
 
 // Sentinel error class used by handleBatchTools to bubble an
 // "intentional early return with payload" out of a transactional block
@@ -21,24 +23,179 @@ class BatchEarlyExit extends Error {
   }
 }
 
+function getExplicitToolFailure(result: unknown): string | null {
+  if (typeof result !== 'object' || result === null || Array.isArray(result)) {
+    return null;
+  }
+
+  const payload = result as Record<string, unknown>;
+  if (payload.success !== false) return null;
+
+  const error = typeof payload.error === 'string' ? payload.error : null;
+  const message = typeof payload.message === 'string' ? payload.message : null;
+  if (error && message && error !== message) return `${error}: ${message}`;
+  return error || message || 'Nested tool returned success: false';
+}
+
+function isThinkingLabel(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().toLowerCase() === 'thinking';
+}
+
 // Tools that create nodes and need immediate embedding generation
 const NODE_CREATING_TOOLS = [
   'graph_add_concept',
+  'graph_note',
   'graph_question',
   'graph_serendipity',
+  'graph_decide',
   'graph_supersede',
   'graph_answer',
   'doc_create',
+  'doc_create_passages',
 ];
+
+const DOCUMENT_CREATING_TOOLS = new Set(['doc_create', 'doc_create_passages']);
 
 // Tools that mutate documents and should trigger regeneration
 const DOC_MUTATION_TOOLS = [
   'doc_create',
+  'doc_create_passages',
   'doc_revise',
+  'doc_move',
   'doc_merge',
   'doc_split',
   'doc_to_concept',
 ];
+
+/**
+ * Exact mutation vocabulary accepted inside graph_batch. `internal=true` is
+ * needed for batch-only primitives and top-level batch discipline, but it must
+ * never become a tunnel to arbitrary routed MCP tools.
+ */
+export const BATCH_OPERATION_TOOLS = [
+  'graph_add_concept',
+  'graph_note',
+  'graph_question',
+  'graph_revise',
+  'graph_supersede',
+  'graph_add_reference',
+  'node_set_metadata',
+  'graph_rename',
+  'graph_archive',
+  'node_set_trigger',
+  'graph_connect',
+  'graph_answer',
+  'graph_serendipity',
+  'graph_validate',
+  'graph_decide',
+  'graph_disconnect',
+  'edge_update',
+  'doc_create',
+  'doc_revise',
+  'doc_move',
+  'doc_merge',
+  'doc_to_concept',
+  'doc_split',
+  'doc_link_concept',
+  'doc_weave',
+  'doc_create_passages',
+] as const;
+const batchOperationToolNames = new Set<string>(BATCH_OPERATION_TOOLS);
+export const MAX_BATCH_OPERATIONS = 100;
+
+const BATCH_REENTRY_WORKFLOWS = [
+  'reading',
+  'research',
+  'coding',
+  'collaborative_coding',
+  'writing',
+  'general',
+] as const;
+type BatchReentryWorkflow = (typeof BATCH_REENTRY_WORKFLOWS)[number];
+const batchReentryWorkflowNames = new Set<string>(BATCH_REENTRY_WORKFLOWS);
+
+interface OperationEffects {
+  nodeIds: string[];
+  edgeIds: string[];
+}
+
+const RESULT_NODE_ID_KEYS = [
+  'id',
+  'nodeId',
+  'newId',
+  'oldId',
+  'answerId',
+  'questionId',
+  'rootId',
+  'documentId',
+  'docNodeId',
+  'conceptId',
+] as const;
+const RESULT_EDGE_ID_KEYS = ['id', 'edgeId'] as const;
+const RESULT_NODE_ID_ARRAY_KEYS = [
+  'affectedNodeIds',
+  'archivedNodeIds',
+  'createdNodeIds',
+] as const;
+const RESULT_EDGE_ID_ARRAY_KEYS = ['affectedEdgeIds', 'edgeIds'] as const;
+
+function addTypedId(
+  value: unknown,
+  nodeIds: Set<string>,
+  edgeIds: Set<string>,
+): void {
+  if (typeof value !== 'string') return;
+  if (value.startsWith('n_')) nodeIds.add(value);
+  if (value.startsWith('e_')) edgeIds.add(value);
+}
+
+/**
+ * Normalize the mutation footprint returned by a nested batch primitive.
+ *
+ * Handlers historically used several result field names (`id`, `edgeId`,
+ * `answerId`, explicit affected arrays). Centralizing their interpretation
+ * prevents a successful mutation from landing without provenance merely
+ * because its result shape was different. Every affected edge also contributes
+ * both endpoint nodes: topology changes must give the next understanding pass
+ * something visible to re-enter.
+ */
+function collectOperationEffects(
+  result: Record<string, unknown>,
+): OperationEffects {
+  const nodeIds = new Set<string>();
+  const edgeIds = new Set<string>();
+
+  for (const key of RESULT_NODE_ID_KEYS) {
+    addTypedId(result[key], nodeIds, edgeIds);
+  }
+  for (const key of RESULT_EDGE_ID_KEYS) {
+    addTypedId(result[key], nodeIds, edgeIds);
+  }
+  for (const key of RESULT_NODE_ID_ARRAY_KEYS) {
+    const values = result[key];
+    if (!Array.isArray(values)) continue;
+    for (const value of values) addTypedId(value, nodeIds, edgeIds);
+  }
+  for (const key of RESULT_EDGE_ID_ARRAY_KEYS) {
+    const values = result[key];
+    if (!Array.isArray(values)) continue;
+    for (const value of values) addTypedId(value, nodeIds, edgeIds);
+  }
+
+  const edgeEndpoints = sqlite
+    .getDb()
+    .prepare('SELECT from_id AS fromId, to_id AS toId FROM edges WHERE id = ?');
+  for (const edgeId of edgeIds) {
+    const row = edgeEndpoints.get(edgeId) as
+      | { fromId: string; toId: string }
+      | undefined;
+    if (!row) continue;
+    nodeIds.add(row.fromId);
+    nodeIds.add(row.toId);
+  }
+
+  return { nodeIds: [...nodeIds], edgeIds: [...edgeIds] };
+}
 
 interface DuplicateWarning {
   operationIndex: number;
@@ -64,34 +221,55 @@ from the paper: it lets you branch and revert cognitive states cleanly.
 The required commit_message becomes the Origin Story attached to every
 node and edge created in the batch. Future agents reading those nodes see
 the intent that created them, not just the content. The commit stream is
-the metacognitive log of how the graph evolved.
+the provenance trail of how externalized understanding and artifacts evolved.
 
 Use for:
 - Document splitting (create children + clear parent)
+- Creating a prose scene/chapter container with ordered, independently revisable passages
+- Moving/reordering an existing document subtree with one batch-only doc_move operation
 - Creating hierarchies (root + multiple children)
 - Bulk concept/connection creation
 - Any multi-step modification that should land all-or-nothing
 
 PARAMETER NAMES (these are strict — wrong names fail silently):
   graph_add_concept: { title, trigger, understanding, why }  — NOT name/body/text
+  graph_note:        { about, testimony, title?, trigger?, why?, status?: "open"|"resolved", relations? } — preserve a substantive change caused by an exact source, artifact, or prior cognitive node; prefer the specific honest trigger (omission = neutral analysis); routine execution needs no note
   graph_connect:     { from, to, type, why }                 — NOT source/target/edgeType
   graph_revise:      { node, understanding, before, after, pivot, why }
-  doc_create:        { title, content, fileType, isDocRoot, parentId, afterId, level }
+  graph_serendipity: { name, synthesis, source_elements, why } — after grounded discovery reveals a real unexpected bridge, never merely because random nodes were sampled
+  graph_validate:    { node, insight } — preserve why later evidence made a serendipitous bridge survive scrutiny
+  graph_decide:      { question, options, chosen, reasoning } — preserve an actual choice and its considered alternatives
+  doc_create:        { title, content, fileType, isDocRoot, parentId, afterId, level, expressesIds }
+  doc_revise:        { nodeId, content?, summary?, why } — why preserves the local edit; when a discovered insight/question/tension should influence other passages or future work, pair with graph_note about the exact passage in this batch; purely local revisions need no note
+  doc_weave:         { parentId, title, targetNodeIds, content, connections, level?, afterId? } — each connection becomes an inspired_by edge whose why preserves the causal influence
+  doc_create_passages: { parentId, title, narrativeRole?, containerLevel?, afterId?, passages: [{ title, content, level: "paragraph"|"sentence", inspirations?: [{ nodeId, why }] }] } — atomically preserve a coherent scene/chapter and the passages a future writer may move, replace, compare, annotate, or revise independently; inspiration is optional, never forced
+  doc_move:          { nodeId, parentId?, afterId? } — omit afterId to place first
+  doc_split:         { nodeId, mode: "headers"|"lines", lineNumbers?, childLevel? } — rooted ordinary leaf only; "lines" uses unique zero-based indexes 1..lineCount-1; split when one leaf has independently revisable responsibilities or creative centers, never to meet a quota; original becomes an empty container; do not pass keepParent/asFiles/project
+
+EVERY operation must use the complete envelope
+  { tool: "doc_create", params: { title: "Opening", content: "...", parentId: "n_root" } }
+Arguments belong inside params. A flattened operation such as
+  { tool: "doc_create", title: "Opening", content: "..." }
+is invalid.
 
 Supports variable references: use "$N.id" to reference result N's id (0-indexed, counts ALL operations).
-Example: { from: "$0.id", to: "$1.id" } connects first operation's result to second's.`,
+Example: { from: "$0.id", to: "$1.id" } connects first operation's result to second's.
+
+RESERVED SYNTHETIC OUTPUT: trigger="thinking", fileType="thinking", and the dedicated thinking creation/signing/translation tools are accepted only when the MCP server runs in TOOL_MODE="synthetic_reader". Direct graph_add_concept creation also requires agent_name="synthesizer". Ordinary modes should use rich non-thinking typed testimony.`,
     inputSchema: {
       type: 'object',
       properties: {
         operations: {
           type: 'array',
+          maxItems: MAX_BATCH_OPERATIONS,
           items: {
             type: 'object',
             properties: {
               tool: {
                 type: 'string',
+                enum: [...BATCH_OPERATION_TOOLS],
                 description:
-                  'Tool name (e.g., doc_create, doc_revise, graph_connect, graph_add_concept)',
+                  'Atomic graph mutation primitive. Read, admin, solver, source, generation, and nested batch tools are not valid operations.',
               },
               params: {
                 type: 'object',
@@ -107,7 +285,7 @@ Example: { from: "$0.id", to: "$1.id" } connects first operation's result to sec
         stopOnError: {
           type: 'boolean',
           description:
-            'If true (default), stop on first error. If false, continue and collect errors.',
+            'If true (default), stop on the first error. If false, attempt the remaining operations to collect more errors, then roll back the entire batch if any operation failed.',
         },
         ignoreWarnings: {
           type: 'boolean',
@@ -118,11 +296,6 @@ Example: { from: "$0.id", to: "$1.id" } connects first operation's result to sec
           type: 'number',
           description:
             'Similarity threshold (0-1) for duplicate warnings. Default 0.8. Higher = stricter (fewer warnings), lower = more sensitive (more warnings). Use 0.9 for strict, 0.7 for lenient.',
-        },
-        allowUnorderedDocs: {
-          type: 'boolean',
-          description:
-            'If true, allow doc_create without afterId when siblings exist. Default false (throws error to enforce explicit ordering).',
         },
         commit_message: {
           type: 'string',
@@ -136,6 +309,17 @@ Example: { from: "$0.id", to: "$1.id" } connects first operation's result to sec
           type: 'string',
           description:
             'Name of the agent making this commit (e.g., Alice, Bob, Charlie). Used for tracking who made changes.',
+        },
+        workflow: {
+          type: 'string',
+          enum: [...BATCH_REENTRY_WORKFLOWS],
+          description:
+            'Current task workflow. Pass this on broad/full or hosted MCP surfaces so the machine-readable graph_understand re-entry stays in reading, research, coding, collaborative coding, writing, or general work instead of losing task context.',
+        },
+        author: {
+          type: 'string',
+          description:
+            'Optional human-facing identity responsible for the commit. Hosted gateways should set this from the authenticated account rather than trusting an agent-supplied value.',
         },
       },
       required: ['operations', 'commit_message'],
@@ -197,8 +381,9 @@ function resolveReferences(
 const DEFAULT_DUPLICATE_THRESHOLD = 0.8;
 
 /**
- * PRE-VALIDATION: every new concept created in this batch must be reachable
- * (transitively) to a node that already exists in the graph.
+ * PRE-VALIDATION: every new cognitive concept created in this batch must be
+ * grounded. Existing graph nodes and newly created document nodes are valid
+ * anchors; documents are canonical artifacts, not cognitive orphans.
  *
  * Three things this check has to honor that an earlier version got wrong:
  *
@@ -221,9 +406,9 @@ const DEFAULT_DUPLICATE_THRESHOLD = 0.8;
  *      params.name (which graph_add_concept doesn't define) and always fell
  *      through to "operation N", which made the error useless.
  *
- * Algorithm: compute the set of all nodes reachable to/from the existing
- * graph via the union of new connect operations, then any new concept not
- * in that reachable set is orphaned.
+ * Algorithm: compute the set of all nodes reachable to/from a grounding
+ * anchor via the union of explicit and modeled implicit edges, then reject
+ * any newly created cognitive concept outside that reachable set.
  */
 function validateNoOrphans(
   operations: Array<{ tool: string; params: Record<string, unknown> }>,
@@ -240,9 +425,11 @@ function validateNoOrphans(
   // Extract the title (or question) a node-creating op will produce.
   // Different node-creating tools use different schemas:
   //   graph_add_concept     -> params.title
+  //   graph_note            -> params.title (optional; falls back to $N.id)
   //   graph_question        -> params.question
   //   graph_supersede       -> params.new_name (the replacement concept's name)
-  //   graph_serendipity     -> params.title
+  //   graph_serendipity     -> params.name
+  //   graph_decide          -> params.question
   //   graph_answer          -> params.answer (creates an answer node)
   const conceptToolName = (op: {
     tool: string;
@@ -253,6 +440,7 @@ function validateNoOrphans(
     if (op.tool === 'graph_supersede')
       return (op.params.new_name as string) || '';
     if (op.tool === 'graph_answer') return (op.params.answer as string) || '';
+    if (op.tool === 'graph_decide') return (op.params.question as string) || '';
     return (op.params.title as string) || (op.params.name as string) || '';
   };
 
@@ -263,6 +451,7 @@ function validateNoOrphans(
     index: number;
     title: string;
     idRef: string;
+    isDocument: boolean;
   }> = [];
   for (let i = 0; i < operations.length; i++) {
     const op = operations[i];
@@ -271,8 +460,19 @@ function validateNoOrphans(
         index: i,
         title: conceptToolName(op),
         idRef: `$${i}.id`,
+        isDocument: DOCUMENT_CREATING_TOOLS.has(op.tool),
       });
     }
+  }
+
+  // Document nodes remain in the alias map and edge topology so concepts can
+  // be grounded in the artifact they explain. Only cognitive nodes are
+  // themselves subject to orphan prevention.
+  const conceptCreatingOps = nodeCreatingOps.filter((op) => !op.isDocument);
+  const documentCreatingOps = nodeCreatingOps.filter((op) => op.isDocument);
+
+  if (conceptCreatingOps.length === 0) {
+    return { valid: true };
   }
 
   // Build a name → set-of-aliases map so we can normalize references.
@@ -302,9 +502,8 @@ function validateNoOrphans(
     if (existingNodeIds.has(handle) || existingNodeTitles.has(handle))
       return ANCHOR;
     if (aliasOf.has(handle)) return aliasOf.get(handle) ?? null;
-    // All node-creating ops (including doc_create) are now in aliasOf,
-    // so $N.id refs to them are resolved above. Unknown handles are
-    // treated conservatively as unrecognized.
+    // All node-creating ops (including doc_create) are in aliasOf, so $N.id
+    // refs to them resolve above. Unknown handles remain unrecognized.
     return null;
   };
 
@@ -353,9 +552,57 @@ function validateNoOrphans(
     const answerKey = canonicalize(answerHandle);
     if (questionKey && answerKey) addEdge(questionKey, answerKey);
   }
+  // graph_serendipity creates `learned_from` edges to every supplied source
+  // element. Model those implicit links so a synthesis can be anchored without
+  // redundant graph_connect operations in the same batch.
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
+    if (op.tool !== 'graph_serendipity') continue;
+    const synthesisEntry = nodeCreatingOps.find((entry) => entry.index === i);
+    if (!synthesisEntry) continue;
+    const synthesisKey = synthesisEntry.title || synthesisEntry.idRef;
+    const sourceHandles = Array.isArray(op.params.source_elements)
+      ? op.params.source_elements
+      : [];
+    for (const sourceHandle of sourceHandles) {
+      if (typeof sourceHandle !== 'string') continue;
+      const sourceKey = canonicalize(sourceHandle);
+      if (sourceKey) addEdge(synthesisKey, sourceKey);
+    }
+  }
+  // graph_decide creates typed edges from the durable decision node to every
+  // option, preserving both the selected and rejected alternatives.
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
+    if (op.tool !== 'graph_decide') continue;
+    const decisionEntry = nodeCreatingOps.find((entry) => entry.index === i);
+    if (!decisionEntry) continue;
+    const decisionKey = decisionEntry.title || decisionEntry.idRef;
+    const optionHandles = Array.isArray(op.params.options)
+      ? op.params.options
+      : [];
+    for (const optionHandle of optionHandles) {
+      if (typeof optionHandle !== 'string') continue;
+      const optionKey = canonicalize(optionHandle);
+      if (optionKey) addEdge(decisionKey, optionKey);
+    }
+  }
+  // graph_note creates a `learned_from` edge to the exact visible graph node
+  // named by params.about. Keeping implicit-edge modeling here means the generic
+  // grounding traversal treats the note exactly like the persisted graph.
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
+    if (op.tool !== 'graph_note') continue;
+    const noteEntry = nodeCreatingOps.find((entry) => entry.index === i);
+    if (!noteEntry) continue;
+    const noteKey = noteEntry.title || noteEntry.idRef;
+    const artifactKey = canonicalize(String(op.params.about || ''));
+    if (artifactKey) addEdge(noteKey, artifactKey);
+  }
   // doc_create with parentId creates an implicit `contains` edge from parent
-  // to the new doc node. Child doc nodes are anchored through their parent.
-  // Root doc nodes (no parentId) need an explicit graph_connect.
+  // to the new doc node. This topology matters when a concept reaches a child
+  // document through another relationship, even though documents themselves
+  // never need semantic edges to pass orphan prevention.
   for (let i = 0; i < operations.length; i++) {
     const op = operations[i];
     if (op.tool !== 'doc_create' || !op.params.parentId) continue;
@@ -367,16 +614,34 @@ function validateNoOrphans(
     if (parentKey) addEdge(docKey, parentKey);
   }
 
-  // BFS from ANCHOR through the adjacency list.
-  // For empty graphs, there is no ANCHOR to reach — instead we check that
-  // all new nodes form a single connected component (every node must have
-  // at least one edge, and all must be mutually reachable).
+  // doc_create expressesIds creates implicit `expresses` edges at execution.
+  // Model them here as well so a concept expressed by a newly created document
+  // is recognized as grounded without a redundant graph_connect operation.
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
+    if (op.tool !== 'doc_create') continue;
+    const docEntry = nodeCreatingOps.find((entry) => entry.index === i);
+    if (!docEntry) continue;
+    const docKey = docEntry.title || docEntry.idRef;
+    const expressedHandles = Array.isArray(op.params.expressesIds)
+      ? op.params.expressesIds
+      : [];
+    for (const expressedHandle of expressedHandles) {
+      if (typeof expressedHandle !== 'string') continue;
+      const conceptKey = canonicalize(expressedHandle);
+      if (conceptKey) addEdge(docKey, conceptKey);
+    }
+  }
+
+  // BFS from grounding anchors through the adjacency list. A new document is
+  // always an anchor because it is the canonical artifact being authored.
+  const documentAnchors = documentCreatingOps.map((op) => op.title || op.idRef);
   const graphIsEmpty = existingNodes.length === 0;
 
-  if (graphIsEmpty) {
-    // Every new node must appear in at least one edge.
-    // BFS from the first connected new node to verify full connectivity.
-    const firstConnected = nodeCreatingOps.find((op) => {
+  if (graphIsEmpty && documentAnchors.length === 0) {
+    // Preserve bootstrap behavior for a concept-only empty graph: all new
+    // concepts must form one connected component and none may stand alone.
+    const firstConnected = conceptCreatingOps.find((op) => {
       const key = op.title || op.idRef;
       return adjacency.has(key);
     });
@@ -384,13 +649,14 @@ function validateNoOrphans(
     if (!firstConnected) {
       // No new node has any edge at all.
       const label =
-        nodeCreatingOps[0]?.title || `operation ${nodeCreatingOps[0]?.index}`;
+        conceptCreatingOps[0]?.title ||
+        `operation ${conceptCreatingOps[0]?.index}`;
       return {
         valid: false,
         error:
-          `Concept "${label}" (operation ${nodeCreatingOps[0]?.index}) would be orphaned. ` +
-          `Every node must have at least one edge — even in an empty graph. ` +
-          `Add at least two nodes with a graph_connect between them.`,
+          `Concept "${label}" (operation ${conceptCreatingOps[0]?.index}) would be ungrounded. ` +
+          `Every new cognitive concept needs a relationship to existing knowledge, a canonical document artifact, or another new concept. ` +
+          `In an empty graph, add at least two concepts with a graph_connect between them, or connect the concept to a doc_create node.`,
       };
     }
 
@@ -410,21 +676,24 @@ function validateNoOrphans(
       }
     }
 
-    for (const op of nodeCreatingOps) {
+    for (const op of conceptCreatingOps) {
       const canonical = op.title || op.idRef;
       if (!visited.has(canonical)) {
         const label = op.title || `operation ${op.index}`;
         return {
           valid: false,
           error:
-            `Concept "${label}" (operation ${op.index}) would be orphaned. ` +
-            `Every node must have at least one edge. In an empty graph, all new nodes must ` +
+            `Concept "${label}" (operation ${op.index}) would be ungrounded. ` +
+            `In an empty graph, all new cognitive concepts must ` +
             `connect to each other through graph_connect operations in this batch.`,
         };
       }
     }
   } else {
-    const queue: string[] = [ANCHOR];
+    const queue: string[] = graphIsEmpty
+      ? [...documentAnchors]
+      : [ANCHOR, ...documentAnchors];
+    for (const anchor of queue) reachable.add(anchor);
     while (queue.length > 0) {
       const node = queue.shift();
       if (node === undefined) break;
@@ -438,18 +707,18 @@ function validateNoOrphans(
       }
     }
 
-    // Any new node whose canonical key isn't in `reachable` is orphaned.
-    for (const op of nodeCreatingOps) {
+    // Any new cognitive concept that cannot reach an existing node or a newly
+    // created canonical document artifact is ungrounded.
+    for (const op of conceptCreatingOps) {
       const canonical = op.title || op.idRef;
       if (!reachable.has(canonical)) {
         const label = op.title || `operation ${op.index}`;
         return {
           valid: false,
           error:
-            `Concept "${label}" (operation ${op.index}) would be orphaned. ` +
-            `Every new concept must reach an EXISTING node in the graph through at least one chain of graph_connect operations in this batch. ` +
-            `Add a graph_connect that links this concept (directly or via another new concept) to an existing node — ` +
-            `you can use the existing node's title (e.g. to: "Existing Concept Title"), its ID (e.g. to: "n_abc123"), or a back-ref to an earlier op in this batch (e.g. to: "$0.id").`,
+            `Concept "${label}" (operation ${op.index}) would be ungrounded. ` +
+            `Every new cognitive concept must reach existing knowledge or a newly created canonical document artifact through relationships in this batch. ` +
+            `Connect it directly or transitively using an existing node title/ID or a batch back-reference such as "$0.id".`,
         };
       }
     }
@@ -470,7 +739,7 @@ async function checkForDuplicates(
 
   // Check embedding coverage - if no embeddings, skip check
   const stats = store.getEmbeddingStats();
-  if (stats.withEmbedding === 0) {
+  if (stats.withEmbedding === 0 || !EmbeddingService.isModelLoaded()) {
     return warnings; // Can't check without embeddings
   }
 
@@ -480,7 +749,8 @@ async function checkForDuplicates(
     // Only check graph_add_concept operations
     if (op.tool !== 'graph_add_concept') continue;
 
-    const name = op.params.name as string;
+    const name =
+      (op.params.title as string) || (op.params.name as string) || '';
     const understanding = op.params.understanding as string;
 
     // Create search query from name + understanding
@@ -520,6 +790,7 @@ export async function handleBatchTools(
   name: string,
   args: Record<string, unknown>,
   contextManager: ContextManager,
+  mode: ToolMode = 'full',
 ): Promise<unknown> {
   if (name !== 'graph_batch') {
     throw new Error(`Unknown batch tool: ${name}`);
@@ -531,13 +802,82 @@ export async function handleBatchTools(
   }>;
   const stopOnError = args.stopOnError !== false; // default true
   const ignoreWarnings = args.ignoreWarnings === true; // default false
-  const allowUnorderedDocs = args.allowUnorderedDocs === true; // default false
   const warningThreshold =
     typeof args.warningThreshold === 'number'
       ? args.warningThreshold
       : DEFAULT_DUPLICATE_THRESHOLD;
   const commitMessage = args.commit_message as string | undefined;
   const agentName = args.agent_name as string | undefined;
+  const author = typeof args.author === 'string' ? args.author : undefined;
+  const requestedWorkflow =
+    typeof args.workflow === 'string' ? args.workflow : undefined;
+
+  if (
+    requestedWorkflow !== undefined &&
+    !batchReentryWorkflowNames.has(requestedWorkflow)
+  ) {
+    return {
+      success: false,
+      error: 'INVALID_BATCH_WORKFLOW',
+      message: `workflow must be one of: ${BATCH_REENTRY_WORKFLOWS.join(', ')}`,
+    };
+  }
+
+  if (operations.length > MAX_BATCH_OPERATIONS) {
+    return {
+      success: false,
+      error: 'BATCH_OPERATION_LIMIT_EXCEEDED',
+      message: `A graph_batch may contain at most ${MAX_BATCH_OPERATIONS} operations. Split independent work into separate committed encounters.`,
+    };
+  }
+
+  if (
+    !Array.isArray(operations) ||
+    operations.some(
+      (operation) =>
+        !operation ||
+        typeof operation !== 'object' ||
+        typeof operation.tool !== 'string' ||
+        !operation.params ||
+        typeof operation.params !== 'object' ||
+        Array.isArray(operation.params),
+    )
+  ) {
+    return {
+      success: false,
+      error: 'INVALID_BATCH_OPERATIONS',
+      message:
+        'operations must be an array of { tool: string, params: object } entries.',
+    };
+  }
+
+  // A batch owns exactly one active project and one SQLite transaction.
+  // Allowing a nested handler to honor params.project would switch the
+  // process-global context mid-transaction and leave writes in the second
+  // project outside the rollback/commit boundary.
+  const projectOverride = operations.find((operation) =>
+    Reflect.has(operation.params, 'project'),
+  );
+  if (projectOverride) {
+    return {
+      success: false,
+      error: 'BATCH_PROJECT_OVERRIDE_NOT_ALLOWED',
+      message:
+        'A graph_batch is bound to the active project. Nested operations cannot set params.project; switch projects before starting the batch.',
+    };
+  }
+
+  const forbiddenOperation = operations.find(
+    (operation) => !batchOperationToolNames.has(operation.tool),
+  );
+  if (forbiddenOperation) {
+    return {
+      success: false,
+      error: 'BATCH_OPERATION_NOT_ALLOWED',
+      message: `Tool "${forbiddenOperation.tool}" is not an atomic graph mutation primitive and cannot run inside graph_batch.`,
+      allowedTools: [...BATCH_OPERATION_TOOLS],
+    };
+  }
 
   // Enforce commit_message requirement
   if (!commitMessage || commitMessage.trim() === '') {
@@ -547,18 +887,43 @@ export async function handleBatchTools(
     );
   }
 
-  // THINKING NODE RESTRICTION: Only synthesizer can create thinking nodes
-  // These are reserved for synthetic training data with proper mantra
+  // THINKING NODE RESTRICTION: the selected MCP mode is the primary
+  // capability boundary. Agent attribution remains a second check for the
+  // graph_add_concept escape hatch used by the synthetic Reader/CMP producer.
   for (const op of operations) {
+    const isThinkingOperation =
+      [
+        'doc_insert_thinking',
+        'doc_append_thinking',
+        'doc_sign_thinking',
+        'doc_get_unsigned_thinking',
+        'translate_thinking',
+      ].includes(op.tool) ||
+      ([
+        'graph_add_concept',
+        'doc_create',
+        'doc_to_concept',
+        'node_set_trigger',
+      ].includes(op.tool) &&
+        isThinkingLabel(op.params.trigger)) ||
+      (op.tool === 'doc_create' && isThinkingLabel(op.params.fileType));
+
+    if (isThinkingOperation && mode !== 'synthetic_reader') {
+      throw new Error(
+        `FORBIDDEN in TOOL_MODE "${mode}": synthetic Reader/CMP thinking blocks can only be created, signed, or translated in TOOL_MODE "synthetic_reader". ` +
+          'Use rich non-thinking typed testimony for ordinary work.',
+      );
+    }
+
     if (
       op.tool === 'graph_add_concept' &&
-      op.params.trigger === 'thinking' &&
+      isThinkingLabel(op.params.trigger) &&
       agentName !== 'synthesizer'
     ) {
       throw new Error(
-        `FORBIDDEN: trigger "thinking" is reserved for the synthesizer agent only. ` +
+        `FORBIDDEN: trigger "thinking" is reserved for the synthetic Reader/CMP synthesizer only. ` +
           `Agent "${agentName || 'unknown'}" cannot create thinking nodes. ` +
-          `Use a different trigger (e.g., analysis, question, tension, insight).`,
+          `Use the non-thinking trigger that honestly fits the underlying cognitive state.`,
       );
     }
   }
@@ -566,6 +931,11 @@ export async function handleBatchTools(
   // Track affected node and edge IDs for commit
   const affectedNodeIds: string[] = [];
   const affectedEdgeIds: string[] = [];
+  // Orphan prevention applies only to cognitive concept nodes created by this
+  // batch. Document nodes are canonical artifacts and do not require semantic
+  // edges merely to exist. Existing nodes that are revised, moved, or archived
+  // must not be reclassified as new orphans either.
+  const createdConceptNodeIds = new Set<string>();
 
   // PRE-VALIDATION: Prevent orphan nodes
   const orphanCheck = validateNoOrphans(operations);
@@ -574,7 +944,7 @@ export async function handleBatchTools(
       success: false,
       error: 'ORPHAN_PREVENTION',
       message: orphanCheck.error,
-      hint: 'Every concept node must connect to something that already exists. Use graph_connect with an existing node ID.',
+      hint: 'Ground every new cognitive concept in existing knowledge or a canonical document artifact. Document nodes themselves do not require semantic edges.',
     };
   }
 
@@ -625,9 +995,10 @@ export async function handleBatchTools(
   //
   // Implementation notes:
   //   * better-sqlite3's `db.transaction(fn)` requires fn to be sync.
-  //     Our batch loop awaits the embedding service, so we use manual
-  //     BEGIN/COMMIT/ROLLBACK instead. This is safe because the MCP server
-  //     handles requests serially against a single per-project connection.
+  //     Our batch loop awaits nested tool handlers and the embedding service,
+  //     so we use manual BEGIN/COMMIT/ROLLBACK instead. The server-level
+  //     CallTool queue serializes every external request—including reads and
+  //     project switches—while this process-global transaction is open.
   //   * Early-return cases (mid-loop error with stopOnError, orphan-sweep
   //     failure) are signalled via the BatchEarlyExit sentinel so the
   //     catch block can ROLLBACK before returning the payload.
@@ -645,12 +1016,22 @@ export async function handleBatchTools(
         // Resolve any variable references in params
         const resolvedParams = resolveReferences(op.params, results);
 
+        // The batch owns agent attribution. Pass it into the nested concept
+        // call as well so the synthesizer-only `thinking` path can satisfy
+        // the same authorization check during execution.
+        if (
+          op.tool === 'graph_add_concept' &&
+          agentName &&
+          resolvedParams.agent_name === undefined
+        ) {
+          resolvedParams.agent_name = agentName;
+        }
+
         // Pre-execution check: doc_create with parentId but no afterId
         if (
           op.tool === 'doc_create' &&
           resolvedParams.parentId &&
-          !resolvedParams.afterId &&
-          !allowUnorderedDocs
+          !resolvedParams.afterId
         ) {
           const store = getGraphStore();
           const parentId = resolvedParams.parentId as string;
@@ -663,7 +1044,7 @@ export async function handleBatchTools(
             throw new Error(
               `doc_create requires afterId when parent already has children. ` +
                 `Parent "${parentId}" has siblings: [${siblingNames}]. ` +
-                `Use afterId to specify position, or set allowUnorderedDocs: true to allow arbitrary ordering.`,
+                'Use afterId to append after the current tail; use doc_move inside graph_batch to insert or reorder.',
             );
           }
         }
@@ -673,30 +1054,74 @@ export async function handleBatchTools(
           op.tool,
           resolvedParams,
           contextManager,
+          mode,
+          true,
         );
-        results.push(result);
 
-        // Track affected node/edge IDs for commit
+        // Tool handlers may report validation/runtime failures as structured
+        // payloads instead of throwing. Promote only an explicit
+        // `success: false` to the same failure path as an exception so the
+        // transaction cannot commit a partial batch. Informational payloads
+        // and warnings without that explicit flag remain successful results.
+        const explicitFailure = getExplicitToolFailure(result);
+        if (explicitFailure) {
+          throw new Error(explicitFailure);
+        }
+
+        if (
+          typeof result !== 'object' ||
+          result === null ||
+          Array.isArray(result)
+        ) {
+          throw new Error(
+            `BATCH_EFFECTS_MISSING: ${op.tool} returned no structured mutation footprint`,
+          );
+        }
+
         const resultObj = result as Record<string, unknown>;
-        if (resultObj.id && typeof resultObj.id === 'string') {
-          if (resultObj.id.startsWith('e_')) {
-            affectedEdgeIds.push(resultObj.id);
-          } else if (resultObj.id.startsWith('n_')) {
-            affectedNodeIds.push(resultObj.id);
+        const effects = collectOperationEffects(resultObj);
+        if (effects.nodeIds.length === 0 && effects.edgeIds.length === 0) {
+          throw new Error(
+            `BATCH_EFFECTS_MISSING: ${op.tool} reported success without affected node or edge IDs`,
+          );
+        }
+
+        // Normalize every successful operation result. Besides making the
+        // provenance contract inspectable to callers, this keeps future result
+        // naming changes from silently dropping a mutation from the outer
+        // commit or from the next understanding pass.
+        resultObj.affectedNodeIds = effects.nodeIds;
+        resultObj.affectedEdgeIds = effects.edgeIds;
+        results.push(resultObj);
+        affectedNodeIds.push(...effects.nodeIds);
+        affectedEdgeIds.push(...effects.edgeIds);
+
+        if (
+          NODE_CREATING_TOOLS.includes(op.tool) &&
+          !DOCUMENT_CREATING_TOOLS.has(op.tool)
+        ) {
+          const createdId = [
+            resultObj.id,
+            resultObj.nodeId,
+            resultObj.newId,
+            resultObj.answerId,
+          ].find(
+            (id): id is string => typeof id === 'string' && id.startsWith('n_'),
+          );
+          if (createdId) createdConceptNodeIds.add(createdId);
+        }
+        if (Array.isArray(resultObj.affectedRootIds)) {
+          for (const rootId of resultObj.affectedRootIds) {
+            if (typeof rootId === 'string') affectedDocRoots.add(rootId);
           }
-        }
-        // Some tools return nodeId instead of id
-        if (resultObj.nodeId && typeof resultObj.nodeId === 'string') {
-          affectedNodeIds.push(resultObj.nodeId);
-        }
-        // graph_revise returns the updated node id
-        if (resultObj.newId && typeof resultObj.newId === 'string') {
-          affectedNodeIds.push(resultObj.newId);
         }
 
         // Generate embedding immediately for node-creating tools
         // This ensures duplicate detection works within the same batch
-        if (NODE_CREATING_TOOLS.includes(op.tool)) {
+        if (
+          NODE_CREATING_TOOLS.includes(op.tool) &&
+          EmbeddingService.isModelLoaded()
+        ) {
           const nodeId =
             (result as Record<string, unknown>).id ||
             (result as Record<string, unknown>).newId;
@@ -712,7 +1137,7 @@ export async function handleBatchTools(
 
         // Post-creation verification: doc_create nodes must trace to root
         // This catches forward references that bypassed pre-validation
-        if (op.tool === 'doc_create') {
+        if (DOCUMENT_CREATING_TOOLS.has(op.tool)) {
           const resultObj = result as Record<string, unknown>;
           const nodeId = resultObj.id as string;
           const isRoot = resultObj.isDocRoot as boolean;
@@ -768,8 +1193,22 @@ export async function handleBatchTools(
 
     hasErrors = errors.length > 0;
 
-    // ORPHAN PREVENTION: detect any concept nodes created in this batch that
-    // have no edges. Every node must have at least one edge — no exceptions.
+    // `stopOnError: false` controls error collection, never atomicity. The
+    // successful operations above are still provisional and must not land as
+    // a partial commit when any sibling operation failed.
+    if (hasErrors) {
+      throw new BatchEarlyExit({
+        success: false,
+        completed: operations.length,
+        total: operations.length,
+        results,
+        errors,
+        message: `Batch attempted all ${operations.length} operation(s) and found ${errors.length} error(s). Entire batch rolled back.`,
+      });
+    }
+
+    // ORPHAN PREVENTION: detect cognitive concepts created in this batch that
+    // have no edges. Document artifacts are intentionally excluded.
     //
     // Inside the transaction. If we find orphans, throw BatchEarlyExit so
     // the catch block ROLLBACKs the entire batch (no half-state).
@@ -782,8 +1221,7 @@ export async function handleBatchTools(
     }
 
     const orphanedNodes: string[] = [];
-    for (const nodeId of affectedNodeIds) {
-      if (!nodeId.startsWith('n_')) continue;
+    for (const nodeId of createdConceptNodeIds) {
       const node = sweepStore.getNode(nodeId);
       if (!node) continue;
       if (!sweepConnectedIds.has(nodeId)) {
@@ -797,7 +1235,11 @@ export async function handleBatchTools(
           const r = results.find(
             (r: unknown) => (r as { id?: string })?.id === id,
           );
-          return (r as { name?: string })?.name || id;
+          return (
+            (r as { title?: string; name?: string })?.title ||
+            (r as { name?: string })?.name ||
+            id
+          );
         })
         .join(', ');
       throw new BatchEarlyExit({
@@ -809,11 +1251,11 @@ export async function handleBatchTools(
           {
             index: -1,
             tool: 'orphan_check',
-            error: `${orphanedNodes.length} concept node(s) would be orphaned (no edges): ${orphanNames}. The entire batch has been rolled back. Add graph_connect operations that link every new concept to an existing or just-created node.`,
+            error: `${orphanedNodes.length} cognitive concept node(s) would be ungrounded (no relationships): ${orphanNames}. The entire batch has been rolled back. Link every new concept to existing knowledge, another grounded concept, or a canonical document artifact.`,
           },
         ],
-        message: `Batch rolled back: ${orphanedNodes.length} orphaned concept node(s) detected. No changes were persisted.`,
-        hint: 'Every concept node MUST have at least one edge. Check that graph_connect operations exist for every new concept.',
+        message: `Batch rolled back: ${orphanedNodes.length} ungrounded cognitive concept node(s) detected. No changes were persisted.`,
+        hint: 'Every new cognitive concept needs at least one grounding relationship. Document nodes do not need semantic edges.',
       });
     }
 
@@ -831,6 +1273,8 @@ export async function handleBatchTools(
         uniqueNodeIds,
         uniqueEdgeIds,
         agentName,
+        undefined,
+        author,
       );
       commit = { id: createdCommit.id, message: createdCommit.message };
     }
@@ -877,61 +1321,87 @@ export async function handleBatchTools(
     }
   }
 
-  // Calculate quick score metrics for thinking nodes - remind model of true goal
+  // Synthetic Reader/CMP mode may report health for its reserved training
+  // artifacts. Ordinary workflows must not be nudged to create or curate
+  // `thinking` nodes merely because a project already contains them.
   const store = getGraphStore();
-  const allNodes = store.getAll().nodes;
-  const allEdges = store.getAll().edges;
+  const { nodes: allNodes, edges: allEdges } = store.getAll();
   const thinkingNodes = allNodes.filter((n) => n.trigger === 'thinking');
+  const artifactCognitionBalance = assessArtifactCognitionBalance(
+    allNodes,
+    allEdges,
+  );
+  const affectedNodeOrder = [...new Set(affectedNodeIds)];
+  const visibleNodeById = new Map(allNodes.map((node) => [node.id, node]));
+  const visibleAffectedNodeIds = affectedNodeOrder.filter((id) =>
+    visibleNodeById.has(id),
+  );
 
-  // Check if batch created document nodes without any concept nodes.
-  // The understanding process requires that artifacts (doc nodes) are entangled
-  // with reasoning (concept nodes). A batch of pure doc_create ops with no
-  // accompanying concept node means the agent's reasoning is lost.
-  const hasDocCreates = operations.some(
-    (op) => op.tool === 'doc_create' && op.params.content,
+  // Archiving or superseding can make the directly affected node unavailable
+  // to an ordinary re-entry packet. In that case, re-open any still-visible
+  // endpoints of its incident relations so the absence itself can alter the
+  // next pass rather than making the mutation disappear from attention.
+  const incidentEdges = sqlite.getDb().prepare(
+    `SELECT from_id AS fromId, to_id AS toId
+       FROM edges
+      WHERE active = 1 AND (from_id = ? OR to_id = ?)`,
   );
-  const CONCEPT_TOOLS = [
-    'graph_add_concept',
-    'graph_question',
-    'graph_supersede',
-    'graph_answer',
-  ];
-  const batchCreatedConceptNode = operations.some((op) =>
-    CONCEPT_TOOLS.includes(op.tool),
-  );
+  const visibleNeighborIds: string[] = [];
+  for (const nodeId of affectedNodeOrder) {
+    if (visibleNodeById.has(nodeId)) continue;
+    const rows = incidentEdges.all(nodeId, nodeId) as Array<{
+      fromId: string;
+      toId: string;
+    }>;
+    for (const row of rows) {
+      const otherId = row.fromId === nodeId ? row.toId : row.fromId;
+      if (visibleNodeById.has(otherId)) visibleNeighborIds.push(otherId);
+    }
+  }
+
+  const reentryNodeOrder = [
+    ...visibleAffectedNodeIds,
+    ...visibleNeighborIds,
+  ].filter((id, index, ids) => ids.indexOf(id) === index);
+  const reentryNodes = reentryNodeOrder
+    .map((id) => visibleNodeById.get(id))
+    .filter((node): node is (typeof allNodes)[number] => Boolean(node));
+  const reentryFocusNodeIds = [
+    ...reentryNodes.filter((node) => !node.isDocRoot && !node.level),
+    ...reentryNodes.filter((node) => node.isDocRoot || Boolean(node.level)),
+  ]
+    .map((node) => node.id)
+    .slice(0, 12);
+  const reentryWorkflow: BatchReentryWorkflow = requestedWorkflow
+    ? (requestedWorkflow as BatchReentryWorkflow)
+    : mode === 'full'
+      ? 'general'
+      : mode === 'synthetic_reader'
+        ? 'reading'
+        : mode;
 
   let scoreHint = '';
 
-  // Warn if doc_create (with content) was used but no concept nodes exist in the batch
-  if (hasDocCreates && !batchCreatedConceptNode) {
-    scoreHint = `\n\n⚠️ MISSING CONCEPT NODES: You created document nodes but NO concept nodes in this batch.
-Your reasoning process is LOST. Every doc_create with content should be accompanied by a concept node
-explaining WHY — a decision, tension, surprise, or experiment result. Add one:
-  graph_add_concept({ title: "...", trigger: "decision", understanding: "What I decided and why...", why: "..." })
-Then connect the doc to it with an 'expresses' edge.`;
-  }
+  // This global shape notice is descriptive and deliberately conservative. It
+  // never requires a concept per document or asks an agent to manufacture
+  // retrospective testimony merely to make a warning disappear.
 
-  // Also check global thinking node health
-  if (thinkingNodes.length > 0) {
+  // Only the dedicated producer mode owns global thinking-block health.
+  if (mode === 'synthetic_reader' && thinkingNodes.length > 0) {
     const nonThinkingIds = new Set(
       allNodes.filter((n) => n.trigger !== 'thinking').map((n) => n.id),
     );
     let orphanCount = 0;
-    let totalConceptEdges = 0;
     for (const t of thinkingNodes) {
       const conceptEdges = allEdges.filter(
         (e) =>
           e.fromId === t.id && e.type !== 'next' && nonThinkingIds.has(e.toId),
       );
       if (conceptEdges.length === 0) orphanCount++;
-      totalConceptEdges += conceptEdges.length;
     }
-    const avgEdges = totalConceptEdges / thinkingNodes.length;
 
     if (orphanCount > 0) {
-      scoreHint += `\n\n⚠️ ${orphanCount} thinking node(s) have NO concept edges. Capture the invisible understanding — what beliefs shifted?`;
-    } else if (avgEdges < 2) {
-      scoreHint += `\n\n📊 ${avgEdges.toFixed(1)} avg edges per thinking (target: 2-3). Externalize more of the cognitive journey.`;
+      scoreHint += `\n\n⚠️ ${orphanCount} synthetic thinking block(s) have no source/provenance edges. Reconstruct only from underlying graph evidence and attach the exact nodes that support each block before using it in a corpus.`;
     }
   }
 
@@ -944,6 +1414,31 @@ Then connect the doc to it with an 'expresses' edge.`;
     commit,
     regeneratedDocuments:
       regeneratedDocs.length > 0 ? regeneratedDocs : undefined,
+    artifactCognitionBalance:
+      artifactCognitionBalance && artifactCognitionBalance.advisories.length > 0
+        ? artifactCognitionBalance
+        : undefined,
+    reentry:
+      affectedNodeOrder.length > 0 || affectedEdgeIds.length > 0
+        ? {
+            focusNodeIds: reentryFocusNodeIds,
+            omittedAffectedNodes: Math.max(
+              0,
+              reentryNodes.length - reentryFocusNodeIds.length,
+            ),
+            suggestedCall: {
+              tool: 'graph_understand',
+              arguments: {
+                query:
+                  'Continue the current task after this encounter. What changed, conflicts, connects, or becomes newly possible?',
+                workflow: reentryWorkflow,
+                focusNodeIds: reentryFocusNodeIds,
+              },
+            },
+            guidance:
+              'Use after a meaningful encounter so the changed nodes and their incident relations become input to the next understanding pass. Routine mutations do not require a note or forced novelty.',
+          }
+        : undefined,
     message: hasErrors
       ? `Batch completed with ${errors.length} error(s)`
       : commit

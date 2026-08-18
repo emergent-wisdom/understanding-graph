@@ -40,13 +40,13 @@ Graph maintenance is a collaborative act, not just a background process.
 ## Quality signals
 
 - `graph_thermostat` — DIVERGE (explore) or CONVERGE (synthesize)
-- `graph_score` — structural quality, target 70+
-- `graph_analyze` — gaps, bridges, open questions, conflicts
+- `graph_score` — structural diagnostic, not a semantic-quality target
+- `graph_analyze` — gaps, bridges, and open questions
 
 ## Cybernetic sense-making
 
 ```javascript
-graph_analyze({ include: ["gaps", "bridges", "questions", "conflicts"] })
+graph_analyze({ include: ["gaps", "bridges", "questions"] })
 ```
 
 | Signal | What it means | The fix |
@@ -54,7 +54,7 @@ graph_analyze({ include: ["gaps", "bridges", "questions", "conflicts"] })
 | Disconnected clusters | Understanding is siloed | **Bridge** — find shared concepts across clusters |
 | Many `openQuestions` | You know what you don't know | **Explore** — answer questions, or ask the user |
 | High `density` | Tight mental model | **Disrupt** — inject serendipity |
-| Contradictions | Cognitive dissonance | **Resolve** — create synthesis |
+| Contradictions | Cognitive dissonance | **Investigate** — preserve the tension unless evidence resolves it; then record what the resolution became |
 | Low `supersessionCount` | Nobody changed their mind | **Revisit** — have beliefs actually shifted? |
 
 ## Thermostat
@@ -71,20 +71,24 @@ graph_find_by_trigger({ trigger: "question" })
 graph_find_by_trigger({ trigger: "tension" })
 graph_find_by_trigger({ trigger: "prediction" })
 ```
-If any of these return empty and you've been doing real thinking, something is missing. Real understanding involves questions you can't answer yet, tensions you haven't resolved, and predictions about what comes next.
+If any return empty, ask whether the work genuinely warranted that trigger.
+Do not invent questions, tensions, or predictions to improve trigger diversity.
 
 ### Diverge/converge action routing
 When `graph_thermostat` returns a recommendation:
 
 **DIVERGE (explore, generate variety):**
-- Use `graph_chaos()` to inject serendipity — random connections that break tunnel vision
-- Use `graph_discover()` for grounded exploration — finds related concepts you haven't connected yet
+- Use `graph_discover_grounded()` for defensible exploration that permits "no connection"
+- Use `graph_chaos()` only when the user explicitly wants high-divergence speculation
 - Create `serendipity` trigger nodes for unexpected connections
 - Tolerate contradiction — don't resolve tensions prematurely
 
 **CONVERGE (synthesize, resolve):**
-- Use `graph_analyze({ include: ["gaps", "bridges", "questions", "conflicts"] })` to find what needs connecting
-- Bridge disconnected clusters with synthesis nodes
+- Use `graph_analyze({ include: ["gaps", "bridges", "questions"] })` to find what needs connecting
+- Bridge disconnected clusters with specific typed relations and, when a
+  reusable result actually stabilizes, store what the synthesis became:
+  `analysis`, `model`, `hypothesis`, `decision`, or another honest trigger.
+  Synthesis itself is an operation, not a catch-all node type.
 - Resolve or reaffirm open questions
 - Supersede stale beliefs
 - Commit to positions on tensions

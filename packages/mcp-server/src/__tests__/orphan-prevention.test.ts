@@ -9,10 +9,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
-// Tests for orphan prevention in graph_batch, including doc_create nodes.
-// Every new node must be reachable from the existing graph through edges
-// in the same batch. Doc root nodes need explicit graph_connect; child
-// doc nodes are anchored via their parentId (implicit contains edge).
+// Tests for orphan prevention in graph_batch. New cognitive concepts must be
+// grounded through relationships. Document nodes are canonical artifacts, so
+// roots and children may exist without unrelated semantic edges; they can also
+// serve as grounding anchors for concepts created in the same batch.
 
 let tmpDir: string;
 let contextManager: ContextManager;
@@ -194,23 +194,22 @@ describe('orphan prevention — concept nodes', () => {
 });
 
 describe('orphan prevention — doc_create nodes', () => {
-  it('rejects orphan doc root in non-empty graph', async () => {
+  it('allows a standalone doc root in a non-empty graph', async () => {
     await seed();
     const result = await batch([
       {
         tool: 'doc_create',
         params: {
-          title: 'Orphan Doc',
+          title: 'Canonical Doc',
           fileType: 'md',
           isDocRoot: true,
         },
       },
     ]);
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('ORPHAN_PREVENTION');
+    expect(result.success).toBe(true);
   });
 
-  it('rejects doc root as sole node in empty graph (no edges)', async () => {
+  it('allows a doc root as the sole node in an empty graph', async () => {
     const result = await batch([
       {
         tool: 'doc_create',
@@ -221,8 +220,7 @@ describe('orphan prevention — doc_create nodes', () => {
         },
       },
     ]);
-    expect(result.success).toBe(false);
-    expect(result.error).toBe('ORPHAN_PREVENTION');
+    expect(result.success).toBe(true);
   });
 
   it('allows doc root with graph_connect edge', async () => {
@@ -250,8 +248,7 @@ describe('orphan prevention — doc_create nodes', () => {
   });
 
   it('allows child doc with parentId (anchored via contains)', async () => {
-    // Create a connected doc root first
-    await seed();
+    // A document root needs no unrelated semantic edge.
     const rootResult = await batch([
       {
         tool: 'doc_create',
@@ -259,15 +256,6 @@ describe('orphan prevention — doc_create nodes', () => {
           title: 'Doc Root',
           fileType: 'md',
           isDocRoot: true,
-        },
-      },
-      {
-        tool: 'graph_connect',
-        params: {
-          from: '$0.id',
-          to: 'Seed Concept',
-          type: 'expresses',
-          why: 'Root expresses concept.',
         },
       },
     ]);
@@ -330,12 +318,144 @@ describe('orphan prevention — doc_create nodes', () => {
     ]);
     expect(result.success).toBe(true);
   });
+
+  it('treats a new document as a grounding anchor for a new concept', async () => {
+    const result = await batch([
+      {
+        tool: 'doc_create',
+        params: {
+          title: 'Resolver implementation',
+          content: 'def resolve(): pass\n',
+          fileType: 'py',
+          isDocRoot: true,
+        },
+      },
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Structural shadowing',
+          trigger: 'decision',
+          understanding: 'A higher-precedence scalar replaces a lower subtree.',
+          why: 'This rule determines the resolver behavior.',
+        },
+      },
+      {
+        tool: 'graph_connect',
+        params: {
+          from: '$1.id',
+          to: '$0.id',
+          type: 'contextualizes',
+          why: 'The decision explains the behavior encoded by the artifact.',
+        },
+      },
+    ]);
+
+    expect(result.success).toBe(true);
+  });
+
+  it('models doc_create expressesIds as a grounding relationship', async () => {
+    const result = await batch([
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Precedence invariant',
+          trigger: 'decision',
+          understanding: 'Runtime values override environment values.',
+          why: 'The implementation needs a deterministic winner.',
+        },
+      },
+      {
+        tool: 'doc_create',
+        params: {
+          title: 'Configuration resolver',
+          content: 'runtime_overrides_environment = True\n',
+          fileType: 'py',
+          isDocRoot: true,
+          expressesIds: ['$0.id'],
+        },
+      },
+    ]);
+
+    expect(result.success).toBe(true);
+    const conceptId = (result.results as Array<{ id?: string }>)[0]?.id;
+    const docId = (result.results as Array<{ id?: string }>)[1]?.id;
+    const expressesEdge = getGraphStore()
+      .getAll()
+      .edges.find(
+        (edge) =>
+          edge.fromId === docId &&
+          edge.toId === conceptId &&
+          edge.type === 'expresses',
+      );
+    expect(expressesEdge).toBeTruthy();
+  });
+
+  it('models graph_note learned_from as an implicit grounding relationship', async () => {
+    const result = await batch([
+      {
+        tool: 'doc_create',
+        params: {
+          title: 'Merge implementation',
+          content: 'function merge() {}\n',
+          fileType: 'ts',
+          isDocRoot: true,
+        },
+      },
+      {
+        tool: 'graph_note',
+        params: {
+          about: '$0.id',
+          testimony:
+            'Array replacement feels safer than positional merging, but a test with sparse arrays should decide it.',
+        },
+      },
+    ]);
+
+    expect(result.success).toBe(true);
+    const docId = (result.results as Array<{ id?: string }>)[0]?.id;
+    const noteId = (result.results as Array<{ id?: string }>)[1]?.id;
+    const learnedFromEdge = getGraphStore()
+      .getAll()
+      .edges.find(
+        (edge) =>
+          edge.fromId === noteId &&
+          edge.toId === docId &&
+          edge.type === 'learned_from',
+      );
+    expect(learnedFromEdge).toBeTruthy();
+  });
+
+  it('still rejects an ungrounded concept beside a valid document', async () => {
+    const result = await batch([
+      {
+        tool: 'doc_create',
+        params: {
+          title: 'Valid artifact',
+          content: '# Artifact\n',
+          fileType: 'md',
+          isDocRoot: true,
+        },
+      },
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Unrelated assertion',
+          trigger: 'foundation',
+          understanding: 'This has no relationship to evidence or artifact.',
+          why: 'Exercises the grounding boundary.',
+        },
+      },
+    ]);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('ORPHAN_PREVENTION');
+    expect(result.message).toContain('ungrounded');
+    expect(getGraphStore().getAll().nodes).toHaveLength(0);
+  });
 });
 
 describe('doc_create — null content handling', () => {
   it('creates doc root without content (no crash)', async () => {
-    // Need a seed + edge since no empty-graph exemption
-    await seed();
     const result = await batch([
       {
         tool: 'doc_create',
@@ -343,15 +463,6 @@ describe('doc_create — null content handling', () => {
           title: 'Empty Root',
           fileType: 'md',
           isDocRoot: true,
-        },
-      },
-      {
-        tool: 'graph_connect',
-        params: {
-          from: '$0.id',
-          to: 'Seed Concept',
-          type: 'expresses',
-          why: 'Doc expresses seed concept.',
         },
       },
     ]);

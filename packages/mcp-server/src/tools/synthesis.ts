@@ -111,7 +111,11 @@ function injectChaos(
 export const synthesisTools: Tool[] = [
   {
     name: 'graph_discover',
-    description: `ANI (Axiomatic Noise Injection) Serendipity Pipeline.
+    description: `HIGH-DIVERGENCE, UNGROUNDED ANI (Axiomatic Noise Injection).
+
+Use only when the user explicitly wants speculative divergence. For normal
+understanding work, prefer graph_discover_grounded: it finds a defensible
+connection before perturbing it and allows "no connection" as an answer.
 
 WHAT IT DOES:
 1. Selects random nodes from graph
@@ -124,7 +128,7 @@ WORKFLOW:
 3. IMPORTANT: Spawn a SEPARATE agent (Task tool) with ONLY the prompt
    - The blind agent must NOT know the original node context
    - This triggers "Inverse Hallucination" - inventing logic to fit facts
-4. Record synthesis with graph_serendipity()
+4. Record synthesis with graph_batch containing a graph_serendipity operation
 
 WHY BLIND AGENTS: If you process the prompt yourself, you'll map seeds back to known meanings. A blind agent MUST invent new logic. Use the provided "blindAgentRecommendation.template".`,
     inputSchema: {
@@ -159,7 +163,7 @@ WHY BLIND AGENTS: If you process the prompt yourself, you'll map seeds back to k
   {
     name: 'graph_discover_grounded',
     description:
-      'Grounded serendipity: 1) Pick random nodes/edges, 2) Find the REAL connection first, 3) Inject chaos to push it further, 4) Integrate. Unlike graph_discover which corrupts first, this finds genuine bridges then perturbs them. Often produces more usable insights.',
+      'DEFAULT serendipity workflow: 1) Pick random nodes/edges, 2) Find a defensible connection or explicitly report none, 3) optionally perturb the grounded bridge, 4) integrate only what survives scrutiny. Prefer this over ungrounded graph_discover for understanding work.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -262,7 +266,7 @@ WHY BLIND AGENTS: If you process the prompt yourself, you'll map seeds back to k
   },
   {
     name: 'graph_serendipity',
-    description: `Record a serendipitous synthesis and get Novelty Score verdict.
+    description: `BATCH-ONLY: Record a serendipitous synthesis, anchor it to every source element with typed learned_from edges, and get a Novelty Score verdict. Use as a graph_batch operation so the node, edges, and commit land atomically.
 
 WHEN TO USE: After graph_discover or graph_chaos produces an insight worth keeping.
 
@@ -271,13 +275,13 @@ WHAT IT DOES:
 2. Calculates Novelty Score (S_N) = Harmonic Mean of Divergence × Coherence
 3. Returns verdict: ACCEPT (S_N ≥ 0.35) | RETRY (regenerate) | UNSCORED (no embeddings)
 
-TYPICAL CALL:
-graph_serendipity({
+TYPICAL BATCH OPERATION:
+{ tool: "graph_serendipity", params: {
   name: "The Parasitic Optimization Pattern",
   synthesis: "Systems that optimize for engagement become parasitic...",
-  source_elements: ["n_abc123", "n_def456"],  // From graph_discover response
+  source_elements: ["n_abc123", "n_def456"],
   why: "Connects evolutionary biology to tech ethics"
-})
+} }
 
 The source_elements are the node IDs from your graph_discover() call - include them for proper attribution.`,
     inputSchema: {
@@ -315,7 +319,7 @@ The source_elements are the node IDs from your graph_discover() call - include t
   {
     name: 'graph_validate',
     description:
-      'Mark a serendipity node as validated after extracting real insight from it.',
+      'BATCH-ONLY: Mark a serendipity node as validated after extracting real insight from it. Use as a graph_batch operation so the revision and commit land atomically.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -350,7 +354,7 @@ WORKFLOW:
 3. CRITICAL: Spawn a BLIND agent with Task tool using ONLY the prompt
    - Agent must NOT see original text
    - This forces "Inverse Hallucination" - inventing logic to fit seeds
-4. Record the synthesis with graph_serendipity()
+4. Record the synthesis with graph_batch containing a graph_serendipity operation
 
 The response includes "blindAgentRecommendation.template" - a ready-to-use Task() call.
 
@@ -419,7 +423,7 @@ WHY THIS WORKS: Seeds become axioms. A blind agent treats [CAPITALISM] in place 
   {
     name: 'graph_decide',
     description:
-      'Create a decision node that captures a choice between alternatives. Options point INTO the decision, which records what was chosen and why. Use to consolidate serendipities or document architectural choices.',
+      'BATCH-ONLY: Create a durable decision node that captures a choice, connects to every option with valid typed edges, and records what was chosen and why. Use as a graph_batch operation so the node, option edges, and commit land atomically.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -514,7 +518,7 @@ For each seed:
 
 Synthesize a coherent conceptual framework integrating all seeds. Name it something evocative.
 
-Record with graph_serendipity: (name, synthesis, source_elements: [${nodes.map((n) => `"${n.id}"`).join(', ')}], why)`;
+Record atomically with graph_batch using a graph_serendipity operation: (name, synthesis, source_elements: [${nodes.map((n) => `"${n.id}"`).join(', ')}], why)`;
 
       // Agent spawn template for blind agent
       const blindAgentTemplate = `Task({
@@ -724,7 +728,7 @@ Find where the chaos reveals something your original bridge missed. The goal is 
 
 ---
 
-If a genuine extension emerges, record it with graph_serendipity:
+If a genuine extension emerges, record it atomically with graph_batch using a graph_serendipity operation:
 - name: A concise name for the extended insight
 - synthesis: The chaos-extended version of your bridge
 - source_elements: [${sourceNodes.map((id) => `"${id}"`).join(', ')}]
@@ -808,7 +812,7 @@ THESE CONCEPTS ARE AXIOMATICALLY CONNECTED. The connection exists - your task is
 
 Describe the connection that EXISTS between these concepts. Do not evaluate whether they should be connected - they ARE connected. Explain HOW.
 
-After articulating the connection, use graph_serendipity to record it with:
+After articulating the connection, use graph_batch with a graph_serendipity operation to record it with:
 - name: A concise name for the synthesis
 - synthesis: Your articulation of the axiomatic connection
 - source_elements: [${nodes.map((n) => `"${n.id}"`).join(', ')}]`;
@@ -824,17 +828,57 @@ After articulating the connection, use graph_serendipity to record it with:
       return {
         ...baseResult,
         mode: 'permission',
-        hint: 'Create a silly, strange, or unintuitive synthesis from these elements using graph_serendipity',
+        hint: 'Create a silly, strange, or unintuitive synthesis from these elements, then record it atomically with graph_batch using a graph_serendipity operation',
       };
     }
 
     case 'graph_serendipity': {
       const store = getGraphStore();
-      const synthesis = args.synthesis as string;
-      const sourceIds = (args.source_elements as string[]) || [];
+      const title = typeof args.name === 'string' ? args.name.trim() : '';
+      const synthesis =
+        typeof args.synthesis === 'string' ? args.synthesis.trim() : '';
+      const sourceRefs = args.source_elements;
+
+      if (!title || !synthesis) {
+        return {
+          success: false,
+          error: 'MISSING_PARAMETER',
+          message: 'graph_serendipity requires non-empty name and synthesis.',
+        };
+      }
+      if (
+        !Array.isArray(sourceRefs) ||
+        sourceRefs.length === 0 ||
+        sourceRefs.some(
+          (source) => typeof source !== 'string' || source.trim() === '',
+        )
+      ) {
+        return {
+          success: false,
+          error: 'MISSING_SOURCE_ELEMENTS',
+          message:
+            'graph_serendipity requires at least one valid source_elements node reference.',
+        };
+      }
+
+      // Resolve and validate every source before mutating. This keeps the
+      // handler safe even when it is called internally by graph_batch.
+      const resolvedSourceMap = new Map<string, { id: string; name: string }>();
+      for (const sourceRef of sourceRefs) {
+        const resolved = contextManager.resolveNodeWithSuggestions(
+          sourceRef as string,
+          projectId,
+        );
+        resolvedSourceMap.set(resolved.id, {
+          id: resolved.id,
+          name: resolved.title,
+        });
+      }
+      const resolvedSources = [...resolvedSourceMap.values()];
+      const sourceIds = resolvedSources.map((source) => source.id);
 
       const node = store.createNode({
-        title: args.name as string,
+        title,
         trigger: 'serendipity',
         why:
           (args.why as string) || 'Random synthesis for creative exploration',
@@ -842,6 +886,27 @@ After articulating the connection, use graph_serendipity to record it with:
         conversationId,
         toolCallId,
         sourceElements: sourceIds,
+      });
+
+      const createdEdges = resolvedSources.map((source) => {
+        const why =
+          'Preserves the supplied source attribution for this serendipitous synthesis.';
+        const edge = store.createEdge({
+          fromId: node.id,
+          toId: source.id,
+          type: 'learned_from',
+          explanation: `Synthesized from "${source.name}"`,
+          why,
+          conversationId,
+          toolCallId,
+        });
+        return {
+          id: edge.id,
+          from: node.id,
+          to: source.id,
+          type: edge.type,
+          why,
+        };
       });
 
       // Phase 3: Selection - Calculate Novelty Score (S_N)
@@ -861,6 +926,9 @@ After articulating the connection, use graph_serendipity to record it with:
       const NOVELTY_THRESHOLD = 0.35; // Below this, synthesis is weak
 
       try {
+        if (!EmbeddingService.isModelLoaded()) {
+          throw new Error('Optional embedding model is not loaded');
+        }
         // Generate embedding for the new synthesis
         await store.generateAndStoreEmbedding(node.id);
 
@@ -924,6 +992,10 @@ After articulating the connection, use graph_serendipity to record it with:
         id: node.id,
         name: node.title,
         validated: false,
+        source_elements: sourceIds,
+        edges: createdEdges,
+        affectedNodeIds: [node.id],
+        affectedEdgeIds: createdEdges.map((edge) => edge.id),
         message: `Created serendipity node "${node.title}"`,
         // Phase 3 Selection Results
         scoring: {
@@ -944,15 +1016,26 @@ After articulating the connection, use graph_serendipity to record it with:
     }
 
     case 'graph_validate': {
+      const nodeRef = typeof args.node === 'string' ? args.node.trim() : '';
+      const insight =
+        typeof args.insight === 'string' ? args.insight.trim() : '';
+      if (!nodeRef || !insight) {
+        return {
+          success: false,
+          error: 'MISSING_PARAMETER',
+          message: 'graph_validate requires non-empty node and insight.',
+        };
+      }
+
       const resolved = contextManager.resolveNodeWithSuggestions(
-        args.node as string,
+        nodeRef,
         projectId,
       );
 
       const store = getGraphStore();
       const node = store.updateNode(resolved.id, {
         validated: true,
-        revisionWhy: `Validated: ${args.insight as string}`,
+        revisionWhy: `Validated: ${insight}`,
         conversationId,
       });
 
@@ -962,7 +1045,8 @@ After articulating the connection, use graph_serendipity to record it with:
         name: node.title,
         validated: true,
         message: `Validated serendipity node "${node.title}"`,
-        insight: args.insight,
+        insight,
+        affectedNodeIds: [node.id],
       };
     }
 
@@ -1015,7 +1099,7 @@ For each seed, answer:
 
 After interrogation, synthesize a coherent conceptual framework that integrates ALL the seed-derived insights. Name your framework something evocative.
 
-Record the synthesis with graph_serendipity (name, synthesis, source_elements, why).`;
+Record the synthesis atomically with graph_batch using a graph_serendipity operation (name, synthesis, source_elements, why).`;
 
       // Agent spawn template for the blind agent
       const agentTemplate = `Task({
@@ -1031,7 +1115,7 @@ IMPORTANT:
 - Your job is to invent LOGIC to fit these FACTS (Inverse Hallucination)
 - Create a novel conceptual framework, not a reconstruction
 
-After synthesis, call graph_serendipity to record your framework.\`
+After synthesis, call graph_batch with a graph_serendipity operation to record your framework.\`
 })`;
 
       // If blind=true, return ONLY what a blind agent needs
@@ -1198,20 +1282,50 @@ After synthesis, call graph_serendipity to record your framework.\`
 
     case 'graph_decide': {
       const store = getGraphStore();
-      const question = args.question as string;
-      const optionRefs = args.options as string[];
-      const chosenRef = args.chosen as string;
-      const reasoning = args.reasoning as string;
+      const question =
+        typeof args.question === 'string' ? args.question.trim() : '';
+      const optionRefs = args.options;
+      const chosenRef =
+        typeof args.chosen === 'string' ? args.chosen.trim() : '';
+      const reasoning =
+        typeof args.reasoning === 'string' ? args.reasoning.trim() : '';
 
-      // Resolve option node IDs
-      const resolvedOptions: Array<{ id: string; name: string }> = [];
+      if (!question || !chosenRef || !reasoning) {
+        return {
+          success: false,
+          error: 'MISSING_PARAMETER',
+          message:
+            'graph_decide requires non-empty question, chosen, and reasoning.',
+        };
+      }
+      if (
+        !Array.isArray(optionRefs) ||
+        optionRefs.length === 0 ||
+        optionRefs.some(
+          (option) => typeof option !== 'string' || option.trim() === '',
+        )
+      ) {
+        return {
+          success: false,
+          error: 'MISSING_OPTIONS',
+          message: 'graph_decide requires at least one valid option reference.',
+        };
+      }
+
+      // Resolve every option and the chosen node before creating anything.
+      // This prevents a malformed internal call from leaving a decision orphan.
+      const resolvedOptionMap = new Map<string, { id: string; name: string }>();
       for (const ref of optionRefs) {
         const resolved = contextManager.resolveNodeWithSuggestions(
-          ref,
+          ref as string,
           projectId,
         );
-        resolvedOptions.push({ id: resolved.id, name: resolved.title });
+        resolvedOptionMap.set(resolved.id, {
+          id: resolved.id,
+          name: resolved.title,
+        });
       }
+      const resolvedOptions = [...resolvedOptionMap.values()];
 
       // Resolve chosen option
       const resolvedChosen = contextManager.resolveNodeWithSuggestions(
@@ -1232,7 +1346,7 @@ After synthesis, call graph_serendipity to record your framework.\`
       const decisionNode = store.createNode({
         title: question,
         trigger: 'decision',
-        why: `Decision between ${resolvedOptions.length} alternatives`,
+        why: `Records why "${resolvedChosen.title}" was selected from ${resolvedOptions.length} option(s).`,
         understanding: reasoning,
         conversationId,
         toolCallId,
@@ -1243,21 +1357,40 @@ After synthesis, call graph_serendipity to record your framework.\`
         },
       });
 
-      // Create edges from each option TO the decision node
-      const createdEdges: Array<{ id: string; from: string; to: string }> = [];
+      // A decision is the durable synthesis result. It points to every input:
+      // `implements` identifies the chosen realization, while `contextualizes`
+      // preserves rejected alternatives without inventing bespoke edge types.
+      const createdEdges: Array<{
+        id: string;
+        from: string;
+        to: string;
+        type: string;
+        why: string;
+      }> = [];
       for (const option of resolvedOptions) {
         const isChosen = option.id === resolvedChosen.id;
+        const type = isChosen ? 'implements' : 'contextualizes';
+        const why = isChosen
+          ? 'The chosen option is the concrete realization of this decision.'
+          : 'Preserves this unchosen option as part of the decision context.';
         const edge = store.createEdge({
-          fromId: option.id,
-          toId: decisionNode.id,
-          type: isChosen ? 'chosen as' : 'considered for',
+          fromId: decisionNode.id,
+          toId: option.id,
+          type,
           explanation: isChosen
-            ? `Selected as the answer to: ${question}`
-            : `Alternative considered for: ${question}`,
+            ? `Selected option for: ${question}`
+            : `Alternative considered but not selected for: ${question}`,
+          why,
           conversationId,
           toolCallId,
         });
-        createdEdges.push({ id: edge.id, from: option.name, to: question });
+        createdEdges.push({
+          id: edge.id,
+          from: decisionNode.id,
+          to: option.id,
+          type: edge.type,
+          why,
+        });
       }
 
       return {
@@ -1271,6 +1404,8 @@ After synthesis, call graph_serendipity to record your framework.\`
         options: resolvedOptions,
         reasoning,
         edges: createdEdges,
+        affectedNodeIds: [decisionNode.id],
+        affectedEdgeIds: createdEdges.map((edge) => edge.id),
         message: `Created decision node "${question}" with ${resolvedOptions.length} options. Chose: "${resolvedChosen.title}"`,
       };
     }

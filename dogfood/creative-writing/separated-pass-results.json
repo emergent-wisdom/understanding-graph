@@ -1,0 +1,71 @@
+{
+  "responsePath": "dogfood/creative-writing/conditioning-response.json",
+  "packetPath": "dogfood/creative-writing/separated-conditioning-packet.json",
+  "beforePath": "dogfood/creative-writing/the-lent-night.before-separated-pass.md",
+  "finalPath": "dogfood/creative-writing/the-lent-night.md",
+  "observation": {
+    "success": true,
+    "id": "n_a455567f",
+    "name": "Does refusing the citation absolve Mara too cheaply?",
+    "version": 2,
+    "message": "Revised concept \"Does refusing the citation absolve Mara too cheaply?\" (now version 2)",
+    "epistemicJourney": {
+      "before": "I was unsure whether deleting the citation complicated Mara’s choice or cleansed it.",
+      "after": "After re-entering the unresolved question alongside the story’s anti-explanatory cup constraint, I think the cleaner pressure is to leave Mara named and make the conflict about the city’s euphemism, not her private renunciation.",
+      "pivot": "The conditioning packet surfaced the citation question as the strongest resistance while separately validating the restrained ending; this made the public-account paragraph, not the cup, the honest revision target."
+    },
+    "hint": "Epistemic journey recorded in revision history. Use node_get_revisions to see how understanding evolved."
+  },
+  "proseRevision": {
+    "success": true,
+    "id": "n_9aac241d",
+    "title": "Paragraph 22 — Public Account",
+    "version": 2,
+    "isDocRoot": null,
+    "message": "Revised document node \"Paragraph 22 — Public Account\" (now version 2)",
+    "hint": "Use doc_generate to regenerate the output file with the updated content"
+  },
+  "generated": {
+    "success": true,
+    "rootId": "n_1356f135",
+    "outputPath": "<temporary-project>/generated/the-lent-night.md",
+    "nodeCount": 29,
+    "updatedAt": "2026-08-13T17:04:29.158Z",
+    "fileType": "md",
+    "message": "Generated md file: <temporary-project>/generated/the-lent-night.md"
+  },
+  "reread": {
+    "success": true,
+    "nodeId": "n_9aac241d",
+    "title": "Paragraph 22 — Public Account",
+    "isDocRoot": false,
+    "fileType": "md",
+    "nodeCount": 1,
+    "structure": [
+      {
+        "id": "n_9aac241d",
+        "title": "Paragraph 22 — Public Account",
+        "level": "paragraph",
+        "depth": 0,
+        "version": 2,
+        "contentLength": 361,
+        "revisions": [
+          {
+            "version": 1,
+            "timestamp": "2026-08-13T17:04:29.151Z",
+            "why": "Act on the separated conditioning response without altering the validated cup ending or adding mechanism exposition.",
+            "content": "By noon the council called it the Lent Night, though no night had been given and nothing would be returned. Tomas drafted the citation. Mara deleted her name and signed the transfer ledger instead. The signature looked like a crack crossing a painted moon.",
+            "summary": "Public language misnames the irreversible transfer while Mara rejects heroic recognition.",
+            "contentStored": true
+          }
+        ]
+      }
+    ],
+    "content": "\n────────────────────────────────────────────────────────────\n[n_9aac241d] v2 Paragraph 22 — Public Account (paragraph)\n────────────────────────────────────────────────────────────\n  REVISION HISTORY:\n    v1 (2026-08-13T17:04:29.151Z): Act on the separated conditioning response without altering the validated cup ending or adding mechanism exposition.\n      SUMMARY:\n        Public language misnames the irreversible transfer while Mara rejects heroic recognition.\n      CONTENT:\n        By noon the council called it the Lent Night, though no night had been given and nothing would be returned. Tomas drafted the citation. Mara deleted her name and signed the transfer ledger instead. The signature looked like a crack crossing a painted moon.\n  CURRENT (v2):\nBy noon the council called it the Lent Night, though no night had been given and nothing would be returned. Tomas drafted the citation: MARA VENN, FOR THE SACRIFICE OF THIRTY-ONE YEARS. Mara struck out sacrifice. The council restored it before the ink dried. She signed beneath the word anyway. Her name crossed the painted moon of the seal like a second crack.\n",
+    "edgeTypes": {
+      "contains": "parent → child (hierarchy)",
+      "next": "sibling → sibling (reading order)"
+    },
+    "hint": "Showing revision history. Each section shows version and previous states."
+  }
+}

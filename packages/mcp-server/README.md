@@ -1,132 +1,148 @@
-# @understanding-graph/mcp-server
+# @emergent-wisdom/understanding-graph-mcp-server
 
-MCP server for building **Understanding Graphs** — persistent AI memory that captures comprehension, not just facts.
+MCP server for Understanding Graphs: persistent, typed state that preserves
+how an agent's attention, questions, hypotheses, decisions, and models evolve—not
+only the facts it encountered.
 
-## What is this?
+## Quick start
 
-AI agents have no persistent memory. Each conversation starts fresh. This MCP server gives agents a way to build and maintain a **living map of understanding** that persists across sessions.
-
-Unlike knowledge bases that store facts, an Understanding Graph stores:
-- **Tensions** — Conflicts between ideas that need resolution
-- **Synthesis** — How disparate concepts connect and what that means
-- **Supersession** — How beliefs evolve over time (never deleted, only superseded)
-- **Reasoning traces** — The cognitive journey, not just conclusions
-
-## Quick Start
-
-Add the server configuration to your MCP client settings:
-
-### Configuration Example
+Add the server to an MCP client:
 
 ```json
 {
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["@understanding-graph/mcp-server"],
+      "args": ["-y", "@emergent-wisdom/understanding-graph-mcp-server"],
       "env": {
-        "PROJECT_DIR": "/path/to/your/projects"
+        "PROJECT_DIR": "/absolute/path/to/projects",
+        "TOOL_MODE": "full"
       }
     }
   }
 }
 ```
 
-### Usage
+`PROJECT_DIR` contains one SQLite-backed graph per project. The server creates
+and activates `DEFAULT_PROJECT` (`default` unless configured) when necessary.
 
-Once configured, your agent will have access to graph tools (`graph_add_concept`, `graph_connect`, etc.).
+## Understanding, not transcription
 
-## Core Concepts
+The graph is a cognitive autobiography composed for future continuation. At
+self-selected Thought Moments, an agent may preserve a rich, user-visible
+account of what became salient: surprise, hesitation, association, ethical or
+emotional weight, alternatives, predictions, experiments, unresolved
+questions, and later revisions. It should not create notes by quota or pretend
+that every encounter caused a neat belief shift.
 
-### Metabolic vs Crystalline
+This testimony is not represented as access to hidden model computation. Its
+value is behavioral: a later model can re-enter it, test it against new
+evidence, and make different work because of it.
 
-Standard databases are *crystalline* — they freeze information as static records. Your graph is *metabolic* — understanding grows, adapts, and heals. When you change your mind, you don't delete; you *supersede*.
+The `thinking` trigger has a narrower meaning. It is reserved for reconstructed
+synthetic Reader/CMP pretraining blocks and is available only in
+`TOOL_MODE=synthetic_reader`. Those blocks and their incident relations are
+hidden from and immutable to ordinary modes; ordinary reading, writing, and
+coding use the other typed cognitive nodes.
 
-### Entrainment, Not Retrieval
+## Working loop
 
-When reading the graph, you're not looking up data. You're **re-synchronizing with a rhythm** of thought — inhabiting the mind of your past self to continue the thinking process.
+1. Call `project_list`, then `project_switch` when a different graph is needed.
+2. Call `graph_understand({ query, workflow })` to retrieve relevant priors,
+   resistance, evidence, and exact typed relations. Treat the returned prompt
+   as provisional orientation, never authority.
+3. Work in the workflow's native evidence surface: chronological source
+   passages for reading; graph document nodes plus generated tests for code;
+   the actual manuscript and rereading for writing.
+4. When something genuinely becomes worth carrying forward, commit the
+   cognitive state and its evidence through one atomic `graph_batch`.
+5. Use `graph_revise` or `graph_supersede` inside later batches when the state
+   changes. Preserve the path rather than silently overwriting it.
 
-### The Five Laws
+`graph_understand.workflow` supports `reading`, `coding`,
+`collaborative_coding`, `writing`, and `general` (plus explicit `auto`
+inference).
 
-1. **Git for Cognition** — Nodes are never deleted, only superseded
-2. **PURE Standard** — Quality gates for analysis/decision nodes
-3. **Graph-First Context** — Check the graph before thinking
-4. **Synthesize, Don't Transcribe** — Capture implications, not recordings
-5. **Delegate by Default** — Break tasks into sub-tasks for parallel workers
+## Mutation contract
 
-## Key Tools
-
-| Tool | Purpose |
-|------|---------|
-| `project_switch` | Load a project |
-| `graph_skeleton` | Quick graph overview (~150 tokens) |
-| `graph_semantic_search` | Find by meaning |
-| `graph_batch` | All mutations (requires `commit_message`) |
-| `graph_add_concept` | Add a node with trigger type |
-| `graph_connect` | Create edge between nodes |
-| `graph_score` | Measure graph quality |
-| `source_load` | Load text for chronological reading |
-| `solver_delegate` | Assign task to parallel worker |
-
-## Commit Workflow
-
-Every `graph_batch` requires a `commit_message` — your commit message explaining the intent.
+Direct concept and edge mutations are operations inside `graph_batch`; they are
+not separate top-level MCP tools. Relevant workflow modes also expose document
+helpers at the top level. Use `graph_batch` whenever related document, concept,
+and edge changes must land together: every batch requires a `commit_message`
+and runs atomically.
 
 ```javascript
 graph_batch({
-  commit_message: "Added governance concepts, linked to fabric metaphor",
-  agent_name: "Bob",  // Optional
-  operations: [...]
+  commit_message: "The failing boundary test changed the interval model",
+  operations: [
+    {
+      tool: "graph_add_concept",
+      params: {
+        title: "Adjacent windows need half-open intervals",
+        trigger: "decision",
+        understanding:
+          "Use start <= event < end so an event belongs to one window.",
+        why: "The generated test double-counted a boundary event"
+      }
+    },
+    {
+      tool: "graph_connect",
+      params: {
+        from: "$0.id",
+        to: "n_test_evidence",
+        type: "learned_from",
+        why: "This exact failing test caused the revision"
+      }
+    }
+  ]
 })
 ```
 
-```
-1. project_list()                    # See available projects
-2. project_switch("PROJECT")         # Load a project
-3. graph_skeleton()                  # Orient yourself
-4. graph_semantic_search({ query })  # Find relevant past thoughts
-5. [do work with graph_batch]        # Include commit_message!
-```
+Use exact parameter names: `title`, `trigger`, `understanding`, `why` for a
+concept; `from`, `to`, `type`, `why` for an edge. New concepts must be connected
+to the graph. Workflow tools such as `source_read` manage their own atomic
+updates.
 
-## Triggers (Node Types)
+## Tool modes
 
-| Type | When to Use |
-|------|-------------|
-| `foundation` | Core concepts, axioms |
-| `surprise` | Unexpected findings |
-| `tension` | Conflicts, trade-offs |
-| `consequence` | Implications |
-| `question` | Open questions |
-| `decision` | Choice points |
-| `thinking` | AI reasoning trace |
-| `prediction` | Forward-looking belief |
+`TOOL_MODE` is an enforced allow-list, not merely a display filter:
 
-## Edge Types
+| Mode | Intended work |
+|---|---|
+| `reading` | Chronological sources and passage-grounded understanding |
+| `research` | Reading plus solver coordination |
+| `coding` | Graph-native code documents, generation, and tests |
+| `collaborative_coding` | Coding plus ownership, locks, and handoffs |
+| `writing` | Graph-backed manuscripts and editorial revision |
+| `full` | All ordinary workflow tools (default) |
+| `synthetic_reader` | Reserved production/signing/translation of Reader/CMP `thinking` blocks |
 
-| Type | Use |
-|------|-----|
-| `supersedes` | New understanding replaces old |
-| `contradicts` | Opposing ideas (creates tension) |
-| `refines` | Adds precision |
-| `learned_from` | Cognitive lineage |
-| `answers` / `questions` | Resolves or raises doubt |
+Ordinary modes—including `full`—reject hidden or nested attempts to create a
+reserved `thinking` block.
 
-## Quality Target
+## Important tools
 
-Run `graph_score()` periodically. **Target: 70+ with 0 orphan thinking nodes.**
+| Tool | Purpose |
+|---|---|
+| `graph_understand` | Build a deterministic task-conditioned re-entry packet |
+| `graph_batch` | Apply a committed, atomic set of graph mutations |
+| `graph_skeleton` / `graph_context` | Inspect graph structure and local state |
+| `graph_semantic_search` | Find relevant prior state; lexical fallback works without embeddings |
+| `graph_history` | Inspect commits, agents, and mutation events |
+| `source_load` / `source_read` | Encounter a source chronologically and persist exact passages |
+| `doc_read` / `doc_get_tree` | Navigate graph-native artifacts |
+| `doc_generate` / `doc_generate_all` | Project document nodes into executable or readable files |
+| `graph_score` | Check structural integrity; not semantic correctness |
 
-Each thinking node should connect to 2-3 concepts minimum.
+Synthesis is normally an operation, not a catch-all node type. Store its result
+as what it became: `analysis` for a stabilized integration, `model` for a
+general mechanism, `hypothesis` for a provisional unification, `decision` for
+a choice, `evaluation` for a judgment, or leave the tension/question open.
+The mutating synthesis helpers `graph_serendipity`, `graph_validate`, and
+`graph_decide` are nested `graph_batch` operations, never top-level calls; the
+outer batch owns their transaction and commit.
 
-## Environment Variables
+## License and repository
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PROJECT_DIR` | Where to store project databases | `./projects` |
-
-## License
-
-MIT
-
-## Repository
-
-https://github.com/emergent-wisdom/understanding-graph
+MIT — see [LICENSE](LICENSE). Repository:
+<https://github.com/emergent-wisdom/understanding-graph>

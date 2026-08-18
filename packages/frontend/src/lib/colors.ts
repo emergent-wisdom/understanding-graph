@@ -48,6 +48,7 @@ export const triggerColorsTailwind: Record<string, string> = {
 // Edge type colors
 export const edgeColorsTailwind: Record<string, string> = {
   refines: 'bg-cyan-500',
+  inspired_by: 'bg-fuchsia-500',
   learned_from: 'bg-indigo-500',
   diverse_from: 'bg-rose-500',
   relates: 'bg-slate-500',

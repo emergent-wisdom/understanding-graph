@@ -1,9 +1,13 @@
 {
   "name": "@emergent-wisdom/understanding-graph-mcp-server",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "MCP server for building understanding graphs - persistent AI memory that captures comprehension, not just facts",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/library.js",
+  "exports": {
+    ".": "./dist/library.js",
+    "./server": "./dist/index.js"
+  },
   "bin": {
     "understanding-graph-mcp": "dist/index.js"
   },
@@ -36,26 +40,27 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
+    "prepack": "npm run clean && npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "@emergent-wisdom/understanding-graph-core": "^0.1.8",
-    "uuid": "^9.0.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@emergent-wisdom/understanding-graph-core": "0.1.12",
+    "uuid": "^11.1.1",
     "zod": "^3.22.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/uuid": "^9.0.8",
     "typescript": "^5.3.0",
     "vitest": "^2.1.0"
   }

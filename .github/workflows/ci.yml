@@ -28,10 +28,23 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Test
         run: npm test
 
-      - name: Smoke test bin
+      - name: Lint
+        run: npm run lint
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev
+
+      - name: Smoke test packaged entry points
         run: |
           node bin/cli.js --help
-          # TODO: verify mcp subcommand spawns without crashing
+          npm run smoke:mcp
+          npm pack --dry-run --json
+          npm pack --dry-run --json -w @emergent-wisdom/understanding-graph-core
+          npm pack --dry-run --json -w @emergent-wisdom/understanding-graph-mcp-server
+          npm pack --dry-run --json -w @emergent-wisdom/understanding-graph-web-server

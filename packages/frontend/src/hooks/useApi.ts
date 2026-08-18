@@ -1,5 +1,6 @@
 import {
   keepPreviousData,
+  type QueryClient,
   useMutation,
   useQuery,
   useQueryClient,
@@ -69,11 +70,44 @@ export const queryKeys = {
   projects: ['projects'] as const,
   graph: ['graph'] as const,
   conversations: ['conversations'] as const,
+  conversationRoot: ['conversation'] as const,
   conversation: (id: string) => ['conversation', id] as const,
   documents: ['documents'] as const,
+  documentRoots: ['document-roots'] as const,
+  nodes: ['node'] as const,
   node: (id: string) => ['node', id] as const,
+  edges: ['edge'] as const,
   edge: (id: string) => ['edge', id] as const,
   commits: ['commits'] as const,
+  search: ['search'] as const,
+  dbSchema: ['db-schema'] as const,
+  dbStats: ['db-stats'] as const,
+  dbRows: ['db-rows'] as const,
+}
+
+export const PROJECT_SCOPED_QUERY_KEYS = [
+  queryKeys.graph,
+  queryKeys.conversations,
+  queryKeys.conversationRoot,
+  queryKeys.documents,
+  queryKeys.documentRoots,
+  queryKeys.nodes,
+  queryKeys.edges,
+  queryKeys.commits,
+  queryKeys.search,
+  queryKeys.dbSchema,
+  queryKeys.dbStats,
+  queryKeys.dbRows,
+] as const
+
+export async function invalidateProjectQueries(
+  queryClient: QueryClient,
+): Promise<void> {
+  await Promise.all(
+    PROJECT_SCOPED_QUERY_KEYS.map((queryKey) =>
+      queryClient.invalidateQueries({ queryKey }),
+    ),
+  )
 }
 
 // Projects
@@ -94,11 +128,11 @@ export function useLoadProject() {
         `/projects/${projectId}/load`,
       ),
     onSuccess: () => {
-      // Invalidate graph and conversations when project changes
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects })
-      queryClient.invalidateQueries({ queryKey: queryKeys.graph })
-      queryClient.invalidateQueries({ queryKey: queryKeys.conversations })
-      queryClient.invalidateQueries({ queryKey: queryKeys.documents })
+      // Every data view below the project list is scoped to the active graph.
+      // Invalidate them together so a project switch cannot retain stale
+      // search, detail, history, document, or statistics results.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects })
+      void invalidateProjectQueries(queryClient)
     },
   })
 }
@@ -162,7 +196,7 @@ export interface DocumentRoot {
 
 export function useDocumentRoots(enabled = true) {
   return useQuery({
-    queryKey: ['document-roots'],
+    queryKey: queryKeys.documentRoots,
     queryFn: async () => {
       const response = await fetchJson<{
         roots: DocumentRoot[]
@@ -228,7 +262,7 @@ interface SearchResponse {
 
 export function useSemanticSearch(query: string, limit = 10) {
   return useQuery({
-    queryKey: ['search', query, limit],
+    queryKey: [...queryKeys.search, query, limit],
     queryFn: async () => {
       const response = await fetchJson<SearchResponse>(
         `/graph/embeddings/search?q=${encodeURIComponent(query)}&limit=${limit}`,
@@ -249,7 +283,7 @@ export interface DbTable {
 
 export function useDbSchema(enabled = true) {
   return useQuery({
-    queryKey: ['db-schema'],
+    queryKey: queryKeys.dbSchema,
     queryFn: () => fetchJson<{ tables: DbTable[] }>('/db/schema'),
     enabled,
   })
@@ -291,7 +325,7 @@ export interface DbStats {
 
 export function useDbStats(enabled = true) {
   return useQuery({
-    queryKey: ['db-stats'],
+    queryKey: queryKeys.dbStats,
     queryFn: () => fetchJson<DbStats>('/db/stats'),
     enabled,
     refetchInterval: pollInterval(10000), // Poll every 10 seconds
@@ -317,7 +351,7 @@ export function useDbTableRows(
   if (options.search) params.set('search', options.search)
 
   return useQuery({
-    queryKey: ['db-rows', tableName, options],
+    queryKey: [...queryKeys.dbRows, tableName, options],
     queryFn: () =>
       fetchJson<{
         rows: Record<string, unknown>[]

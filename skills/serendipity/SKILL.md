@@ -33,7 +33,7 @@ Use grounded serendipity for lasting theory. The result should be a `serendipity
 
 ## Pure serendipity
 
-`graph_serendipity()` — high novelty, lower coherence.
+`graph_discover()` — high novelty, lower coherence.
 
 The serendipity engine forces unexpected connections through enforced blindness:
 - `graph_discover` returns ONLY a prompt — the blind agent doesn't see source nodes
@@ -41,6 +41,11 @@ The serendipity engine forces unexpected connections through enforced blindness:
 - Cold nodes (rarely accessed) are prioritized for unexpected combinations
 
 Use pure serendipity for breaking blocks.
+
+When an insight survives scrutiny, preserve it atomically with `graph_batch`:
+add a nested `graph_serendipity` operation whose `source_elements` name every
+source node. The operation creates the typed `serendipity` node and its
+`learned_from` edges together; do not call it at the top level.
 
 ## When to use
 

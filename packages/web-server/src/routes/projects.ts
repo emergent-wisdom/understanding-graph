@@ -8,6 +8,8 @@ import { Router } from 'express';
 
 export const projectRouter = Router();
 
+const PROJECT_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
 // List all projects
 projectRouter.get('/', (req, res, next) => {
   try {
@@ -123,9 +125,89 @@ projectRouter.post('/:id/load', (req, res, next) => {
   }
 });
 
+// Flush any WAL pages before a trusted host snapshots the project directory.
+// The host must keep its cross-project request lock for the checkpoint and the
+// entire archive creation; this endpoint alone is not a backup boundary.
+projectRouter.post('/:id/checkpoint', (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!PROJECT_ID_RE.test(id)) {
+      return res.status(400).json({ error: 'Invalid project ID' });
+    }
+    if (!sqlite.isProjectLoaded(id)) {
+      return res.status(404).json({ error: 'Project not loaded' });
+    }
+
+    sqlite.setCurrentProject(id);
+    sqlite.getDb(id).pragma('wal_checkpoint(TRUNCATE)');
+    res.json({ id, checkpointed: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Delete one project store. The web server is bound to loopback in hosted
+// deployments; authorization for this internal operation belongs to the
+// calling application. Closing SQLite before removing the directory avoids
+// deleting files underneath a live database connection.
+projectRouter.delete('/:id', (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!PROJECT_ID_RE.test(id)) {
+      return res.status(400).json({ error: 'Invalid project ID' });
+    }
+
+    const projectRoot = path.resolve(req.app.locals.projectDir);
+    const projectPath = path.resolve(projectRoot, id);
+    const relativePath = path.relative(projectRoot, projectPath);
+    if (
+      !relativePath ||
+      relativePath === '..' ||
+      relativePath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativePath)
+    ) {
+      return res.status(400).json({ error: 'Invalid project ID' });
+    }
+
+    const coreWasCurrent = sqlite.getCurrentProjectId() === id;
+    const appWasCurrent = req.app.locals.projectId === id;
+    sqlite.closeProjectDatabase(id);
+
+    if (coreWasCurrent || appWasCurrent) {
+      resetGraphStore();
+
+      const remainingIds = sqlite.getLoadedProjectIds();
+      const existingCurrent = sqlite.getCurrentProjectId();
+      const appCurrent = req.app.locals.projectId;
+      const fallbackId =
+        existingCurrent ||
+        (typeof appCurrent === 'string' &&
+        appCurrent !== id &&
+        remainingIds.includes(appCurrent)
+          ? appCurrent
+          : [...remainingIds].sort()[0]);
+
+      if (fallbackId) {
+        sqlite.setCurrentProject(fallbackId);
+        req.app.locals.projectId = fallbackId;
+      } else {
+        req.app.locals.projectId = null;
+      }
+    }
+
+    fs.rmSync(projectPath, { recursive: true, force: true });
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get current project
 projectRouter.get('/current', (req, res) => {
   const id = req.app.locals.projectId;
+  if (typeof id !== 'string' || !id) {
+    return res.status(404).json({ error: 'No project loaded' });
+  }
   const projectDir = req.app.locals.projectDir;
   const projectPath = path.join(projectDir, id);
 

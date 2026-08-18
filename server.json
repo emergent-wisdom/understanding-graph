@@ -1,8 +1,8 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.emergent-wisdom/understanding-graph",
-  "description": "Persistent reasoning memory for AI agents via typed cognitive nodes and supersedes edges.",
-  "version": "0.1.5",
+  "description": "Persistent understanding via workflow prompts, typed updates, graph-native code, and supersession.",
+  "version": "0.1.28",
   "repository": {
     "url": "https://github.com/emergent-wisdom/understanding-graph",
     "source": "github"
@@ -13,7 +13,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "understanding-graph",
-      "version": "0.1.5",
+      "version": "0.1.28",
       "transport": {
         "type": "stdio"
       },

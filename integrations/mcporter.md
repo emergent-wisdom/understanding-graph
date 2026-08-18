@@ -65,13 +65,15 @@ shared reasoning memory.
 Before starting any non-trivial task:
 
 1. `mcporter call ug.graph_skeleton` — orient yourself in the graph
-2. `mcporter call ug.graph_semantic_search query="<task keywords>"` — find
+2. `mcporter call ug.graph_understand query="<concrete task>" workflow="<reading|coding|collaborative_coding|writing|general>"` — condition the native workflow
+3. `mcporter call ug.graph_semantic_search query="<task keywords>"` — find
    relevant past reasoning
-3. `mcporter call ug.graph_history` — see what other agents did recently
+4. `mcporter call ug.graph_history` — see what other agents did recently
 
-For every mutation, use `graph_batch` with a descriptive `commit_message`
-that names the agent and explains intent. Other agents read the commit
-stream to coordinate.
+For direct concept and document-tree mutation, use `graph_batch` with a
+descriptive `commit_message` that names the agent and explains intent. Workflow
+tools such as `source_read` manage their own atomic updates. Other agents read
+the commit stream to coordinate.
 ```
 
 ## Also works with

@@ -73,6 +73,8 @@ export function GraphCanvas() {
     selectAndFlyToNode,
     selectedNodeId,
     currentProject,
+    leftSidebarOpen,
+    rightSidebarOpen,
     nodeLimit,
     hiddenTriggerTypes,
     showDocuments,
@@ -720,49 +722,59 @@ export function GraphCanvas() {
           />
         )}
 
-        {/* Stats overlay — hidden on mobile */}
-        <div className="hidden sm:flex absolute top-4 left-1/2 -translate-x-1/2 bg-bg-surface/90 backdrop-blur-md px-4 py-2 rounded-lg text-xs border border-border-subtle shadow-md gap-3 items-center z-50">
-          <span className="text-text-muted">
-            <strong className="text-text-primary">
-              {graphData.nodes.length}
-              {(nodeLimit !== null ||
-                hiddenTriggerTypes.size > 0 ||
-                !showDocuments) &&
-                apiData?.nodes && (
-                  <span className="text-text-muted font-normal">
-                    /{apiData.nodes.length}
-                  </span>
-                )}
-            </strong>{' '}
-            nodes
-          </span>
-          <span className="text-text-muted">
-            <strong className="text-text-primary">
-              {graphData.links.length}
-            </strong>{' '}
-            edges
-          </span>
-          <div className="w-px h-4 bg-border-subtle" />
-          <SearchBar />
-          <div className="w-px h-4 bg-border-subtle" />
-          <TriggerFilter
-            hiddenTriggerTypes={hiddenTriggerTypes}
-            showDocuments={showDocuments}
-            showSuperseded={showSuperseded}
-            toggleTriggerType={toggleTriggerType}
-            setShowDocuments={setShowDocuments}
-            setShowSuperseded={setShowSuperseded}
-            resetFilters={resetFilters}
-          />
-          {isLoading && <span className="text-accent">Syncing...</span>}
-          <CopyContextButton />
+        {/* Keep desktop controls centered in the canvas left by open panels. */}
+        <div
+          className="hidden xl:flex absolute top-4 z-50 justify-center pointer-events-none transition-[left,right] duration-300 ease-out"
+          style={{
+            // Include the sidebar toggle gutters so controls never sit under
+            // the higher-z-index buttons at the panel boundaries.
+            left: leftSidebarOpen ? 332 : 0,
+            right: rightSidebarOpen ? 412 : 0,
+          }}
+        >
+          <div className="pointer-events-auto max-w-[calc(100%-1rem)] bg-bg-surface/90 backdrop-blur-md px-4 py-2 rounded-lg text-xs border border-border-subtle shadow-md flex flex-wrap justify-center gap-3 items-center">
+            <span className="text-text-muted">
+              <strong className="text-text-primary">
+                {graphData.nodes.length}
+                {(nodeLimit !== null ||
+                  hiddenTriggerTypes.size > 0 ||
+                  !showDocuments) &&
+                  apiData?.nodes && (
+                    <span className="text-text-muted font-normal">
+                      /{apiData.nodes.length}
+                    </span>
+                  )}
+              </strong>{' '}
+              nodes
+            </span>
+            <span className="text-text-muted">
+              <strong className="text-text-primary">
+                {graphData.links.length}
+              </strong>{' '}
+              edges
+            </span>
+            <div className="w-px h-4 bg-border-subtle" />
+            <SearchBar />
+            <div className="w-px h-4 bg-border-subtle" />
+            <TriggerFilter
+              hiddenTriggerTypes={hiddenTriggerTypes}
+              showDocuments={showDocuments}
+              showSuperseded={showSuperseded}
+              toggleTriggerType={toggleTriggerType}
+              setShowDocuments={setShowDocuments}
+              setShowSuperseded={setShowSuperseded}
+              resetFilters={resetFilters}
+            />
+            {isLoading && <span className="text-accent">Syncing...</span>}
+            <CopyContextButton />
+          </div>
         </div>
 
         <HoverTooltip hoveredEdge={hoveredEdge} hoveredNode={hoveredNode} />
       </div>
 
       {/* Timeline footer — hidden on mobile */}
-      <div className="hidden sm:block">
+      <div className="hidden xl:block">
         <TimelineBar
           totalNodes={sortedNodeIds.length}
           expanded={timelineExpanded}

@@ -20,6 +20,24 @@ export interface WriteResult {
   compileError?: string; // set if LaTeX compilation failed
 }
 
+/**
+ * LaTeX bibliography references are document content, not filesystem paths.
+ * Keep the useful basename vocabulary while rejecting traversal, separators,
+ * control characters, and unbounded names before any file lookup or write.
+ */
+export function safeBibliographyBasename(value: string): string | null {
+  const trimmed = value.trim().replace(/\.bib$/i, '');
+  if (
+    trimmed.length === 0 ||
+    trimmed.length > 100 ||
+    trimmed.includes('..') ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(trimmed)
+  ) {
+    return null;
+  }
+  return trimmed;
+}
+
 // Supported file types and their extensions
 const FILE_TYPE_EXTENSIONS: Record<string, string> = {
   md: '.md',
@@ -66,7 +84,10 @@ export class DocumentWriter {
     this.outputDir = options.outputDir;
     this.includeMetadata = options.includeMetadata ?? false;
     this.watchInterval = options.watchInterval ?? 1000;
-    this.compileLatex = options.compileLatex ?? true; // default ON
+    // External compilers are an explicit capability. Graph content may be
+    // untrusted (especially in hosted/shared projects), so file projection is
+    // safe by default and callers must deliberately opt into LaTeX execution.
+    this.compileLatex = options.compileLatex ?? false;
 
     // Ensure output directory exists
     if (!fs.existsSync(this.outputDir)) {
@@ -89,14 +110,23 @@ export class DocumentWriter {
     const bibNames = bibMatch[1].split(',').map((n) => n.trim());
     const store = getGraphStore();
 
-    for (const bibName of bibNames) {
+    for (const requestedName of bibNames) {
+      const bibName = safeBibliographyBasename(requestedName);
+      if (!bibName) {
+        console.warn(`Rejected unsafe bibliography name: ${requestedName}`);
+        continue;
+      }
       // Look for a node with this exact name (with or without .bib extension)
       // Use findNodeByName for exact case-insensitive match
       const bibNode =
         store.findNodeByName(`${bibName}.bib`) || store.findNodeByName(bibName);
 
       if (bibNode?.content) {
-        const bibPath = path.join(dir, `${bibName}.bib`);
+        const bibPath = path.resolve(dir, `${bibName}.bib`);
+        if (path.dirname(bibPath) !== path.resolve(dir)) {
+          console.warn(`Rejected bibliography path outside output: ${bibName}`);
+          continue;
+        }
         fs.writeFileSync(bibPath, bibNode.content, 'utf-8');
         writtenFiles.push(bibPath);
         console.error(`Wrote bibliography: ${bibPath}`);
@@ -272,13 +302,10 @@ export class DocumentWriter {
     //       above the actual title.
     const rootTitle = stripHeading(rootNode.title);
     const titleLooksLikeFilename = /\.[a-z0-9]{1,8}$/i.test(rootTitle);
-    const contentHasOwnH1 =
-      !!rootNode.content &&
-      /^#\s+\S/.test(rootNode.content.split('\n', 1)[0]?.trim() ?? '');
     const shouldEmitRootTitle =
       rootTitle &&
       !contentStartsWithMatchingHeading(rootNode.content, rootTitle) &&
-      !(titleLooksLikeFilename && contentHasOwnH1);
+      !titleLooksLikeFilename;
     if (shouldEmitRootTitle) {
       lines.push(`# ${rootTitle}`);
       lines.push('');
@@ -300,9 +327,42 @@ export class DocumentWriter {
       lines.push('');
     }
 
+    // Paragraph and sentence titles describe graph granularity, not manuscript
+    // headings. Keep them available in the graph while rendering only their
+    // prose. Consecutive sentence nodes are reassembled into one paragraph so
+    // sentence-level annotation does not force accidental line breaks.
+    let sentenceRunOpen = false;
+
     // Process children (skip root which is depth 0)
-    for (const { node, depth } of nodes) {
+    for (let index = 0; index < nodes.length; index++) {
+      const { node, depth } = nodes[index];
       if (depth === 0) continue; // Skip root, already handled
+      const hasDocumentChildren = (nodes[index + 1]?.depth ?? -1) > depth;
+
+      const normalizedLevel = node.level?.toLocaleLowerCase() || '';
+      const isParagraph = normalizedLevel === 'paragraph';
+      const isSentence = normalizedLevel === 'sentence';
+
+      if (isSentence) {
+        const sentence =
+          node.content ||
+          (!hasDocumentChildren ? node.understanding : '') ||
+          '';
+        if (!sentence) continue;
+
+        if (sentenceRunOpen && lines.length > 0) {
+          lines[lines.length - 1] = `${lines[lines.length - 1]} ${sentence}`;
+        } else {
+          lines.push(sentence);
+          sentenceRunOpen = true;
+        }
+        continue;
+      }
+
+      if (sentenceRunOpen) {
+        lines.push('');
+        sentenceRunOpen = false;
+      }
 
       // Heading level based on depth (depth 1 = ##, depth 2 = ###, etc.)
       const headingLevel = Math.min(depth + 1, 6); // Max h6
@@ -313,6 +373,7 @@ export class DocumentWriter {
       // Emit the title as a heading unless the content already starts with
       // the same heading line (the agent embedded it inline).
       if (
+        !isParagraph &&
         childTitle &&
         !contentStartsWithMatchingHeading(node.content, childTitle)
       ) {
@@ -328,11 +389,13 @@ export class DocumentWriter {
       if (node.content) {
         lines.push(node.content);
         lines.push('');
-      } else if (node.understanding) {
+      } else if (node.understanding && !hasDocumentChildren) {
         lines.push(node.understanding);
         lines.push('');
       }
     }
+
+    if (sentenceRunOpen) lines.push('');
 
     return lines.join('\n');
   }
@@ -416,8 +479,10 @@ export class DocumentWriter {
     }
 
     // Process children
-    for (const { node, depth } of nodes) {
+    for (let index = 0; index < nodes.length; index++) {
+      const { node, depth } = nodes[index];
       if (depth === 0) continue;
+      const hasDocumentChildren = (nodes[index + 1]?.depth ?? -1) > depth;
 
       // Indent based on depth
       const indent = '  '.repeat(depth - 1);
@@ -432,7 +497,7 @@ export class DocumentWriter {
           lines.push(`${indent}${line}`);
         }
         lines.push('');
-      } else if (node.understanding) {
+      } else if (node.understanding && !hasDocumentChildren) {
         lines.push(`${indent}${node.understanding}`);
         lines.push('');
       }
@@ -544,18 +609,42 @@ export class DocumentWriter {
    */
   private generateFilename(title: string, fileType: string | null): string {
     const ext = this.getExtension(fileType);
-    // Strip existing extension from title if it matches the fileType
-    // e.g., "myfile.tex" with fileType="tex" should become "myfile.tex" not "myfile-tex.tex"
-    let cleanTitle = title;
-    if (ext) {
-      const extPattern = new RegExp(`\\.${fileType}$`, 'i');
-      cleanTitle = title.replace(extPattern, '');
+    // Treat a document title as a basename, never as an output path. Strip an
+    // existing matching extension so "models.py" does not become
+    // "models-py.py".
+    const safeTitle = path.basename(title.trim().replace(/\\/g, '/'));
+    const normalizedFileType = fileType?.toLowerCase().replace(/^\./, '');
+    const matchingSuffixes = [
+      ext.toLowerCase(),
+      normalizedFileType ? `.${normalizedFileType}` : '',
+    ].filter(Boolean);
+    const matchedSuffix = matchingSuffixes.find((suffix) =>
+      safeTitle.toLowerCase().endsWith(suffix),
+    );
+    const cleanTitle = matchedSuffix
+      ? safeTitle.slice(0, -matchedSuffix.length)
+      : safeTitle;
+
+    // Code filenames are part of the program's semantics. Python imports and
+    // test discovery rely on underscores (`test_service.py`, `__init__.py`),
+    // while JS/TS projects commonly rely on internal dots (`thing.test.ts`).
+    // Preserve those safe basename characters and case instead of applying
+    // the prose-oriented kebab-case slugifier.
+    const baseName = this.isCode(fileType)
+      ? cleanTitle
+          .replace(/[^a-zA-Z0-9._-]+/g, '-')
+          .replace(/^\.+/, '')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 100)
+      : cleanTitle
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 50);
+
+    if (!baseName) {
+      return `document${ext}`;
     }
-    const baseName = cleanTitle
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 50);
     return `${baseName}${ext}`;
   }
 

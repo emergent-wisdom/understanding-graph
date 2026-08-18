@@ -1,13 +1,15 @@
 {
   "name": "@emergent-wisdom/understanding-graph-core",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Core business logic for understanding graph",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {
@@ -30,6 +32,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
+    "prepack": "npm run clean && npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
@@ -41,7 +44,7 @@
     "graphology-metrics": "^2.3.0",
     "graphology-shortest-path": "^2.1.0",
     "graphology-traversal": "^0.3.1",
-    "uuid": "^9.0.0"
+    "uuid": "^11.1.1"
   },
   "peerDependencies": {
     "@xenova/transformers": "^2.17.2"
@@ -54,7 +57,6 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20.0.0",
-    "@types/uuid": "^9.0.0",
     "@xenova/transformers": "^2.17.2",
     "typescript": "^5.3.0",
     "vitest": "^2.1.0"

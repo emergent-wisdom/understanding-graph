@@ -18,7 +18,7 @@ const args = process.argv.slice(3);
 // The frontend bundle is still shipped inside the root package at
 // packages/frontend/dist (static assets, served by the web-server).
 const packageRoot = path.dirname(require.resolve('../package.json'));
-const mcpServer = require.resolve('@emergent-wisdom/understanding-graph-mcp-server');
+const mcpServer = require.resolve('@emergent-wisdom/understanding-graph-mcp-server/server');
 const webServer = require.resolve('@emergent-wisdom/understanding-graph-web-server');
 
 if (command === 'start') {
@@ -44,7 +44,12 @@ if (command === 'start') {
 `);
   }
   console.log('Starting Understanding Graph (Web + Frontend)...');
-  console.log('Open http://localhost:' + (process.env.PORT || 3000));
+  console.log(
+    'Open http://' +
+      (process.env.HOST || '127.0.0.1') +
+      ':' +
+      (process.env.PORT || 3000),
+  );
 
   // The frontend bundle lives in the root understanding-graph package
   // (packages/frontend/dist/). Pass its path to web-server via
@@ -52,14 +57,14 @@ if (command === 'start') {
   // whether it was installed as a standalone package or via the
   // monolithic root package.
   const frontendDir = path.join(packageRoot, 'packages/frontend/dist');
-  spawn('node', [webServer], {
+  runServer(webServer, {
     stdio: 'inherit',
     env: { ...process.env, UG_FRONTEND_DIR: frontendDir },
   });
 
 } else if (command === 'mcp') {
   // Silent mode for MCP (stdio is used for JSON-RPC)
-  spawn('node', [mcpServer], { stdio: 'inherit' });
+  runServer(mcpServer, { stdio: 'inherit' });
 
 } else if (command === 'init') {
   init();
@@ -76,15 +81,20 @@ if (command === 'start') {
     console.error(`Unknown command: ${command}\n`);
   }
   console.log(`Usage:
-  understanding-graph init    Set up MCP + CLAUDE.md for agent teams (run inside a project)
+  understanding-graph init    Set up MCP + workflow guidance (run inside a project)
   understanding-graph start   Run the web UI and REST API
   understanding-graph mcp     Run the MCP server over stdio (for Claude / agents)
   understanding-graph --version
 
 Environment variables:
   PORT          Web server port (default: 3000)
+  HOST          Web bind address (default: 127.0.0.1)
+  UG_WORKER_TOKEN
+                Required as Authorization: Bearer <token> when HOST is not loopback
   PROJECT_DIR   Where graph data lives (default: ./projects relative to cwd)
-  TOOL_MODE     MCP tool exposure: reading | research | full (default: full)
+  TOOL_MODE     MCP tool exposure: reading | research | coding |
+                collaborative_coding | writing | full | synthetic_reader
+                (default: full; synthetic_reader is reserved Reader/CMP production)
 
 Quick start with Claude Code:
   claude mcp add ug -- npx -y understanding-graph mcp
@@ -92,6 +102,27 @@ Quick start with Claude Code:
   if (command && command !== '--help' && command !== '-h') {
     process.exit(2);
   }
+}
+
+function runServer(entryPoint, options) {
+  const child = spawn(process.execPath, [entryPoint], options);
+  const forwardSigint = () => child.kill('SIGINT');
+  const forwardSigterm = () => child.kill('SIGTERM');
+  process.once('SIGINT', forwardSigint);
+  process.once('SIGTERM', forwardSigterm);
+  child.once('error', (error) => {
+    console.error(`Failed to start Understanding Graph: ${error.message}`);
+    process.exitCode = 1;
+  });
+  child.once('exit', (code, signal) => {
+    process.removeListener('SIGINT', forwardSigint);
+    process.removeListener('SIGTERM', forwardSigterm);
+    if (signal) {
+      process.kill(process.pid, signal);
+      return;
+    }
+    process.exitCode = code ?? 1;
+  });
 }
 
 function init() {
@@ -206,9 +237,10 @@ function init() {
   console.log(`
   Next steps:
     1. Open Claude Code in this directory
-    2. Ask Claude: "Call graph_skeleton and tell me what's in the graph"
-    3. From there, ask Claude to create an agent team for your task —
-       all teammates share the same understanding graph automatically
+    2. Ask Claude: "Use the understanding graph for this task and choose the
+       right workflow: reading, research, coding, collaborative coding, writing, or general"
+    3. Work in the task's native artifact. Use an agent team only when the work
+       has real independent seams; teammates share the graph automatically
 
   PROJECT_DIR was written as an absolute path in
   .claude/settings.local.json so the graph is found regardless of where
@@ -225,13 +257,48 @@ This project uses an Understanding Graph as persistent, shared cognitive memory.
 
 The graph is **metabolic, not crystalline**. It stores comprehension (shifts in your understanding) rather than facts (frozen final states). When your thinking moves, a surprise, a tension, a decision, a foundation becoming explicit, capture the movement as a node in the same batch as the artifact it produced. Make the invisible visible.
 
-The operational question, asked before and after every batch:
+The operational check, asked before creating or revising understanding nodes:
 
-> **What changed in my understanding just now? What did I believe before, and what do I believe after?**
+> **What default framing would I otherwise use? What evidence or tension resists it? Did I shift, qualify, or retain it? What remains uncertain?**
 
-If you can't answer it, the batch is premature. Pause and name the thing that actually shifted, or hold off on the batch until something does.
+If you can't answer it, the concept mutation is premature. Source replication,
+mechanical artifact edits, and other evidence-gathering may still continue.
+If the evidence does not warrant a change, record no new concept: **no shift is
+a valid result.** Never manufacture novelty to make the graph look alive.
+
+## One graph, different working loops
+
+The graph is shared cognitive memory, not a universal working medium. Pass an
+explicit workflow to \`graph_understand\` and keep the actual artifact where it
+belongs:
+
+- **Reading** — \`workflow: "reading"\`. Move through the source with
+  \`source_read\`; capture expectation → passage evidence → interpretation.
+- **Coding** — \`workflow: "coding"\`. Author code only in graph document
+  nodes. Rearrange those nodes, generate executable files, and use tests and
+  runtime behavior as evidence. Never edit generated files directly.
+- **Collaborative coding** — \`workflow: "collaborative_coding"\`. Partition
+  document roots/subtrees; use solver ownership, history, locks, handoffs, and
+  generated integration evidence for coordination.
+- **Writing** — \`workflow: "writing"\`. Track intended reader effect, voice,
+  structure, draft evidence, and editorial revisions. Graph document trees may
+  hold long-form prose.
+- **General analysis** — \`workflow: "general"\`. Challenge the ordinary answer
+  with relevant graph-carried resistance and evidence.
+
+Do not keep loading reading context while coding. Code document nodes are the
+canonical artifact; generated files are disposable projections. The
+understanding update is shared; its evidence and artifact are workflow-specific.
 
 **Your gradual understanding belongs in the graph, not just the artifacts you produce with it.** The graph is the record of your learning, not a place you file outputs. When you come to understand the task differently than you did an hour ago, that is a node. When the user corrects a mistake you didn't know you were making, that is a node. When you realize your approach was wrong and you need to restart, that is a node. When a tool you thought you understood behaves surprisingly, that is a node. These are not "meta" work that happens outside the graph; they are the gradual understanding that is the whole point of having an Understanding Graph in the first place.
+
+Do not wait for a polished conclusion. At moments you choose because something
+actually becomes salient, preserve enough intentional, user-visible testimony
+that a future instance can re-enter it: attractions and hesitations, competing
+possibilities, aesthetic or ethical weight, questions, hypotheses, predictions,
+and changes of direction. These underlying nodes may be rich, provisional,
+personal, and unresolved. Do not fill a trigger quota or claim that this authored
+account exposes hidden model computation.
 
 Two failure modes you should recognize in yourself:
 
@@ -242,13 +309,21 @@ Two failure modes you should recognize in yourself:
 
 1. \`graph_skeleton\`: orient yourself (~150 tokens). Shows regions, hubs, recent activity.
 2. \`graph_history\` with a small limit: see what shifted recently and why. Commit messages are the reasoning trail.
-3. \`graph_semantic_search\` with your task's keywords: find relevant prior thinking you can extend instead of duplicating.
+3. \`graph_understand\` with the concrete task and explicit workflow: compose a prior + resistance + evidence packet and follow its prompt.
+4. Before creating a node, \`graph_semantic_search\` with the task's keywords: find relevant prior thinking you can extend instead of duplicating.
 
-You wake up with no memory. These three calls give you back yesterday.
+You wake up with no memory. These calls give you back yesterday without making
+yesterday authoritative.
 
 ## The primitives
 
-**All mutations go through \`graph_batch\`**, with a required \`commit_message\` that explains the intent of the batch. Each batch is atomic: if any operation fails, the whole batch rolls back as if it never ran. The commit message is preserved as each node's *Origin Story*.
+**Direct concept and edge mutations go through \`graph_batch\`.** Relevant
+workflow modes also expose document helpers at the top level; use a batch when
+related document, concept, and edge changes must land together. Every batch
+requires a \`commit_message\` and is atomic: if any operation fails, the whole
+batch rolls back as if it never ran. Workflow tools such as \`source_read\`
+manage their own atomic updates. The commit message is preserved as each node's
+*Origin Story*.
 
 - Include your agent name in the message: \`"Writer: opened with 'tired' after the planned abstract opening felt cold by sentence three."\`
 - Check before creating. \`graph_semantic_search\` first; if a similar node exists, \`graph_revise\` over duplicate.
@@ -267,7 +342,7 @@ Every concept node carries a \`trigger\` that classifies why it was created. The
 - \`decision\`: a choice made, with rationale.
 - \`prediction\`: forward-looking belief that can be validated later.
 
-Also available: \`hypothesis\`, \`model\`, \`evaluation\`, \`analysis\`, \`experiment\`, \`serendipity\`, \`repetition\`, \`randomness\`, \`reference\`, \`library\`. The \`thinking\` trigger is reserved for the synthesizer agent.
+Also available: \`hypothesis\`, \`model\`, \`evaluation\`, \`analysis\`, \`experiment\`, \`serendipity\`, \`repetition\`, \`randomness\`, \`reference\`, \`library\`. The \`thinking\` trigger is reserved for the separate synthetic Reader/CMP synthesizer, which reconstructs chronological inner-voice training blocks from these underlying nodes. Reserved blocks are hidden from and immutable to ordinary reading, writing, coding, and general workflows; only \`TOOL_MODE=synthetic_reader\` can access them.
 
 Pick the trigger that most honestly classifies *why* the node exists. If none of them fit, the node probably shouldn't exist yet.
 
@@ -309,6 +384,6 @@ For long-running handoff across sessions, use the solver tools: \`solver_spawn\`
 
 ---
 
-*This file was generated by \`npx understanding-graph init\`. Edit freely. For a walkthrough of one specific way the primitives were used to build a Bloom filter, see \`docs/coding-inside-the-graph.md\` in the understanding-graph repository. Your task will be different; use the primitives however fits your work.*
+*This file was generated by \`npx understanding-graph init\`. Edit freely. Route each task to its native workflow and use the graph only for understanding that should survive the session.*
 `;
 }

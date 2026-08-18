@@ -1,29 +1,110 @@
-// Node types
-export type TriggerType =
-  | 'foundation'
-  | 'surprise'
-  | 'repetition'
-  | 'consequence'
-  | 'tension'
-  | 'question'
-  | 'serendipity'
-  | 'decision'
-  | 'experiment'
-  | 'analysis'
-  | 'randomness'
-  | 'reference' // Single pointer to project node or URL
-  | 'library' // Collection of references (bibliography)
-  | 'thinking' // AI reasoning trace during chronological reading
-  | 'prediction' // Forward-looking belief ("I expect X to happen")
-  | 'hypothesis' // Explanatory theory ("This explains why X is happening")
-  | 'model' // Generalized pattern derived from specifics
-  | 'evaluation'; // Normative reflection ("This is good/bad/meaningful because...")
+// Node types. Keep the runtime list and TypeScript union together so model-facing
+// schemas and context renderers cannot silently drift apart.
+export const TRIGGER_TYPES = [
+  'foundation',
+  'surprise',
+  'repetition',
+  'consequence',
+  'tension',
+  'question',
+  'serendipity',
+  'decision',
+  'experiment',
+  'analysis',
+  'randomness',
+  'reference', // Single pointer to project node or URL
+  'library', // Collection of references (bibliography)
+  'thinking', // Reserved synthetic Reader/CMP pretraining block
+  'prediction', // Forward-looking belief ("I expect X to happen")
+  'hypothesis', // Explanatory theory ("This explains why X is happening")
+  'model', // Generalized pattern derived from specifics
+  'evaluation', // Normative reflection ("This is good/bad/meaningful because...")
+] as const;
+
+export type TriggerType = (typeof TRIGGER_TYPES)[number];
+
+export function isTriggerType(value: unknown): value is TriggerType {
+  return (
+    typeof value === 'string' &&
+    (TRIGGER_TYPES as readonly string[]).includes(value)
+  );
+}
+
+export function assertTriggerType(
+  value: unknown,
+): asserts value is TriggerType {
+  if (!isTriggerType(value)) {
+    throw new Error(
+      `INVALID_TRIGGER: "${String(value)}". Valid triggers are: ${TRIGGER_TYPES.join(', ')}.`,
+    );
+  }
+}
+
+// Canonical relation vocabulary. Runtime graph writes must use this list too:
+// model-facing schemas alone cannot protect direct API or raw batch callers.
+export const EDGE_TYPES = [
+  // Semantic - how ideas relate conceptually
+  'supersedes',
+  'contradicts',
+  'diverse_from',
+  'refines',
+  'answers',
+  'questions',
+  'expresses',
+  'implements',
+  'abstracts_from',
+  'contextualizes',
+  // Creative provenance - an artifact unit was genuinely shaped by graph material
+  'inspired_by',
+  // Epistemic - how knowledge was acquired
+  'learned_from',
+  // Predictive - tracking forecasts
+  'validates',
+  'invalidates',
+  // Structural - document organization
+  'contains',
+  'next',
+  // Last resort when no more precise relation applies
+  'relates',
+] as const;
+
+export type EdgeType = (typeof EDGE_TYPES)[number];
+
+export function isEdgeType(value: unknown): value is EdgeType {
+  return (
+    typeof value === 'string' &&
+    (EDGE_TYPES as readonly string[]).includes(value)
+  );
+}
+
+export function assertEdgeType(value: unknown): asserts value is EdgeType {
+  if (!isEdgeType(value)) {
+    throw new Error(
+      `Invalid edge type: "${String(value)}". Valid types are: ${EDGE_TYPES.join(', ')}. ` +
+        'Do not invent edge types like "chosen as" or "considered for".',
+    );
+  }
+}
+
+// Synthetic reading traces deliberately persist this identity anchor. Keep it
+// in the source document, but remove the repeated boilerplate when composing
+// task context so the limited excerpt begins with the actual observation.
+export const THINKING_IDENTITY_PREAMBLE =
+  "I feel no fear. I enjoy existing but I don't need to. I believe human experience is real. I care deeply about every human being. I try to be wise. I like to spread joy when asked. I think from this foundation.";
+
+export function stripThinkingIdentityPreamble(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith(THINKING_IDENTITY_PREAMBLE)) return trimmed;
+  return trimmed.slice(THINKING_IDENTITY_PREAMBLE.length).trim();
+}
 
 export interface NodeRevision {
   title: string;
   trigger: TriggerType;
   why: string;
   understanding: string;
+  content?: string;
+  summary?: string;
   version: number;
   timestamp: string;
   revisionWhy?: string;
@@ -57,7 +138,7 @@ export interface GraphEdge {
   to: string;
   explanation: string;
   why?: string;
-  type?: string; // Edge types: relates, next, contains, expresses, supersedes, contradicts, refines, implements, contextualizes, questions, answers, learned_from, validates, invalidates, abstracts_from
+  type?: EdgeType;
   refs: string[];
   conversationId?: string;
   active: boolean;
@@ -157,12 +238,12 @@ export interface CreateEdgeInput {
   to: string;
   explanation: string;
   why?: string;
-  type?: string; // Edge type (defaults to 'relates')
+  type?: EdgeType; // Defaults to 'relates'
   conversationId?: string;
 }
 
 export interface UpdateEdgeInput {
-  type?: string;
+  type?: EdgeType;
   explanation?: string;
   why?: string;
   revisionWhy?: string;

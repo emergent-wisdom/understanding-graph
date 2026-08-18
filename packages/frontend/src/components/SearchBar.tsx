@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type SearchResult, useSemanticSearch } from '@/hooks/useApi'
+import { cn } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
 
-export function SearchBar() {
+export function SearchBar({
+  compact = false,
+  enableShortcut = true,
+}: {
+  compact?: boolean
+  enableShortcut?: boolean
+}) {
   const [query, setQuery] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -61,6 +68,8 @@ export function SearchBar() {
 
   // Global keyboard shortcut: Cmd/Ctrl + K to focus search
   useEffect(() => {
+    if (!enableShortcut) return
+
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
@@ -70,7 +79,7 @@ export function SearchBar() {
     }
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-  }, [])
+  }, [enableShortcut])
 
   // Reset selection when results change
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional - reset on results change
@@ -81,9 +90,9 @@ export function SearchBar() {
   const showDropdown = isOpen && query.length >= 2
 
   return (
-    <div className="relative">
+    <div className={cn('relative', compact && 'min-w-0 flex-1')}>
       <div className="flex items-center gap-2">
-        <div className="relative">
+        <div className={cn('relative', compact && 'w-full')}>
           <input
             ref={inputRef}
             type="text"
@@ -98,11 +107,13 @@ export function SearchBar() {
               setTimeout(() => setIsOpen(false), 150)
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Search nodes... (⌘K)"
-            className="w-56 px-3 py-1.5 text-xs bg-bg-muted border border-border-subtle rounded-md
-                       text-text-primary placeholder:text-text-muted
-                       focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30
-                       focus:w-72 transition-all"
+            placeholder={compact ? 'Search nodes…' : 'Search nodes... (⌘K)'}
+            className={cn(
+              'px-3 py-1.5 text-xs bg-bg-muted border border-border-subtle rounded-md',
+              'text-text-primary placeholder:text-text-muted',
+              'focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-all',
+              compact ? 'w-full' : 'w-56 focus:w-72',
+            )}
           />
           {isLoading && (
             <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-accent pointer-events-none">
@@ -114,7 +125,14 @@ export function SearchBar() {
 
       {/* Dropdown results */}
       {showDropdown && (
-        <div className="absolute top-full left-0 mt-1 w-72 bg-bg-surface border border-border-default rounded-lg shadow-lg overflow-hidden z-[200]">
+        <div
+          className={cn(
+            'bg-bg-surface border border-border-default rounded-lg shadow-lg overflow-hidden z-[220]',
+            compact
+              ? 'fixed top-14 left-2 right-2'
+              : 'absolute top-full left-0 mt-1 w-72',
+          )}
+        >
           {isLoading ? (
             <div className="px-3 py-2 text-xs text-text-muted">
               Searching...

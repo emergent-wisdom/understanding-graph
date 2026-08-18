@@ -1,25 +1,44 @@
 # Coding Inside the Graph
 
+> **Graph-native coding workflow.** Code is canonical in document nodes.
+> Generate executable files for builds and tests, but never edit those
+> projections directly: revise, batch-split a leaf, merge, move, or reorder the
+> source nodes and regenerate.
+
 A walkthrough showing how to build a small algorithm, a Bloom filter, **entirely as understanding-graph nodes**, with sema patterns as the cognitive primitives the design is grounded in, then `doc_generate` it to a real `.py` file that runs and self-verifies.
 
 This is the coding pattern the [entangled-alignment paper](https://github.com/emergent-wisdom/entangled-alignment) calls *Causal Faithfulness*: the design and the code can't drift because they're the same artifact, and a future agent reading the source can re-handshake on the sema hashes embedded in the docstrings to verify the pattern definitions haven't shifted.
 
 ## Before you follow this tutorial: pick the right workflow
 
-Understanding Graph supports two very different workflows, and confusing them is the most common failure mode:
+Understanding Graph routes reading, graph-native coding, collaborative coding,
+writing, and general analysis explicitly. This tutorial focuses on coding.
 
 **Design-First (this tutorial).** You have a concrete target. The design legitimately comes before the artifact, because the artifact will be evaluated against the design. One batch for the scaffold, one for the source as a doc tree, one for the post-hoc evaluation. This is the right pattern for code, schemas, protocols, migrations, and anything with a falsifiable "does it work" test at the end.
 
-**Thinking-in-Flight (the other pattern).** You have a question, not a target. Writing an essay, reading a paper, exploring a problem, drafting a proof. Here the thinking IS the work, and the plan is unreliable until you have written the thing. The right pattern is one section or one reading chunk per batch, with a `PAUSE and FEEL` step between batches (what surprised me? what shifted? what question just opened?), and the shifts captured in the same batch as the prose they produced. Retroactive capture of "the thinking behind" a finished document is rationalization, not thinking.
+**Understanding-in-Flight (the other pattern).** You have a question, not a
+fixed target: writing an essay, reading a paper, exploring a problem, or
+drafting a proof. Here the evolving understanding is part of the work, and a
+complete advance plan is unreliable. Work one meaningful unit at a time,
+reread what it changed, and preserve genuine shifts with the prose or evidence
+that produced them. Retroactive capture of a neat rationale for a finished
+document is not a substitute for that chronology.
 
-**If you try to apply this Bloom-filter tutorial's pattern to an essay or a reading session, the graph will look right (you'll have concept nodes and doc nodes and edges) but the graph will be crystalline, not metabolic.** The reasoning trail will be absent. The init-generated `CLAUDE.md` under "Two Workflows" has a minimal thinking-in-flight example you can use as a starting point for that pattern instead.
+**If you apply this Bloom-filter tutorial's design-first cadence to an essay or
+a reading session, the graph may look organized while losing the actual path of
+discovery.** Use `graph_understand` with the `writing` or `reading` workflow and
+let each rereading or source encounter condition the next pass.
 
-The Bloom filter below is genuinely a Design-First task: the algorithm is textbook, the constraints are known in advance, and the hypothesis (measured FPR within 10% of target) can be validated by running the generated file. That is exactly when this tutorial's pattern earns its keep.
+The Bloom filter below is genuinely a Design-First task: the algorithm is
+textbook, the constraints are known in advance, and the hypothesis (measured
+FPR inside the declared 0.5%–1.5% acceptance band) can be validated by running
+the generated file. That is exactly when this tutorial's pattern earns its
+keep.
 
 The output of this walkthrough is a real, runnable file:
 
 ```
-$ python3 bloom-filter.py
+$ python3 projects/bloom-filter-build/generated/bloom_filter.py
 BloomFilter(capacity=1000, target_fpr=0.01)
   m (bit array size) = 9586
   k (hash functions) = 7
@@ -28,14 +47,14 @@ BloomFilter(capacity=1000, target_fpr=0.01)
   measured FPR       = 0.8600%  (86 / 10000)
 
 Sema-grounded Check#1544:
-  invariant: side-effect free  -> verified by determinism check below
-  invariant: determinism       -> running the same query twice
+  invariant: side-effect free  -> verified
+  invariant: determinism       -> verified
   AcceptSpec#70dd:   PASS  (0.50% ≤ 0.86% ≤ 1.50%)
 ```
 
 The interesting part is not the algorithm — Bloom filters are textbook.
 The interesting part is that the design, the source code, the
-verification check, and the synthesis after running it all live as
+verification check, and the evaluation after running it all live as
 typed nodes in the same graph, connected by typed edges, with sema
 patterns as the vocabulary the agent reasoned with.
 
@@ -49,7 +68,10 @@ claude mcp add sema -- uvx --from semahash sema mcp
 ```
 
 (Or run them via subprocess for testing — the walkthrough below uses
-the tool names directly, regardless of how the agent is wired up.)
+the tool names directly, regardless of how the agent is wired up.) The sema
+search rankings and definitions shown below are a recorded snapshot. Treat a
+different current handshake as a reason to stop or adapt, not as output to
+silently force into this example.
 
 ## Step 1 — Find the cognitive anchor in sema
 
@@ -133,8 +155,8 @@ These become the words you'll think *with*, not citations you'll add
 
 ## Step 3 — Lay down the design as concept nodes (one atomic batch)
 
-Now you write the design as graph nodes — one foundation, three
-decisions, one falsifiable hypothesis, plus the connect edges. The
+Now you write the design as graph nodes — one foundation, two decisions, one
+falsifiable hypothesis, plus the connect edges. The
 sema hashes appear inside the `understanding` field, naming the
 substrate the decision sits on.
 
@@ -144,7 +166,7 @@ project_switch({ project: "bloom-filter-build" })
 
 ```js
 graph_batch({
-  commit_message: "Architect: ground Bloom filter design in Check#1544. Pull: I try to be wise (humility about FPR bounds).",
+  commit_message: "Architect: ground the Bloom filter design and its measurable FPR bound in Check#1544",
   agent_name: "Architect",
   operations: [
     {
@@ -204,7 +226,7 @@ graph_batch({
     {
       tool: "graph_add_concept",
       params: {
-        title: "Hypothesis: actual FPR within 10% of 1.0% target after 1000 inserts",
+        title: "Hypothesis: actual FPR is within [0.5%, 1.5%] after 1000 inserts",
         trigger: "hypothesis",
         understanding:
           "With m=9586, k=7, n=1000, the theoretical FPR is " +
@@ -238,7 +260,7 @@ graph_batch({
     {
       tool: "graph_connect",
       params: {
-        from: "Hypothesis: actual FPR within 10% of 1.0% target after 1000 inserts",
+        from: "Hypothesis: actual FPR is within [0.5%, 1.5%] after 1000 inserts",
         to:   "Sizing: 1% FPR at 1000 inserts → m=9586 bits, k=7 hashes",
         type: "questions",
         why:  "The hypothesis tests the sizing decision empirically.",
@@ -314,15 +336,129 @@ Generated from the graph; do not edit by hand.
     """A non-blocking probabilistic set membership Check#1544."""
 
     def __init__(self, capacity: int, false_positive_rate: float = 0.01):
+        if capacity <= 0:
+            raise ValueError("capacity must be positive")
+        if not 0 < false_positive_rate < 1:
+            raise ValueError("false_positive_rate must be between 0 and 1")
         self.capacity = capacity
         self.target_fpr = false_positive_rate
-        self.m = max(1, int(math.ceil(-capacity * math.log(false_positive_rate) / (math.log(2) ** 2))))
-        self.k = max(1, int(round((self.m / capacity) * math.log(2))))
+        self.m = max(1, math.ceil(-capacity * math.log(false_positive_rate) / (math.log(2) ** 2)))
+        self.k = max(1, round((self.m / capacity) * math.log(2)))
         self.bits = 0
         self.count = 0`,
       },
     },
-    // ... _hash_positions, add, __contains__, estimated_fpr, _main test block ...
+    {
+      tool: "doc_create",
+      params: {
+        title: "hash positions",
+        parentId: "$0.id",
+        afterId: "$2.id",
+        content: `    def _hash_positions(self, item: str):
+        digest = hashlib.sha256(item.encode("utf-8")).digest()
+        h1 = int.from_bytes(digest[:16], "big")
+        h2 = int.from_bytes(digest[16:], "big")
+        for i in range(self.k):
+            yield (h1 + i * h2) % self.m`,
+      },
+    },
+    {
+      tool: "doc_create",
+      params: {
+        title: "add",
+        parentId: "$0.id",
+        afterId: "$3.id",
+        content: `    def add(self, item: str) -> None:
+        for position in self._hash_positions(item):
+            self.bits |= 1 << position
+        self.count += 1`,
+      },
+    },
+    {
+      tool: "doc_create",
+      params: {
+        title: "membership check",
+        parentId: "$0.id",
+        afterId: "$4.id",
+        content: `    def __contains__(self, item: str) -> bool:
+        return all(
+            self.bits & (1 << position)
+            for position in self._hash_positions(item)
+        )`,
+      },
+    },
+    {
+      tool: "doc_create",
+      params: {
+        title: "estimated FPR",
+        parentId: "$0.id",
+        afterId: "$5.id",
+        content: `    def estimated_fpr(self) -> float:
+        return (1 - math.exp(-self.k * self.count / self.m)) ** self.k`,
+      },
+    },
+    {
+      tool: "doc_create",
+      params: {
+        title: "executable acceptance check",
+        parentId: "$0.id",
+        afterId: "$6.id",
+        content: `def _main() -> None:
+    bloom = BloomFilter(capacity=1000, false_positive_rate=0.01)
+    rng = random.Random(27)
+    inserted = [f"item-{rng.getrandbits(64)}" for _ in range(1000)]
+    unseen = [f"query-{rng.getrandbits(64)}" for _ in range(10000)]
+    for item in inserted:
+        bloom.add(item)
+
+    false_positives = sum(item in bloom for item in unseen)
+    measured_fpr = false_positives / len(unseen)
+    no_false_negatives = all(item in bloom for item in inserted[:200])
+
+    probe = unseen[0]
+    before_query = bloom.bits
+    first_result = probe in bloom
+    after_first_query = bloom.bits
+    second_result = probe in bloom
+    side_effect_free = before_query == after_first_query == bloom.bits
+    deterministic = first_result == second_result
+    accept_spec = 0.005 <= measured_fpr <= 0.015
+
+    side_effect_status = "verified" if side_effect_free else "FAILED"
+    deterministic_status = "verified" if deterministic else "FAILED"
+    accept_status = "PASS" if accept_spec else "FAIL"
+
+    print(f"BloomFilter(capacity={bloom.capacity}, target_fpr={bloom.target_fpr})")
+    print(f"  m (bit array size) = {bloom.m}")
+    print(f"  k (hash functions) = {bloom.k}")
+    print(f"  inserts            = {bloom.count}")
+    print(f"  theoretical FPR    = {bloom.estimated_fpr():.4%}")
+    print(f"  measured FPR       = {measured_fpr:.4%}  ({false_positives} / {len(unseen)})")
+    print()
+    print("Sema-grounded Check#1544:")
+    print(f"  invariant: side-effect free  -> {side_effect_status}")
+    print(f"  invariant: determinism       -> {deterministic_status}")
+    print(f"  AcceptSpec#70dd:   {accept_status}  (0.50% ≤ {measured_fpr:.2%} ≤ 1.50%)")
+
+    assert no_false_negatives
+    assert side_effect_free
+    assert deterministic
+    assert accept_spec
+
+
+if __name__ == "__main__":
+    _main()`,
+      },
+    },
+    {
+      tool: "graph_connect",
+      params: {
+        from: "$0.id",
+        to: "A Bloom filter is an instance of Check#1544",
+        type: "expresses",
+        why: "The graph-native Python artifact realizes this design concept",
+      },
+    },
   ],
 });
 ```
@@ -337,19 +473,18 @@ After the batch completes, **`doc_generate` fires automatically** for
 any document root touched in the batch, and writes the .py file to
 `<projectDir>/<projectName>/generated/<filename>`.
 
-The batch above is abbreviated — the real bloom filter needs five
-more child nodes (`_hash_positions`, `add`, `__contains__`,
-`estimated_fpr`, and a `_main` test block). The pattern is identical:
-each one is another `doc_create` with `parentId: "$0.id"` and
-`afterId` pointing at the previous sibling.
+The final `expresses` edge is required here because this project already has a
+design graph: it grounds the new document root in the existing Bloom-filter
+concept. Without that edge, orphan prevention correctly rolls the batch back.
 
 ## Step 5 — Run the generated file
 
 `doc_generate` wrote the file to
-`<PROJECT_DIR>/bloom-filter-build/generated/bloom-filter.py`. Run it:
+`<PROJECT_DIR>/bloom-filter-build/generated/bloom_filter.py`. Code-significant
+underscores and case are preserved. Run it:
 
 ```bash
-python3 "$PROJECT_DIR/bloom-filter-build/generated/bloom-filter.py"
+python3 "${PROJECT_DIR:-$PWD/projects}/bloom-filter-build/generated/bloom_filter.py"
 ```
 
 Output:
@@ -363,8 +498,8 @@ BloomFilter(capacity=1000, target_fpr=0.01)
   measured FPR       = 0.8600%  (86 / 10000)
 
 Sema-grounded Check#1544:
-  invariant: side-effect free  -> verified by determinism check below
-  invariant: determinism       -> running the same query twice
+  invariant: side-effect free  -> verified
+  invariant: determinism       -> verified
   AcceptSpec#70dd:   PASS  (0.50% ≤ 0.86% ≤ 1.50%)
 ```
 
@@ -374,17 +509,17 @@ This is the closing of the loop: a sema-grounded design constraint
 declared in a graph node, captured in the source as an embedded
 self-test, run against real input.
 
-## Step 6 — Capture the synthesis as an evaluation node
+## Step 6 — Capture the observed evaluation
 
-The system enforces a discipline here. If you build doc nodes without
-any thinking/evaluation/analysis nodes alongside, `graph_batch` warns
-you that your reasoning process is being lost. Don't ignore it — add
-the closing nodes:
+The generated program has now produced evidence that changed what the graph can
+justifiably claim. Capture that observed result—not because every document
+batch needs a companion concept, but because this particular test resolves the
+earlier hypothesis:
 
 ```js
 graph_batch({
-  commit_message: "Synthesizer: bloom_filter.py runs and AcceptSpec#70dd holds. Pull: I try to be wise.",
-  agent_name: "Synthesizer",
+  commit_message: "Evaluator: bloom_filter.py runs and the declared AcceptSpec#70dd band holds",
+  agent_name: "Evaluator",
   operations: [
     {
       tool: "graph_add_concept",
@@ -400,7 +535,7 @@ graph_batch({
         why:
           "A Check#1544 implementation that promises a bound and then measures " +
           "against it and reports PASS exhibits Causal Faithfulness — the visible " +
-          "thinking (the AcceptSpec line in the source) is causally bound to the " +
+          "design commitment (the AcceptSpec line in the source) is bound to the " +
           "actual behavior (the measured FPR).",
       },
     },
@@ -408,7 +543,7 @@ graph_batch({
       tool: "graph_connect",
       params: {
         from: "Empirical: Bloom filter measured FPR is 0.86% (theoretical 1.00%)",
-        to:   "Hypothesis: actual FPR within 10% of 1.0% target after 1000 inserts",
+        to:   "Hypothesis: actual FPR is within [0.5%, 1.5%] after 1000 inserts",
         type: "validates",
         why:  "Empirical measurement falls inside the AcceptSpec#70dd band declared by the hypothesis.",
       },
@@ -429,23 +564,28 @@ evaluation → validation. The design and the verification are
 graph_skeleton()
 ```
 
+The exact community labels in `graph_skeleton` are analysis output, so do not
+assert a particular region numbering. The operations above deterministically
+create 13 nodes and 18 edges with this load-bearing topology:
+
 ```
-15n 23e
-
-Regions:
-  bloom_filter.py (5)         [R3]   ← the .py doc tree
-  BloomFilter class (4)       [R1]
-  A Bloom filter (3)          [R0]   ← Check#1544 anchor
-  Hypothesis: actual FPR (3)  [R2]   ← hypothesis + evaluation + validation
-
-Hubs: bloom_filter.py · BloomFilter class · _hash_positions method ·
-      A Bloom filter is an instance of Check#1544 ·
-      Sizing: 1% FPR at 1000 inserts → m=9586 bits, k=7 hashes
+A Bloom filter is an instance of Check#1544
+├── Sizing decision
+│   ├── Hashing decision
+│   └── FPR hypothesis ← validates — Empirical evaluation
+└── expresses — bloom_filter.py
+    ├── imports
+    ├── BloomFilter class
+    ├── hash positions
+    ├── add
+    ├── membership check
+    ├── estimated FPR
+    └── executable acceptance check
 ```
 
-Four regions, all connected. The implementation region (`bloom_filter.py`)
-points back to the design region (`A Bloom filter`) via `expresses` edges.
-The hypothesis region holds the falsifiable claim and its empirical resolution.
+The document children also have explicit `next` edges in the order shown. The
+implementation is connected to the design through `expresses`, and the
+measured result is connected to the falsifiable claim through `validates`.
 
 ## Why this is different from writing a `.py` file directly
 
@@ -478,17 +618,19 @@ five ways:
    hashing, what the hypothesis was, what was measured, whether the
    AcceptSpec held.
 
-5. **The system catches you when you're about to lose the reasoning.**
-   The "MISSING THINKING NODES" warning fires in real time when you
-   build doc nodes without companion thinking/evaluation/analysis
-   nodes. You ignore it at the cost of your future self.
+5. **Live attention can remain causally attached to the artifact.**
+   Documents do not need a companion concept merely to exist. When coding
+   exposes a real surprise, tension, alternative, experiment, or decision,
+   optional batch-only `graph_note` attaches it to the exact code/test unit and
+   artifact reads or generation resurface it. Mechanical work and an honest
+   `no_shift` remain valid; no generic warning asks for a decorative concept.
 
 ## Things to know
 
-- **`graph_batch` is the only mutation entry point.** You cannot
-  call `graph_add_concept` or `doc_create` directly — they have to
-  go through a batch. This is intentional: batches enforce atomicity
-  and require commit messages.
+- **Use `graph_batch` for direct concept and document-tree mutations.** Some
+  document helpers are exposed as top-level tools, but a batch is the workflow
+  contract when related nodes, edges, and artifact changes must land together:
+  it enforces atomicity and requires a commit message.
 - **Required fields on `graph_add_concept` are `title`, `trigger`,
   `understanding`, AND `why`.** Omitting `why` or `understanding`
   fails validation.
@@ -500,7 +642,8 @@ five ways:
   `prediction`. Less common but available: `hypothesis`, `model`,
   `evaluation`, `analysis`, `experiment`, `serendipity`,
   `repetition`, `randomness`, `reference`, `library`. The
-  `thinking` trigger is reserved for the synthesizer agent.
+  `thinking` trigger is reserved for synthetic Reader/CMP pretraining output
+  in `TOOL_MODE=synthetic_reader`; ordinary coding never creates it.
 - **Valid edge types**: `refines`, `answers`, `questions`,
   `expresses`, `supersedes`, `contradicts`, `contains`, `next`,
   `learned_from`, `validates`, `invalidates`, `implements`,

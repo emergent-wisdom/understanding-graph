@@ -49,9 +49,13 @@ It should call the tool and return the orientation summary.
 Set `TOOL_MODE` in the `env` block to control how many tools the server
 exposes:
 
-- `reading` — ~25 tools, focused on reading and exploration
-- `research` — ~32 tools, adds solver coordination
-- `full` — all ~51 tools (default)
+- `reading` — chronological source reading and interpretation
+- `research` — reading/research plus solver coordination
+- `coding` — graph-native code document nodes, structural editing, and generation
+- `collaborative_coding` — coding plus subtree ownership, locks, and handoffs
+- `writing` — graph-backed drafting and editorial revision
+- `full` — every ordinary workflow tool; reserved synthetic production stays isolated (default)
+- `synthetic_reader` — dedicated producer for reconstructed Reader/CMP pretraining blocks
 
 ```json
 "env": {
@@ -60,8 +64,9 @@ exposes:
 }
 ```
 
-`reading` mode is recommended for editors that render every tool in a UI —
-keeps the tool list scannable.
+Choose the mode that matches the work when an editor renders every tool in a
+UI. The focused modes keep the list scannable and avoid teaching a coding agent
+to advance a reading source, or a reader to treat source text like code.
 
 ## Also works with
 

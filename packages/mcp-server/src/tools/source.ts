@@ -4,15 +4,19 @@ import {
   getGraphStore,
   getTextSource,
   getTextSourceProgress,
+  isReservedThinkingNode,
   listTextSources,
   readTextSource,
-  sqlite,
+  reservedThinkingVisible,
   updateTextSource,
+  withReservedThinkingVisibility,
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
 import type { ContextManager } from '../context-manager.js';
 import { MODE_PROTOCOLS } from '../instructions.js';
 import { handleBatchTools } from './batch.js';
+import type { ToolMode } from './index.js';
 
 // Generate a unique source ID
 function generateSourceId(): string {
@@ -24,11 +28,42 @@ function generateSourceId(): string {
   return id;
 }
 
+const ORDINARY_SYNTHETIC_VISIBILITY =
+  'In every ordinary mode, reserved synthetic Reader/CMP blocks are excluded and unavailable. TOOL_MODE="synthetic_reader" may read and export them.';
+
+function sourceVisibilityHint(): string {
+  return reservedThinkingVisible()
+    ? 'Reserved synthetic Reader/CMP blocks are available in TOOL_MODE="synthetic_reader" and source_export may preserve them.'
+    : ORDINARY_SYNTHETIC_VISIBILITY;
+}
+
+/**
+ * Project the persisted source cursor through the active read visibility.
+ * A synthetic block may be the physical tail, but ordinary read surfaces must
+ * never receive that hidden ID. source_read separately rejects continuation at
+ * such a boundary; this fallback is for projection only, not mutation.
+ */
+function getVisibleSourceTail(
+  rootNodeId: string | null | undefined,
+  persistedTailId: string | null | undefined,
+): string | null {
+  const store = getGraphStore();
+  if (persistedTailId && store.getNode(persistedTailId)) {
+    return persistedTailId;
+  }
+  if (!rootNodeId) return null;
+
+  const visiblePassages = store
+    .flattenDocument(rootNodeId)
+    .filter(({ node }) => node.id !== rootNodeId);
+  return visiblePassages.at(-1)?.node.id || null;
+}
+
 export const sourceTools: Tool[] = [
   {
     name: 'source_load',
     description:
-      'Load a text source for chronological reading. The content is staged in SQLite and read portion by portion. Use this for books, papers, articles, code - any text you want to create understanding traces for. Accepts either content directly OR a filePath to read from (filePath is preferred to avoid context limits).',
+      'Load a text source for chronological reading when sequence matters: books, papers, articles, transcripts, or similar texts. The content is staged in SQLite and read portion by portion. This is not the graph-native coding workflow: code belongs in ordered document nodes, with generated files used only as executable projections. Accepts either content directly OR a filePath to read from (filePath is preferred to avoid context limits).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -50,11 +85,17 @@ export const sourceTools: Tool[] = [
         sourceType: {
           type: 'string',
           description:
-            'Type of source: "book", "paper", "article", "code", "docs", etc.',
+            'Type of sequential source: "book", "paper", "article", "transcript", "docs", etc.',
         },
         project: {
           type: 'string',
           description: 'Project ID (optional)',
+        },
+        workflow: {
+          type: 'string',
+          enum: ['reading', 'research'],
+          description:
+            'Purpose for re-entry guidance. Use research when passages serve a live inquiry; otherwise reading.',
         },
       },
       required: ['title'],
@@ -66,14 +107,13 @@ export const sourceTools: Tool[] = [
 
 The content is automatically committed to the graph as a document node - perfect replication from source, no manual copying needed.
 
-TEMPORAL INTEGRITY WORKFLOW (append-based):
-1. source_read → content node created at END of chain
-2. STOP at natural "thought moment" (paragraph break, tension, shift)
-3. doc_append_thinking → thinking node appended at END
-4. source_read → new content attaches AFTER thinking
-5. Result: [content] → [thinking] → [content] → ...
+ORDINARY READING WORKFLOW:
+1. source_read → exact encountered content is appended to the source chain
+2. Stop at a natural, self-selected boundary when something will help later continuation
+3. If warranted, use graph_batch to preserve rich non-"thinking" typed testimony and connect it to the exact content node with learned_from
+4. Continue with source_read; never use unread material or generic recall as evidence
 
-This ensures thinking can ONLY reference content that has been read (no future knowledge leakage).`,
+The reserved "thinking" trigger is synthetic Reader/CMP pretraining output and is created only in TOOL_MODE="synthetic_reader". ${ORDINARY_SYNTHETIC_VISIBILITY}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -101,7 +141,18 @@ This ensures thinking can ONLY reference content that has been read (no future k
         commit_message: {
           type: 'string',
           description:
-            'Reflect on your reading decision. Why did you read this much? What are you sensing?',
+            'Why this is the next useful source-defined or self-selected reading boundary. Do not manufacture an insight; a read with no durable update is valid.',
+        },
+        anchorNode: {
+          type: 'string',
+          description:
+            'Existing concept ID or exact title that this source reading should contextualize. Required only when starting a new source in a non-empty graph; the tool never guesses an anchor.',
+        },
+        workflow: {
+          type: 'string',
+          enum: ['reading', 'research'],
+          description:
+            'Purpose for re-entry guidance. Use research when passages serve a live inquiry; otherwise reading.',
         },
       },
       required: ['sourceId', 'commit_message'],
@@ -109,7 +160,7 @@ This ensures thinking can ONLY reference content that has been read (no future k
   },
   {
     name: 'source_position',
-    description: 'Get the current reading progress for a text source.',
+    description: `Get the current reading progress for a text source. Hidden cursor IDs are never returned. ${ORDINARY_SYNTHETIC_VISIBILITY}`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -141,8 +192,7 @@ This ensures thinking can ONLY reference content that has been read (no future k
   },
   {
     name: 'source_export',
-    description:
-      'Export a completed source reading as a document with <thinking> blocks interleaved. Creates training-ready output showing the original content with reasoning traces.',
+    description: `Export a completed source reading. In an ordinary mode, the export is the exact source with reserved synthetic Reader/CMP blocks excluded and unavailable. TOOL_MODE="synthetic_reader" may include those blocks in chronological position. Preserves original source content and does not request private chain-of-thought.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -160,7 +210,7 @@ This ensures thinking can ONLY reference content that has been read (no future k
           type: 'string',
           enum: ['graph', 'fluid'],
           description:
-            'Thinking content mode: "graph" uses original structured text, "fluid" uses natural language translation (if available). Default: graph',
+            'Preexisting synthetic Reader/CMP block mode: "graph" uses original structured text, "fluid" uses its translated pretraining prose (if available). Default: graph',
         },
         project: {
           type: 'string',
@@ -195,6 +245,7 @@ export async function handleSourceTools(
   name: string,
   args: Record<string, unknown>,
   contextManager: ContextManager,
+  mode: ToolMode = 'full',
 ): Promise<unknown> {
   const projectId =
     (args.project as string) || contextManager.getCurrentProjectId();
@@ -203,6 +254,19 @@ export async function handleSourceTools(
     await contextManager.getCurrentConversationId(projectId);
   const _toolCallId = contextManager.getCurrentToolCall();
   const store = getGraphStore();
+  // source_read owns an internal atomic graph_batch. Preserve the active
+  // visibility across that nested dispatch without widening this handler's
+  // public signature.
+  const sourceMutationMode = reservedThinkingVisible()
+    ? 'synthetic_reader'
+    : mode;
+  const requestedWorkflow = args.workflow;
+  const understandingWorkflow =
+    requestedWorkflow === 'research' || requestedWorkflow === 'reading'
+      ? requestedWorkflow
+      : mode === 'research'
+        ? 'research'
+        : 'reading';
 
   switch (name) {
     case 'source_load': {
@@ -215,6 +279,16 @@ export async function handleSourceTools(
         sourceType: args.sourceType as string | undefined,
         projectId,
       });
+      const readingQuery = JSON.stringify(
+        `Read and understand ${source.title}`,
+      );
+      const firstCommit = JSON.stringify(
+        `Begin chronological reading of ${source.title}`,
+      );
+      const needsAnchor = store.getAll().nodes.length > 0;
+      const readCall = needsAnchor
+        ? `source_read({ sourceId: "${source.id}", chars: 2000, anchorNode: "<relevant existing node ID>", commit_message: ${firstCommit} })`
+        : `source_read({ sourceId: "${source.id}", chars: 2000, commit_message: ${firstCommit} })`;
 
       return {
         success: true,
@@ -224,9 +298,8 @@ export async function handleSourceTools(
         totalLength: source.totalLength,
         loadedFrom: args.filePath ? 'file' : 'content',
         message: `Loaded source "${source.title}" (${source.totalLength} chars)${args.filePath ? ` from ${args.filePath}` : ''}`,
-        nextSteps: `1. Create document root: doc_create({ text: "${source.title}", isDocRoot: true })
-2. Find existing beliefs: graph_semantic_search({ query: "[topic keywords]" })
-3. Begin reading: source_read({ sourceId: "${source.id}", chars: 2000 })`,
+        nextSteps: `1. Orient for this reading: graph_understand({ query: ${readingQuery}, workflow: "${understandingWorkflow}" })
+2. ${needsAnchor ? 'Choose a relevant existing node from that orientation; the tool will not guess one. Then begin reading' : 'Begin reading directly'}: ${readCall}`,
         protocol: MODE_PROTOCOLS.reading,
       };
     }
@@ -235,6 +308,76 @@ export async function handleSourceTools(
       // NOTE: Signing gate removed - the Gatekeeper agent provides organic review
       // through the messaging system instead of hard-blocking source reads.
       const sourceId = args.sourceId as string;
+      const sourceBeforeRead = getTextSource(sourceId);
+      if (!sourceBeforeRead) {
+        return {
+          success: false,
+          error: `Source not found: ${sourceId}`,
+        };
+      }
+
+      // The persisted tail is the authoritative physical chronology. If it is
+      // a reserved synthetic block, an ordinary append after the last visible
+      // passage would fork or reorder the protected chain. Detect that boundary
+      // before readTextSource advances the staged cursor and fail closed. The
+      // unrestricted lookup is read-only and the hidden node is never returned.
+      const hasHiddenSyntheticTail =
+        !reservedThinkingVisible() && sourceBeforeRead.lastCommittedNodeId
+          ? await withReservedThinkingVisibility(true, () =>
+              isReservedThinkingNode(
+                getGraphStore().getNode(
+                  sourceBeforeRead.lastCommittedNodeId || '',
+                ),
+              ),
+            )
+          : false;
+      if (hasHiddenSyntheticTail) {
+        return {
+          success: false,
+          error: 'SOURCE_REQUIRES_SYNTHETIC_READER',
+          message:
+            'This source currently ends at a reserved synthetic Reader/CMP block. Ordinary source_read cannot continue without branching or reordering that protected chronology.',
+          hint: `Continue this source with source_read in TOOL_MODE="synthetic_reader", or load a separate ordinary source. No source text was consumed and no graph state changed. ${ORDINARY_SYNTHETIC_VISIBILITY}`,
+        };
+      }
+
+      // Reading advances the staged cursor before graph persistence. Restore it
+      // if the atomic graph batch fails so the passage can be retried instead of
+      // being silently skipped.
+      const restoreReadPosition = () =>
+        updateTextSource(sourceId, {
+          position: sourceBeforeRead.position,
+          status: sourceBeforeRead.status,
+        });
+
+      // Only a root already persisted on this source is eligible for reuse.
+      // A same-title graph root may describe unrelated material; adopting it
+      // would silently hijack that document and bypass explicit anchoring.
+      let rootId = sourceBeforeRead.rootNodeId || undefined;
+
+      const anchorRef = String(args.anchorNode || '').trim();
+      const resolvedAnchor = anchorRef
+        ? contextManager.resolveNode(anchorRef, projectId)
+        : null;
+      if (anchorRef && !resolvedAnchor) {
+        return {
+          success: false,
+          error: 'SOURCE_ANCHOR_NOT_FOUND',
+          message: `Anchor node not found: "${anchorRef}".`,
+          hint: 'Use graph_understand({ query, workflow: "reading" }) or graph_skeleton(), then retry with an existing node ID or exact title.',
+        };
+      }
+
+      if (!rootId && store.getAll().nodes.length > 0 && !resolvedAnchor) {
+        return {
+          success: false,
+          error: 'SOURCE_ANCHOR_REQUIRED',
+          message:
+            'Starting this source would create a document component disconnected from the existing graph.',
+          hint: `Run graph_understand({ query: ${JSON.stringify(`Read and understand ${sourceBeforeRead.title}`)}, workflow: "reading" }), choose a genuinely relevant existing node, then retry source_read with anchorNode. No source text was consumed.`,
+        };
+      }
+
       // Only default `chars` if NONE of chars/lines/until were specified.
       // Earlier code unconditionally defaulted chars to 2000, which made the
       // `if (chars) ... else if (lines) ... else if (until) ...` chain in
@@ -243,188 +386,235 @@ export async function handleSourceTools(
       const charsArg = args.chars as number | undefined;
       const linesArg = args.lines as number | undefined;
       const untilArg = args.until as string | undefined;
-      const result = readTextSource(sourceId, {
-        chars:
-          charsArg !== undefined
-            ? charsArg
-            : linesArg === undefined && untilArg === undefined
-              ? 2000
-              : undefined,
-        lines: linesArg,
-        until: untilArg,
-      });
+      try {
+        const result = readTextSource(sourceId, {
+          chars:
+            charsArg !== undefined
+              ? charsArg
+              : linesArg === undefined && untilArg === undefined
+                ? 2000
+                : undefined,
+          lines: linesArg,
+          until: untilArg,
+        });
 
-      if (!result) {
-        return {
-          success: false,
-          error: `Source not found: ${sourceId}`,
-        };
-      }
-
-      const source = getTextSource(sourceId);
-      const progress = getTextSourceProgress(sourceId);
-
-      // If source is done, don't create a node
-      if (result.done) {
-        return {
-          success: true,
-          done: true,
-          progress: progress ? { percent: 100, remaining: 0 } : null,
-          message: 'Source reading complete.',
-          hint: `Use source_export to generate the final document with thinking traces.`,
-        };
-      }
-
-      // Get or create document root
-      let rootId = source?.rootNodeId;
-      const prevNodeId = source?.lastCommittedNodeId;
-
-      // Fix: Re-fetch source and check graph to avoid duplicate roots
-      // 1. Re-fetch source to see if root was just added
-      const freshSource = getTextSource(sourceId);
-      if (freshSource?.rootNodeId) {
-        rootId = freshSource.rootNodeId;
-      }
-
-      // 2. If still no root, check if a doc root with this title already exists in the graph
-      if (!rootId) {
-        const sourceTitle = source?.title || 'Reading';
-        const existingRoot = sqlite
-          .getDb()
-          .prepare('SELECT id FROM nodes WHERE title = ? AND is_doc_root = 1')
-          .get(sourceTitle) as { id: string } | undefined;
-
-        if (existingRoot) {
-          rootId = existingRoot.id;
-          updateTextSource(sourceId, { rootNodeId: rootId });
-        }
-      }
-
-      // If no root yet, create document root first
-      if (!rootId) {
-        const sourceTitle = source?.title || 'Reading';
-        const rootResult = (await handleBatchTools(
-          'graph_batch',
-          {
-            operations: [
-              {
-                tool: 'doc_create',
-                params: {
-                  title: sourceTitle,
-                  content: `# ${sourceTitle}\n\nChronological reading of source material.`,
-                  level: 'document',
-                  isDocRoot: true,
-                },
-              },
-            ],
-            commit_message: `Created document root for source: ${sourceTitle}`,
-            agent_name: 'source_reader',
-          },
-          contextManager,
-        )) as {
-          success?: boolean;
-          results?: Array<{ id?: string }>;
-          errors?: unknown[];
-        };
-
-        if (!rootResult.success) {
+        if (!result) {
           return {
             success: false,
-            error: `Failed to create document root: ${JSON.stringify(rootResult.errors || rootResult)}`,
+            error: `Source not found: ${sourceId}`,
           };
         }
 
-        rootId = rootResult.results?.[0]?.id;
-        if (rootId) {
-          updateTextSource(sourceId, { rootNodeId: rootId });
-        }
-      }
+        const progress = getTextSourceProgress(sourceId);
 
-      // Create content node with exact source text via graph_batch
-      const percent = progress?.percent || 0;
-      const batchResult = (await handleBatchTools(
-        'graph_batch',
-        {
-          operations: [
+        // A read that starts at EOF has no new content to commit. A read that
+        // *reaches* EOF still has a final passage and must create its content
+        // node before reporting completion.
+        if (result.done && result.content.length === 0) {
+          return {
+            success: true,
+            done: true,
+            progress: progress ? { percent: 100, remaining: 0 } : null,
+            message: 'Source reading complete.',
+            hint: `Use source_export to reconstruct the exact visible source. ${sourceVisibilityHint()}`,
+          };
+        }
+
+        const prevNodeId = getVisibleSourceTail(
+          rootId,
+          sourceBeforeRead.lastCommittedNodeId,
+        );
+
+        const percent = progress?.percent || 0;
+        const commitMessage =
+          (args.commit_message as string) ||
+          `Auto-committed source content at ${percent}%`;
+        let contentNodeId: string | undefined;
+
+        // In a fresh graph, a document root by itself violates orphan
+        // prevention. Create the root and first content node in one atomic
+        // batch so the implicit `contains` edge anchors both nodes.
+        if (!rootId) {
+          const sourceTitle = sourceBeforeRead.title || 'Reading';
+          const anchorOperation = resolvedAnchor
+            ? [
+                {
+                  tool: 'graph_connect',
+                  params: {
+                    from: '$0.id',
+                    to: resolvedAnchor.id,
+                    type: 'contextualizes',
+                    why: `This source reading was explicitly anchored to "${resolvedAnchor.title}" so future readers can see which existing understanding it is meant to test or extend.`,
+                  },
+                },
+              ]
+            : [];
+          const initialBatch = (await handleBatchTools(
+            'graph_batch',
             {
-              tool: 'doc_create',
-              params: {
-                title: `Content ${percent}%`,
-                content: result.content,
-                level: 'paragraph',
-                isDocRoot: false,
-                parentId: rootId,
-                afterId: prevNodeId || rootId,
+              operations: [
+                {
+                  tool: 'doc_create',
+                  params: {
+                    title: sourceTitle,
+                    content: `# ${sourceTitle}\n\nChronological reading of source material.`,
+                    level: 'document',
+                    isDocRoot: true,
+                  },
+                },
+                {
+                  tool: 'doc_create',
+                  params: {
+                    title: `Content ${percent}%`,
+                    content: result.content,
+                    level: 'paragraph',
+                    isDocRoot: false,
+                    parentId: '$0.id',
+                  },
+                },
+                ...anchorOperation,
+              ],
+              commit_message: commitMessage,
+              agent_name: 'source_reader',
+              workflow: understandingWorkflow,
+              author: typeof args.author === 'string' ? args.author : undefined,
+            },
+            contextManager,
+            sourceMutationMode,
+          )) as {
+            success?: boolean;
+            results?: Array<{ id?: string }>;
+            errors?: unknown[];
+            error?: unknown;
+            message?: string;
+          };
+
+          rootId = initialBatch.results?.[0]?.id;
+          contentNodeId = initialBatch.results?.[1]?.id;
+          if (!initialBatch.success || !rootId || !contentNodeId) {
+            restoreReadPosition();
+            return {
+              success: false,
+              error: `Failed to commit initial source content: ${JSON.stringify(initialBatch.errors || initialBatch.error || initialBatch.message || initialBatch)}`,
+            };
+          }
+
+          updateTextSource(sourceId, {
+            rootNodeId: rootId,
+            lastCommittedNodeId: contentNodeId,
+          });
+        } else {
+          // Create subsequent content under the existing source document root.
+          const batchResult = (await handleBatchTools(
+            'graph_batch',
+            {
+              operations: [
+                {
+                  tool: 'doc_create',
+                  params: {
+                    title: `Content ${percent}%`,
+                    content: result.content,
+                    level: 'paragraph',
+                    isDocRoot: false,
+                    parentId: rootId,
+                    afterId: prevNodeId || rootId,
+                  },
+                },
+              ],
+              commit_message: commitMessage,
+              agent_name: 'source_reader',
+              workflow: understandingWorkflow,
+              author: typeof args.author === 'string' ? args.author : undefined,
+            },
+            contextManager,
+            sourceMutationMode,
+          )) as {
+            success?: boolean;
+            results?: Array<{ id?: string }>;
+            errors?: unknown[];
+            error?: unknown;
+            message?: string;
+          };
+
+          contentNodeId = batchResult.results?.[0]?.id;
+          if (!batchResult.success || !contentNodeId) {
+            restoreReadPosition();
+            return {
+              success: false,
+              error: `Failed to commit source content: ${JSON.stringify(batchResult.errors || batchResult.error || batchResult.message || batchResult)}`,
+            };
+          }
+
+          updateTextSource(sourceId, {
+            lastCommittedNodeId: contentNodeId,
+          });
+        }
+
+        // Build a directly usable hint. Ordinary reading captures rich typed
+        // testimony in graph_batch; reserved synthetic thinking is a separate
+        // pretraining-production mode.
+        const hint = `Content node created: ${contentNodeId}
+
+RE-ENTER THIS ENCOUNTER BEFORE CONTINUING WHEN IT COULD CHANGE THE INQUIRY:
+  graph_understand({ query: ${JSON.stringify(`Continue understanding ${sourceBeforeRead.title} after this passage`)}, workflow: "${understandingWorkflow}", focusNodeIds: ["${contentNodeId}"] })
+
+TO PRESERVE THIS ENCOUNTER WHEN IT WILL HELP CONTINUATION:
+  In one graph_batch, use graph_note({ about: "${contentNodeId}", testimony, trigger, relations? }).
+  It creates learned_from automatically. Preserve attention, evidence, uncertainty,
+  and what later reading could test; do not manufacture a belief shift or quota note.
+
+${
+  result.done
+    ? `READING COMPLETE: Use source_export to reconstruct the exact visible source. ${sourceVisibilityHint()}`
+    : `TO CONTINUE: source_read({ sourceId: "${sourceId}" })`
+}
+
+Progress: ${percent}% complete
+
+${sourceVisibilityHint()}`;
+        const graph = store.getAll();
+        const artifactCognitionBalance = assessArtifactCognitionBalance(
+          graph.nodes,
+          graph.edges,
+        );
+
+        return {
+          success: true,
+          content: result.content,
+          contentNodeId,
+          position: result.position,
+          done: result.done,
+          progress: progress
+            ? {
+                percent: progress.percent,
+                remaining: progress.totalLength - progress.position,
+              }
+            : null,
+          ...(artifactCognitionBalance.advisories.length > 0
+            ? { artifactCognitionBalance }
+            : {}),
+          reentry: {
+            focusNodeIds: [contentNodeId],
+            suggestedCall: {
+              tool: 'graph_understand',
+              arguments: {
+                query: `Continue understanding ${sourceBeforeRead.title} after this passage`,
+                workflow: understandingWorkflow,
+                focusNodeIds: [contentNodeId],
               },
             },
-          ],
-          commit_message:
-            (args.commit_message as string) ||
-            `Auto-committed source content at ${percent}%`,
-          agent_name: 'source_reader',
-        },
-        contextManager,
-      )) as {
-        success?: boolean;
-        results?: Array<{ id?: string }>;
-        errors?: unknown[];
-      };
-
-      const contentNodeId = batchResult.results?.[0]?.id;
-
-      // Update source tracking
-      if (contentNodeId) {
-        updateTextSource(sourceId, {
-          lastCommittedNodeId: contentNodeId,
-        });
+          },
+          hint,
+        };
+      } catch (error) {
+        restoreReadPosition();
+        throw error;
       }
-
-      // Build hint - use doc_append_thinking for temporal integrity
-      let hint = `Content node created: ${contentNodeId}
-
-TO ADD THINKING (preserves temporal integrity):
-  doc_append_thinking({
-    sourceId: "${sourceId}",
-    thinking: "I feel no fear... [Your observation about this passage]",
-    agentId: "synthesizer",
-    synthesizes_nodes: ["n_existing_concept_id"]
-  })
-
-This appends thinking at the END - workers can ONLY reference what they've seen.
-REQUIRED: synthesizes_nodes must reference existing concept nodes.
-
-TO CONTINUE: source_read({ sourceId: "${sourceId}" })
-
-Progress: ${percent}% complete`;
-
-      if (percent >= 25 && percent < 30) {
-        hint +=
-          '\n\n⏸️ MILESTONE 25%: Consider running graph_skeleton() to see emerging structure.';
-      } else if (percent >= 50 && percent < 55) {
-        hint +=
-          '\n\n⏸️ MILESTONE 50%: Good time to review and add thinking traces.';
-      } else if (percent >= 75 && percent < 80) {
-        hint += '\n\n⏸️ MILESTONE 75%: Almost done. Capture remaining insights.';
-      }
-
-      return {
-        success: true,
-        content: result.content,
-        contentNodeId,
-        position: result.position,
-        done: result.done,
-        progress: progress
-          ? {
-              percent: progress.percent,
-              remaining: progress.totalLength - progress.position,
-            }
-          : null,
-        hint,
-      };
     }
 
     case 'source_position': {
-      const progress = getTextSourceProgress(args.sourceId as string);
+      const sourceId = args.sourceId as string;
+      const progress = getTextSourceProgress(sourceId);
 
       if (!progress) {
         return {
@@ -433,14 +623,23 @@ Progress: ${percent}% complete`;
         };
       }
 
+      const source = getTextSource(sourceId);
+      const visibleLastCommittedNodeId = getVisibleSourceTail(
+        source?.rootNodeId,
+        progress.lastCommittedNodeId,
+      );
+      const { lastCommittedNodeId: _persistedTailId, ...publicProgress } =
+        progress;
+
       return {
         success: true,
-        sourceId: args.sourceId,
-        ...progress,
+        sourceId,
+        ...publicProgress,
+        lastCommittedNodeId: visibleLastCommittedNodeId,
         hint:
           progress.status === 'completed'
-            ? 'Source complete. Use source_export to generate output.'
-            : `${progress.percent}% complete. ${progress.totalLength - progress.position} chars remaining.`,
+            ? `Source complete. Use source_export to reconstruct the exact visible source. ${sourceVisibilityHint()}`
+            : `${progress.percent}% complete. ${progress.totalLength - progress.position} chars remaining. ${sourceVisibilityHint()}`,
       };
     }
 
@@ -482,20 +681,26 @@ Progress: ${percent}% complete`;
       if (!source.rootNodeId) {
         return {
           success: false,
-          error:
-            'No content committed yet. Use source_read and source_commit first.',
+          error: 'No content committed yet. Use source_read first.',
         };
       }
 
       // Flatten the document from root
       const flattened = store.flattenDocument(source.rootNodeId);
+      // The source root is structural scaffolding created by source_read. It
+      // contains a generated title/description, not source text, so exporting
+      // it would violate the tool's exact-replication contract.
+      const exportedNodes = flattened.filter(
+        ({ node }) => node.id !== source.rootNodeId,
+      );
 
-      // Build output with thinking blocks
+      // The core document projection removes reserved blocks in ordinary
+      // modes. synthetic_reader retains them here in chronological position.
       let output = '';
       const thinkingOpen = format === 'xml' ? '<thinking>' : '```thinking';
       const thinkingClose = format === 'xml' ? '</thinking>' : '```';
 
-      for (const { node } of flattened) {
+      for (const { node } of exportedNodes) {
         // Check both trigger and fileType for thinking nodes
         const isThinking =
           node.trigger === 'thinking' || node.fileType === 'thinking';
@@ -509,9 +714,15 @@ Progress: ${percent}% complete`;
             thinkingMode === 'fluid' && thoughtFluid
               ? thoughtFluid
               : node.content || '';
-          output += `\n${thinkingOpen}\n${thinkingContent}\n${thinkingClose}\n`;
+          // Synthetic block markers are annotations, so separate them from
+          // adjacent source prose without normalizing the source chunks.
+          if (output.length > 0 && !output.endsWith('\n')) output += '\n';
+          output += `${thinkingOpen}\n${thinkingContent}\n${thinkingClose}\n`;
         } else {
-          output += `\n${node.content || ''}\n`;
+          // Content nodes are exact chronological slices of the staged source.
+          // Concatenation (without trim/join separators) reconstructs it byte
+          // for byte when no synthetic blocks are present.
+          output += node.content || '';
         }
       }
 
@@ -519,18 +730,25 @@ Progress: ${percent}% complete`;
         trigger?: string | null;
         fileType?: string | null;
       }) => n.trigger === 'thinking' || n.fileType === 'thinking';
+      const thinkingCount = exportedNodes.filter((f) =>
+        isThinkingNode(f.node),
+      ).length;
+      const includeSynthetic = reservedThinkingVisible();
 
       return {
         success: true,
         sourceId,
         title: source.title,
         format,
-        thinkingMode,
-        output: output.trim(),
-        nodeCount: flattened.length,
-        thinkingCount: flattened.filter((f) => isThinkingNode(f.node)).length,
-        contentCount: flattened.filter((f) => !isThinkingNode(f.node)).length,
-        message: `Exported "${source.title}" with ${flattened.length} nodes (${thinkingMode} mode)`,
+        ...(includeSynthetic ? { thinkingMode } : {}),
+        output,
+        nodeCount: exportedNodes.length,
+        thinkingCount,
+        contentCount: exportedNodes.filter((f) => !isThinkingNode(f.node))
+          .length,
+        message: includeSynthetic
+          ? `Exported "${source.title}" with ${exportedNodes.length} source/synthetic nodes (${thinkingMode} mode).`
+          : `Exported the exact visible source "${source.title}" with reserved synthetic Reader/CMP blocks excluded and unavailable.`,
       };
     }
 

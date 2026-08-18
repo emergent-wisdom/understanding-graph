@@ -3,7 +3,12 @@ import {
   getDb,
   getRecentEvents,
 } from '../database/sqlite.js';
-import type { TriggerType } from '../types/index.js';
+import {
+  stripThinkingIdentityPreamble,
+  TRIGGER_TYPES,
+  type TriggerType,
+} from '../types/index.js';
+import { reservedThinkingVisible } from '../visibility.js';
 import {
   type GraphEdgeData,
   type GraphNodeData,
@@ -106,12 +111,53 @@ function truncateForBrief(
   return `${text.slice(0, maxLen)}...`;
 }
 
+/**
+ * Thinking documents keep their substantive thought in `content`; their
+ * `understanding` field may contain only signature metadata. Model context
+ * should carry the thought, not the bookkeeping wrapper.
+ */
+function contextUnderstanding(node: GraphNodeData): string | null {
+  if (node.trigger === 'thinking') {
+    const content = node.content?.trim();
+    if (content) return stripThinkingIdentityPreamble(content);
+
+    const legacy = node.understanding?.trim();
+    if (legacy && !/^[{[]\s*["']?signatures["']?\s*:/i.test(legacy)) {
+      return stripThinkingIdentityPreamble(legacy);
+    }
+    return null;
+  }
+
+  return node.understanding;
+}
+
+function edgeRelation(edge: {
+  type: string;
+  explanation?: string | null;
+}): string {
+  return edge.explanation?.trim() || edge.type;
+}
+
+function orderedTriggerKeys<T>(byTrigger: Record<string, T[]>): string[] {
+  const canonical = new Set<string>(TRIGGER_TYPES);
+  const extra = Object.keys(byTrigger)
+    .filter((trigger) => !canonical.has(trigger))
+    .sort();
+  return [...TRIGGER_TYPES, ...extra];
+}
+
 interface RegionSummary {
   id: number;
   nodeCount: number;
   topConcepts: Array<{ id: string; name: string; degree: number }>;
   triggerDistribution: Record<string, number>;
-  sampleRelationships: Array<{ from: string; relation: string; to: string }>;
+  sampleRelationships: Array<{
+    from: string;
+    relation: string;
+    to: string;
+    type: string;
+    why: string | null;
+  }>;
 }
 
 interface NodeWithConnections {
@@ -126,6 +172,7 @@ interface NodeWithConnections {
     targetTitle: string;
     explanation: string | null;
     why: string | null;
+    type: string;
   }>;
   incoming: Array<{
     sourceId: string;
@@ -169,25 +216,42 @@ export function getUpdatesSince(_projectId: string, since: string): string {
 
   // 3. Get recent tool actions (includes both successes and failures)
   // Errors are indicated by status="failed" with failure_reason
-  const actionsRows = db
-    .prepare(
-      `SELECT tool_name, error, created_at, result, arguments
-       FROM tool_calls
-       WHERE created_at >= ?
-       ORDER BY created_at DESC`,
-    )
-    .all(since) as Array<{
-    tool_name: string;
-    error: string | null;
-    created_at: string;
-    result: string | null;
-    arguments: string;
-  }>;
+  const allActionRows = reservedThinkingVisible()
+    ? (db
+        .prepare(
+          `SELECT id, tool_name, error, created_at, result, arguments
+           FROM tool_calls
+           WHERE created_at >= ?
+           ORDER BY created_at DESC`,
+        )
+        .all(since) as Array<{
+        id: number;
+        tool_name: string;
+        error: string | null;
+        created_at: string;
+        result: string | null;
+        arguments: string;
+      }>)
+    : [];
+  const linkedNodeIds = db.prepare(
+    'SELECT id FROM nodes WHERE tool_call_id = ?',
+  );
+  const linkedEdgeIds = db.prepare(
+    'SELECT id FROM edges WHERE tool_call_id = ?',
+  );
+  const actionsRows = allActionRows.filter((action) => {
+    const nodeIds = linkedNodeIds.all(action.id) as Array<{ id: string }>;
+    const edgeIds = linkedEdgeIds.all(action.id) as Array<{ id: string }>;
+    return (
+      nodeIds.every((row) => store.getNode(row.id) !== null) &&
+      edgeIds.every((row) => store.getEdge(row.id) !== null)
+    );
+  });
 
   // 4. Get recent commits (the "metacognitive stream" - why agents made changes)
-  const commitRows = db
+  const allCommitRows = db
     .prepare(
-      `SELECT id, message, agent_name, node_ids, created_at
+      `SELECT id, message, agent_name, node_ids, edge_ids, created_at
        FROM commits
        WHERE created_at >= ?
        ORDER BY created_at DESC`,
@@ -197,8 +261,27 @@ export function getUpdatesSince(_projectId: string, since: string): string {
     message: string;
     agent_name: string | null;
     node_ids: string;
+    edge_ids: string;
     created_at: string;
   }>;
+  const parseEntityIds = (encoded: string): string[] => {
+    try {
+      const ids = JSON.parse(encoded || '[]');
+      return Array.isArray(ids)
+        ? ids.filter((id): id is string => typeof id === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  };
+  const commitRows = allCommitRows.filter((commit) => {
+    const nodeIds = parseEntityIds(commit.node_ids);
+    const edgeIds = parseEntityIds(commit.edge_ids);
+    return (
+      nodeIds.every((id) => store.getNode(id) !== null) &&
+      edgeIds.every((id) => store.getEdge(id) !== null)
+    );
+  });
 
   // Build XML response
   let out = `<graph_updates since="${since}" timestamp="${new Date().toISOString()}">\n`;
@@ -209,8 +292,9 @@ export function getUpdatesSince(_projectId: string, since: string): string {
     for (const n of nodes) {
       out += `    <node id="${n.id}" trigger="${n.trigger || 'general'}">\n`;
       out += `      <name>${escapeXml(n.title)}</name>\n`;
-      if (n.understanding) {
-        out += `      <understanding>${escapeXml(truncateForBrief(n.understanding, 150))}</understanding>\n`;
+      const understanding = contextUnderstanding(n);
+      if (understanding) {
+        out += `      <understanding>${escapeXml(truncateForBrief(understanding, 150))}</understanding>\n`;
       }
       out += `    </node>\n`;
     }
@@ -225,7 +309,10 @@ export function getUpdatesSince(_projectId: string, since: string): string {
       const to = store.getNode(e.toId)?.title || e.toId;
       out += `    <edge id="${e.id}" type="${e.type}">\n`;
       out += `      <from>${escapeXml(from)}</from>\n`;
-      out += `      <relation>${escapeXml(e.explanation)}</relation>\n`;
+      out += `      <relation>${escapeXml(edgeRelation(e))}</relation>\n`;
+      if (e.why) {
+        out += `      <why>${escapeXml(e.why)}</why>\n`;
+      }
       out += `      <to>${escapeXml(to)}</to>\n`;
       out += `    </edge>\n`;
     }
@@ -271,13 +358,9 @@ export function getUpdatesSince(_projectId: string, since: string): string {
       out += `    <commit id="${c.id}" agent="${c.agent_name || 'unknown'}" timestamp="${c.created_at}">\n`;
       out += `      <message>${escapeXml(c.message)}</message>\n`;
       // Show which nodes were affected so agents can link intent to content
-      try {
-        const affectedNodes = JSON.parse(c.node_ids || '[]') as string[];
-        if (affectedNodes.length > 0) {
-          out += `      <affected_nodes>${affectedNodes.join(', ')}</affected_nodes>\n`;
-        }
-      } catch {
-        // Skip if node_ids parsing fails
+      const affectedNodes = parseEntityIds(c.node_ids);
+      if (affectedNodes.length > 0) {
+        out += `      <affected_nodes>${affectedNodes.join(', ')}</affected_nodes>\n`;
       }
       out += `    </commit>\n`;
     }
@@ -393,6 +476,7 @@ export function generateXmlContext(
       targetTitle: nodeMap.get(e.toId)?.title || '',
       explanation: e.explanation,
       why: e.why,
+      type: e.type,
     }));
     const incoming = (incomingEdges.get(n.id) || []).map((e) => ({
       sourceId: e.fromId,
@@ -404,7 +488,7 @@ export function generateXmlContext(
       title: n.title,
       trigger: n.trigger,
       why: n.why,
-      understanding: n.understanding,
+      understanding: contextUnderstanding(n),
       validated: n.validated,
       outgoing,
       incoming,
@@ -444,18 +528,6 @@ export function generateXmlContext(
 `;
 
   // Group by trigger type for organized output
-  const triggerOrder: TriggerType[] = [
-    'foundation',
-    'surprise',
-    'consequence',
-    'tension',
-    'repetition',
-    'question',
-    'serendipity',
-    'decision',
-    'prediction',
-    'evaluation',
-  ];
   const byTrigger: Record<string, NodeWithConnections[]> = {};
   nodes.forEach((n) => {
     const trigger = n.trigger || 'general';
@@ -464,14 +536,7 @@ export function generateXmlContext(
   });
 
   // Output in priority order (include any other trigger types not in the standard order)
-  const allTriggerTypes = [
-    ...triggerOrder,
-    'library',
-    'analysis',
-    'experiment',
-    'general',
-  ];
-  for (const trigger of allTriggerTypes) {
+  for (const trigger of orderedTriggerKeys(byTrigger)) {
     if (byTrigger[trigger]?.length) {
       byTrigger[trigger].forEach((n) => {
         const typeAttr = shouldInclude('trigger', visibleFields)
@@ -511,10 +576,10 @@ export function generateXmlContext(
     nodes.forEach((n) => {
       if (n.outgoing?.length) {
         n.outgoing.forEach((o) => {
-          context += `  <link>
+          context += `  <link edge_type="${escapeXml(o.type)}">
     <from>${escapeXml(n.title)}</from>
-    <relation>${escapeXml(o.explanation) || 'connects to'}</relation>
-    <to>${escapeXml(o.targetTitle)}</to>
+    <relation>${escapeXml(edgeRelation(o))}</relation>
+${shouldInclude('why', visibleFields) && o.why ? `    <why>${escapeXml(o.why)}</why>\n` : ''}    <to>${escapeXml(o.targetTitle)}</to>
   </link>\n`;
         });
       }
@@ -608,7 +673,7 @@ function generateFocusedContext(
 
   const node = store.getNode(nodeId);
   if (!node) {
-    return `<error>Node "${nodeId}" not found in current graph.</error>`;
+    return '<error>Requested node not found in current visible graph.</error>';
   }
 
   const { edges: allEdges } = store.getAll();
@@ -660,21 +725,22 @@ function generateFocusedContext(
   if (focusedCommit?.message) {
     context += `    <origin_story agent="${escapeXml(focusedCommit.agentName || 'unknown')}" time="${focusedCommit.createdAt}">${escapeXml(focusedCommit.message)}</origin_story>\n`;
   }
-  if (shouldInclude('understanding', visibleFields) && n.understanding) {
+  const focusedUnderstanding = contextUnderstanding(n);
+  if (shouldInclude('understanding', visibleFields) && focusedUnderstanding) {
     // Always full text for the focused node, ignoring brief mode unless very strict
-    context += `    <understanding>${escapeXml(n.understanding)}</understanding>\n`;
+    context += `    <understanding>${escapeXml(focusedUnderstanding)}</understanding>\n`;
   }
   if (shouldInclude('why', visibleFields) && n.why) {
     context += `    <why_added>${escapeXml(n.why)}</why_added>\n`;
   }
-  // Include full metadata/prose if it's a thinking node
-  if (n.content && !shouldInclude('content', visibleFields) === false) {
-    // Logic: include unless explicitly hidden?
-    // Actually respect hideDocumentProse but maybe not for thinking nodes?
-    // Let's stick to standard logic: if 'content' is in visibleFields (it is by default), show it.
-    if (shouldInclude('content', visibleFields)) {
-      context += `    <content>${escapeXml(n.content)}</content>\n`;
-    }
+  // Thinking content is already emitted as understanding above. Documents keep
+  // their prose in a separate content field.
+  if (
+    n.trigger !== 'thinking' &&
+    n.content &&
+    shouldInclude('content', visibleFields)
+  ) {
+    context += `    <content>${escapeXml(n.content)}</content>\n`;
   }
   context += `  </concept>
 </center_concept>
@@ -695,10 +761,14 @@ function generateFocusedContext(
     if (nbCommit?.message) {
       context += `    <origin_story agent="${escapeXml(nbCommit.agentName || 'unknown')}" time="${nbCommit.createdAt}">${escapeXml(nbCommit.message)}</origin_story>\n`;
     }
-    if (shouldInclude('understanding', visibleFields) && nb.understanding) {
+    const neighborUnderstanding = contextUnderstanding(nb);
+    if (
+      shouldInclude('understanding', visibleFields) &&
+      neighborUnderstanding
+    ) {
       const text = isBrief
-        ? truncateForBrief(nb.understanding, 150)
-        : nb.understanding;
+        ? truncateForBrief(neighborUnderstanding, 150)
+        : neighborUnderstanding;
       context += `    <understanding>${escapeXml(text)}</understanding>\n`;
     }
     context += `  </concept>\n`;
@@ -721,10 +791,10 @@ function generateFocusedContext(
         : neighbors.find((nb) => nb.id === e.toId)?.title || e.toId;
     const direction = e.fromId === nodeId ? 'outgoing' : 'incoming';
 
-    context += `  <link dir="${direction}">
+    context += `  <link dir="${direction}" edge_type="${escapeXml(e.type)}">
     <from>${escapeXml(fromName)}</from>
-    <relation>${escapeXml(e.explanation) || 'connects to'}</relation>
-    <to>${escapeXml(toName)}</to>
+    <relation>${escapeXml(edgeRelation(e))}</relation>
+${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to>${escapeXml(toName)}</to>
   </link>\n`;
   });
 
@@ -835,8 +905,7 @@ function generateCompactContext(
         e.type !== 'supersedes',
     );
 
-    const sampleRels: Array<{ from: string; relation: string; to: string }> =
-      [];
+    const sampleRels: RegionSummary['sampleRelationships'] = [];
     for (let i = 0; i < Math.min(3, regionEdges.length); i++) {
       const e = regionEdges[i];
       const fromNode = nodes.find((n) => n.id === e.fromId);
@@ -844,8 +913,10 @@ function generateCompactContext(
       if (fromNode && toNode) {
         sampleRels.push({
           from: fromNode.title,
-          relation: e.explanation || 'relates to',
+          relation: edgeRelation(e),
           to: toNode.title,
+          type: e.type,
+          why: e.why,
         });
       }
     }
@@ -898,12 +969,13 @@ function generateCompactContext(
 `;
     if (
       shouldInclude('understanding', visibleFields) &&
-      item.node.understanding
+      contextUnderstanding(item.node)
     ) {
       const maxLen = isBrief ? 100 : 150;
+      const understanding = contextUnderstanding(item.node) as string;
       const text =
-        item.node.understanding.slice(0, maxLen) +
-        (item.node.understanding.length > maxLen ? '...' : '');
+        understanding.slice(0, maxLen) +
+        (understanding.length > maxLen ? '...' : '');
       context += `    <understanding>${escapeXml(text)}</understanding>\n`;
     }
     context += `  </concept>
@@ -953,7 +1025,14 @@ function generateCompactContext(
     ) {
       regionXml += `    <sample_relationships>\n`;
       region.sampleRelationships.forEach((r) => {
-        regionXml += `      <link>${escapeXml(r.from)} → ${escapeXml(r.relation)} → ${escapeXml(r.to)}</link>\n`;
+        regionXml += `      <link edge_type="${escapeXml(r.type)}">\n`;
+        regionXml += `        <from>${escapeXml(r.from)}</from>\n`;
+        regionXml += `        <relation>${escapeXml(r.relation)}</relation>\n`;
+        if (shouldInclude('why', visibleFields) && r.why) {
+          regionXml += `        <why>${escapeXml(r.why)}</why>\n`;
+        }
+        regionXml += `        <to>${escapeXml(r.to)}</to>\n`;
+        regionXml += `      </link>\n`;
       });
       regionXml += `    </sample_relationships>\n`;
     }
@@ -1081,18 +1160,6 @@ export function generateRegionContext(
 `;
 
   // Group by trigger type
-  const triggerOrder: TriggerType[] = [
-    'foundation',
-    'surprise',
-    'consequence',
-    'tension',
-    'repetition',
-    'question',
-    'serendipity',
-    'decision',
-    'prediction',
-    'evaluation',
-  ];
   const byTrigger: Record<string, GraphNodeData[]> = {};
   regionNodes.forEach((n) => {
     const trigger = n.trigger || 'general';
@@ -1101,14 +1168,7 @@ export function generateRegionContext(
   });
 
   // Output in priority order (include any other trigger types not in the standard order)
-  const allTriggerTypes = [
-    ...triggerOrder,
-    'library',
-    'analysis',
-    'experiment',
-    'general',
-  ];
-  for (const trigger of allTriggerTypes) {
+  for (const trigger of orderedTriggerKeys(byTrigger)) {
     if (byTrigger[trigger]?.length) {
       byTrigger[trigger].forEach((n) => {
         const typeAttr = shouldInclude('trigger', visibleFields)
@@ -1117,10 +1177,11 @@ export function generateRegionContext(
         context += `  <concept id="${n.id}"${typeAttr}>
     <name>${escapeXml(n.title)}</name>
 `;
-        if (shouldInclude('understanding', visibleFields) && n.understanding) {
+        const understanding = contextUnderstanding(n);
+        if (shouldInclude('understanding', visibleFields) && understanding) {
           const text = isBrief
-            ? truncateForBrief(n.understanding)
-            : n.understanding;
+            ? truncateForBrief(understanding)
+            : understanding;
           context += `    <understanding>${escapeXml(text)}</understanding>\n`;
         }
         if (shouldInclude('why', visibleFields) && n.why) {
@@ -1151,10 +1212,10 @@ export function generateRegionContext(
       const fromNode = nodeMap.get(e.fromId);
       const toNode = nodeMap.get(e.toId);
       if (fromNode && toNode) {
-        context += `  <link type="internal">
+        context += `  <link type="internal" edge_type="${escapeXml(e.type)}">
     <from>${escapeXml(fromNode.title)}</from>
-    <relation>${escapeXml(e.explanation) || 'connects to'}</relation>
-    <to>${escapeXml(toNode.title)}</to>
+    <relation>${escapeXml(edgeRelation(e))}</relation>
+${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to>${escapeXml(toNode.title)}</to>
   </link>\n`;
       }
     });
@@ -1169,10 +1230,10 @@ export function generateRegionContext(
       const toNode = nodeMap.get(e.toId) || store.getNode(e.toId);
       if (fromNode && toNode) {
         const isOutgoing = regionNodeIds.has(e.fromId);
-        context += `  <link type="${isOutgoing ? 'outgoing' : 'incoming'}">
+        context += `  <link type="${isOutgoing ? 'outgoing' : 'incoming'}" edge_type="${escapeXml(e.type)}">
     <from>${escapeXml(fromNode.title)}</from>
-    <relation>${escapeXml(e.explanation) || 'connects to'}</relation>
-    <to>${escapeXml(toNode.title)}</to>
+    <relation>${escapeXml(edgeRelation(e))}</relation>
+${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to>${escapeXml(toNode.title)}</to>
   </link>\n`;
       }
     });
@@ -1231,7 +1292,7 @@ export function generateSkeletonContext(_projectId: string): string {
     .slice(0, 5);
 
   // Get recent activity hint
-  const recentEvents = getRecentEvents(5, true);
+  const recentEvents = getRecentEvents(5, false);
   const recentTopics = new Set<string>();
   recentEvents.forEach((e) => {
     if (e.summary) {
@@ -1295,7 +1356,7 @@ export function findPath(
       n.title.toLowerCase().includes(fromId.toLowerCase()),
     );
     if (match) fromId = match.id;
-    else return `Node not found: "${fromNodeId}"`;
+    else return 'Start node not found in current visible graph.';
   }
 
   if (!toId.startsWith('n_')) {
@@ -1303,11 +1364,13 @@ export function findPath(
       n.title.toLowerCase().includes(toId.toLowerCase()),
     );
     if (match) toId = match.id;
-    else return `Node not found: "${toNodeId}"`;
+    else return 'Target node not found in current visible graph.';
   }
 
-  if (!nodeMap.has(fromId)) return `Node not found: "${fromNodeId}"`;
-  if (!nodeMap.has(toId)) return `Node not found: "${toNodeId}"`;
+  if (!nodeMap.has(fromId))
+    return 'Start node not found in current visible graph.';
+  if (!nodeMap.has(toId))
+    return 'Target node not found in current visible graph.';
 
   // Build adjacency (undirected for path finding)
   const adj = new Map<
@@ -1388,7 +1451,7 @@ export function findPath(
 
 // Generate history context for AI
 export function generateHistoryContext(limit = 50): string {
-  const events = getRecentEvents(limit, true);
+  const events = getRecentEvents(limit, reservedThinkingVisible());
 
   // Build XML context
   let context = `<recent_activity count="${events.length}">\n`;

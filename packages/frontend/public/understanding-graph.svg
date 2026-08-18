@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Understanding Graph">
+  <rect width="64" height="64" rx="14" fill="#18181b"/>
+  <g fill="none" stroke="#71717a" stroke-width="3" stroke-linecap="round">
+    <path d="M18 18 31 31 47 17"/>
+    <path d="m31 31 15 16"/>
+    <path d="m31 31-14 16"/>
+  </g>
+  <circle cx="31" cy="31" r="8" fill="#60a5fa"/>
+  <circle cx="18" cy="18" r="5" fill="#f97316"/>
+  <circle cx="47" cy="17" r="5" fill="#8b5cf6"/>
+  <circle cx="46" cy="47" r="5" fill="#22c55e"/>
+  <circle cx="17" cy="47" r="5" fill="#ec4899"/>
+</svg>

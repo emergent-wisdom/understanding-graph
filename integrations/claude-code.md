@@ -67,10 +67,15 @@ and acts on it. No direct messaging needed.
 
 ```
 graph_skeleton()                     # orient yourself (~150 tokens)
+graph_understand({ query: "...", workflow: "coding" }) # route reading/coding/collaboration/writing/general
 graph_semantic_search({ query: "..." })  # find relevant past reasoning
 graph_history()                      # see what other agents did recently
 graph_find_by_trigger({ trigger: "question" })  # open questions to pick up
 ```
+
+For coding, source lives in ordered document nodes. Generate runnable files for
+builds and tests, then revise or rearrange the nodes and regenerate; do not edit
+the generated projection directly.
 
 ## Also works with
 

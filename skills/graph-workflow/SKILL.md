@@ -10,40 +10,100 @@ user-invocable: false
 
 # Graph Workflow
 
-## The graph is your working memory — use it for ALL substantial work
+## Condition substantial work, then use its native workflow
 
-When the user asks you to do real work — coding, analysis, writing, problem-solving — the graph is how you think, not something you do afterward. Before writing a single line of code or prose:
+The graph should alter attention and action when it carries relevant understanding.
+It does not replace reading sources, requested prose files, or empirical
+evidence; for coding, its document nodes intentionally are the source artifact.
+Before substantial work, route the task explicitly:
 
-1. **Search the graph** — `graph_semantic_search` for prior thinking on this topic. Don't start from zero.
-2. **Search sema** (if available) — find patterns that structure the problem. A city optimizer is a `Strategy#47a4` problem with `Feedback#9b5c` loops. Name them.
-3. **Commit your design decisions as concept nodes** — `decision` for approach chosen, `tension` for tradeoffs, `question` for unknowns. Do this BEFORE or ALONGSIDE writing code, not after.
-4. **Write artifacts as doc trees** — code, prose, and analysis go in `doc_create` nodes inside the graph, connected to the concepts that motivated them.
+| Work | `workflow` | Native authority | Specialized skill |
+|------|------------|------------------|-------------------|
+| Chronological source reading | `reading` | Source content and position | `reading-mode` |
+| Single-contributor software work | `coding` | Code document nodes; generated tests/runtime | `code-work` |
+| Concurrent software work | `collaborative_coding` | Owned code subtrees; generated integration tests | `collaborative-code` |
+| Books, papers, stories, essays | `writing` | Requested draft or manuscript | `creative-work` |
+| Other analysis or problem-solving | `general` | Task evidence | this skill |
 
-**The pattern:** think → commit understanding → build → commit artifacts → connect them.
+Explicit skills never use `auto`. If no specialized workflow applies, call:
 
-**Wrong:** user asks for code → you write a file → done. The graph was irrelevant.
-**Right:** user asks for code → you search graph/sema → commit design decisions → write code as doc tree → connect code to decisions → the graph records WHY, not just WHAT.
+```javascript
+graph_understand({ query: "the concrete task", workflow: "general" })
+```
 
-This applies to everything, not just coding: research, analysis, creative writing, problem-solving. If the work is substantial enough to take more than one turn, it belongs in the graph.
+Then:
+
+1. **Re-enter the process** — use returned priors, resistance, evidence, and
+   unresolved momentum as orientation, not a checklist or authority.
+2. **Check before creating** — `graph_semantic_search` for prior thinking on
+   this topic. Don't start from zero or create a duplicate.
+3. **Search sema** (if available) — find patterns that structure the problem. A city optimizer is a `Strategy#47a4` problem with `Feedback#9b5c` loops. Name them.
+4. **Work in the native artifact** — read sources chronologically; author code
+   in ordered document nodes and generate it for execution; or revise the
+   requested manuscript.
+5. **Capture living understanding at moments you choose** — preserve what
+   genuinely becomes salient, including provisional observations, associations,
+   alternatives, tensions, questions, hypotheses, predictions, evaluations,
+   experiments, and later decisions.
+
+**The pattern:** orient → attend openly → author a useful trace when something
+moves → let it shape the native work → encounter evidence → revise → optionally
+distill.
+
+**Wrong:** user asks for code → edit a generated file and leave the graph stale.
+**Right:** revise or rearrange the canonical code nodes, regenerate, run tests,
+and connect the cognitive states that actually shaped or changed the code.
+
+`no_shift` is a complete outcome. Do not create nodes merely to prove that the
+graph was consulted.
 
 ## Make the invisible visible
 
-Every thinking node should capture a moment in the gradual understanding process — not the conclusion, but the *shift in belief* that led there.
+At a self-selected Thought Moment, compose enough user-visible testimony for a
+future instance to recover what drew attention, why it matters, which
+alternatives remain alive, what you expect, and what the work might try next.
+It may be rich, provisional, personal, unresolved, and longer than a summary.
+Its purpose is to continue cognition, not decorate the graph.
 
-Ask yourself: *what changed in my understanding just now? What did I believe before, and what do I believe after?*
+When something stabilizes, ask: *what changed in my understanding just now?
+What did I believe before, what encounter moved it, and what do I believe
+after?* Preserve the richer trace that led there.
 
-A thinking node that says "this chapter discusses governance" is useless. A thinking node that says "I thought governance meant rules, but here it means pattern-weaving" — with edges to the prior belief it supersedes and the surprise that caused the shift — is a reasoning trace that teaches future agents how to think.
+A node that says "this chapter discusses governance" is useless. A node that
+says "I treated governance as rules; this passage instead supports
+pattern-weaving" — with edges to the prior belief and the evidence that caused
+the shift — is a trace future agents can inspect and test. If nothing changed,
+`no_shift` is the right result and no new node is needed.
+
+Do not pre-assign a note quota or march through trigger categories. Do not
+claim access to hidden model computation or retroactively invent a clean
+rationale. This is intentional cognitive testimony composed for continuation,
+not private chain-of-thought.
+
+Ordinary workflows never access or create `thinking` nodes. That trigger is
+reserved for the separate synthetic Reader/CMP mode, which later reconstructs
+chronological inner-voice training blocks from the underlying typed graph.
+Reserved blocks and their incident relations are excluded from ordinary graph
+context and mutation targets.
 
 ## STRICT parameter names — wrong names fail silently
 
 ```
 graph_add_concept: { title, trigger, understanding, why }
+graph_note:        { about, testimony, title?, trigger?, why?, status?, relations? } // graph_batch only
 graph_connect:     { from, to, type, why }
 graph_revise:      { node, understanding, before, after, pivot, why }
+graph_serendipity: { name, synthesis, source_elements, why } // graph_batch only
+graph_validate:    { node, insight }                         // graph_batch only
+graph_decide:      { question, options, chosen, reasoning } // graph_batch only
 doc_create:        { title, content, fileType, isDocRoot, parentId, level }
+doc_move:          { nodeId, parentId?, afterId? } // graph_batch only
+doc_split:         { nodeId, mode, lineNumbers?, childLevel? } // graph_batch, leaf only
 ```
 
-**NEVER use:** `name` (→ `title`), `body` (→ `understanding`), `source` (→ `from`), `target` (→ `to`), `edgeType` (→ `type`)
+For `graph_add_concept`, use `title` rather than `name`; `graph_serendipity`
+intentionally uses `name`. Never substitute `body` for `understanding`,
+`source`/`target` for `from`/`to`, or `edgeType` for `type`.
 
 ## Correct graph_batch example — copy this pattern exactly
 
@@ -70,14 +130,34 @@ graph_batch({
 ## The five laws
 
 1. **Git for cognition.** Nodes are never deleted, only superseded. `graph_revise` with before/after/pivot captures the shift. The `why` is your commit message.
-2. **The PURE standard.** Decision and analysis nodes must be **P**arsimonious, **U**nique, **R**ealizable, **E**xpansive. If any gate is red, reject.
-3. **Graph-first context.** Search before creating. If >80% similar exists, extend it.
+2. **The PURE standard.** Apply PURE after open exploration, when an analysis,
+   model, synthesis, or decision is being stabilized for reuse. Never use it to
+   suppress raw surprise, questions, tension, or hypotheses before they develop.
+3. **Graph-first context.** Use `graph_understand` before answering and search
+   before creating. If >80% similar exists, extend it.
 4. **Synthesize, don't transcribe.** Never record "user said X." Capture the implication — how it connects, what tension it creates.
-5. **Delegate by default.** For substantial tasks, break into sub-tasks via `solver_delegate`.
+5. **Delegate along real seams.** Parallelize independent work. For concurrent
+   code-subtree edits, use `collaborative-code` so ownership, locks, handoffs, and
+   integration are explicit.
 
-## All mutations go through graph_batch
+### Synthesis is an operation, not a catch-all trigger
 
-Every batch needs a `commit_message`. Batches are atomic. No orphans — every new concept must connect to at least one existing node in the same batch.
+Synthesis happens throughout the graph. Make it visible through the several
+typed inputs, their edge rationales, and the atomic commit that integrates
+them. Type the result by what the synthesis becomes: `analysis` for a
+stabilized view or deliberate suspension, `model` for a general mechanism,
+`hypothesis` for a provisional unification, `decision` for a choice,
+`evaluation` for a value judgment, `serendipity` for an unexpected bridge,
+`tension` for an irreducible conflict, or `question` for the unknown the
+attempt exposed. Do not hide this distinction behind a generic synthesis node.
+The mutating helpers `graph_serendipity`, `graph_validate`, and `graph_decide`
+are operations inside `graph_batch`, never top-level calls.
+
+## Direct concept and document-tree mutations go through graph_batch
+
+Every batch needs a `commit_message`. Batches are atomic. No orphans — every
+new concept must connect to at least one existing node in the same batch.
+Workflow tools such as `source_read` manage their own atomic updates.
 
 ```javascript
 // CORRECT
@@ -210,9 +290,9 @@ Don't collapse to `foundation` and `decision`. The full palette:
 | `question` | Open questions, unknowns to explore | Defining the boundary |
 | `decision` | Choice points, alternatives considered | Collapsing possibility |
 | `experiment` | Empirical tests, validation attempts | Testing belief against reality |
-| `analysis` | Agent-generated structured examination | Structured examination |
+| `analysis` | Stabilized integration or structured examination | Cognitive ratchet |
 | `serendipity` | Chaos-injected insights | Unexpected connection |
-| `thinking` | **RESERVED — synthesizer agent only.** Use `analysis` or `surprise` instead | — |
+| `thinking` | **RESERVED — synthetic Reader/CMP synthesizer only.** Never ordinary notes | Reconstructed training block |
 | `reference` | Pointer to another project or URL | Citation |
 | `library` | Collection of references | Curated collection |
 | `prediction` | Forward-looking belief | Forecasting |
@@ -248,14 +328,17 @@ Commit messages are visible to other agents via `graph_updates`. They see not ju
 
 ## Substantive tasks get their own project
 
-For real tasks: `project_create` + `project_switch` into a fresh project. Do all work there. When done, switch to `default` and plant one `reference` node pointing at the task project.
+For real tasks, call `project_switch({ project, goal })`; it creates the project
+when needed. Do all work there. When done, switch to `default` and plant one
+`reference` node pointing at the task project.
 
 `default` is your long-term autobiography. Task projects hold reasoning for specific work.
 
 ### Generated file path rules
 When using `doc_generate`, the file name is derived from the document root's title:
 - Title is hyphenated and lowercased: "My Paper Title" → `my-paper-title.md`
-- Do NOT put the file extension in the title — it's added from `fileType`
+- `fileType` determines the extension. A matching extension in the title is
+  accepted and de-duplicated; using a filename stem is simplest.
 - Example: title "Analysis Report", fileType "md" → `analysis-report.md`
 
 ### Choosing edge types — decision tree
@@ -275,13 +358,21 @@ If none of these fit, `relates` is fine — but most edges have a more specific 
 
 ### Red flags in batches
 Watch for these patterns that indicate shallow graph work:
-- **Only `doc_create` operations** — you're using the graph as a file store, not a thinking tool. Where are the concept nodes that capture *why* you're writing this?
+- **Editing generated code** — the executable projection changed without the
+  canonical document nodes changing.
+- **Only `doc_create` operations in a graph-native writing batch** — you're
+  filing a manuscript without capturing any durable change in understanding.
 - **Every `graph_connect` uses `relates`** — shallow linking. Run through the edge decision tree above.
 - **Zero sema handles in understanding text** — you're thinking without shared vocabulary. Search sema before substantive batches.
 - **Monolithic content** — a single massive node instead of decomposed thinking. Break large insights into connected smaller nodes.
 - **No questions or tensions** — you're only recording conclusions, not the doubt and conflict that led there.
 
 ## Document tools
+
+Use document tools for graph-native code, manuscripts, reading journals, and
+other artifacts whose canonical home is the graph. Code document roots are the
+source of truth; generated files are projections. Do not duplicate an existing
+file-based draft merely to satisfy the workflow.
 
 ### Creating documents
 
@@ -314,6 +405,39 @@ graph_batch({
 | Context and location | `doc_navigate({ nodeId })` |
 | Read content | `doc_read({ nodeId })` |
 | Regenerate to file | `doc_generate({ rootId })` |
+
+### Rearranging documents
+
+Use `doc_move` only as an operation inside `graph_batch`:
+
+```javascript
+graph_batch({
+  operations: [
+    { tool: "doc_move", params: {
+        nodeId: "n_section", parentId: "n_destination_parent",
+        afterId: "n_previous_sibling"
+    }}
+  ],
+  commit_message: "moved the section where its premise is established"
+})
+```
+
+`parentId` defaults to the current parent. `afterId` means the direct previous
+sibling under the destination parent; omit it to place the subtree first. The
+operation preserves the node/subtree content and history, atomically repairs
+both parents' `contains`/`next` topology, rejects roots, cycles, malformed
+orders, and foreign `afterId` values, then regenerates affected roots. Do not
+call it directly or manually rewire document order edges.
+
+Use `doc_split` inside `graph_batch` when one leaf document unit contains more
+than one independently meaningful unit. In writing, that means more than one
+local creative center—not a size quota. It retains the node as an empty
+container, preserves the former content in revision history, and creates one
+validated child sequence. A node that already has children must be reworked
+through those children rather than split into a competing sequence. In line
+mode, use unique zero-based boundaries from 1 through the line before the end;
+for prose, choose `childLevel: "paragraph"` or `"sentence"` when headings would
+be wrong. Do not pass `keepParent`, `asFiles`, or `project`.
 
 ### Strategic reading pattern
 

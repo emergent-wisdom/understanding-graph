@@ -6,7 +6,18 @@ import { bidirectional } from 'graphology-shortest-path';
 import { bfsFromNode } from 'graphology-traversal';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, logEvent } from '../database/sqlite.js';
-import type { TriggerType } from '../types/index.js';
+import {
+  assertEdgeType,
+  assertTriggerType,
+  EDGE_TYPES,
+  isTriggerType,
+  type TriggerType,
+} from '../types/index.js';
+import {
+  graphNodeVisible,
+  isReservedThinkingNode,
+  reservedThinkingVisible,
+} from '../visibility.js';
 import {
   bufferToEmbedding,
   cosineSimilarity,
@@ -83,6 +94,11 @@ export interface Revision {
   trigger?: string;
   why?: string;
   understanding?: string;
+  // Document revisions preserve the prior artifact, not only the reason for
+  // the edit. These fields are optional so graphs written before they were
+  // introduced remain readable.
+  content?: string;
+  summary?: string;
   explanation?: string;
   version: number;
   timestamp: string;
@@ -202,12 +218,46 @@ export interface DocumentTreeNode {
   children: DocumentTreeNode[];
 }
 
+export interface DocumentMoveResult {
+  node: GraphNodeData;
+  sourceParent: GraphNodeData;
+  destinationParent: GraphNodeData;
+  sourceRoot: GraphNodeData;
+  destinationRoot: GraphNodeData;
+  finalChildren: Array<{ id: string; title: string }>;
+  sourceChildren?: Array<{ id: string; title: string }>;
+  affectedNodeIds: string[];
+  affectedEdgeIds: string[];
+  affectedRootIds: string[];
+}
+
+export interface DocumentMergeResult {
+  node: GraphNodeData;
+  parent: GraphNodeData;
+  root: GraphNodeData;
+  archivedNodeIds: string[];
+  finalChildren: Array<{ id: string; title: string }>;
+  affectedNodeIds: string[];
+  affectedEdgeIds: string[];
+  affectedRootIds: string[];
+  redirectedEdgeIds: string[];
+  deduplicatedRelationshipCount: number;
+  collapsedInternalRelationshipCount: number;
+}
+
+interface DocumentSiblingOrder {
+  children: GraphNodeData[];
+  containsEdgeByChild: Map<string, string>;
+  nextEdges: Array<{ id: string; fromId: string; toId: string }>;
+}
+
 // ============================================================================
 // GraphStore Class
 // ============================================================================
 
 export class GraphStore {
   private graph: GraphType | null = null;
+  private ordinaryGraph: GraphType | null = null;
   private nodesCache: Map<string, GraphNodeData> = new Map();
   private edgesCache: Map<string, GraphEdgeData> = new Map();
   private dirty = true;
@@ -293,6 +343,92 @@ export class GraphStore {
 
   private markDirty(): void {
     this.dirty = true;
+    this.ordinaryGraph = null;
+  }
+
+  /**
+   * Invalidate graphology projections after an intentional raw-SQL admin
+   * mutation. Ordinary CRUD calls do this internally; bulk replace and purge
+   * use SQLite helpers and must explicitly cross this cache boundary.
+   */
+  invalidateCache(): void {
+    this.markDirty();
+  }
+
+  private visibleNodeSql(alias?: string): string {
+    if (reservedThinkingVisible()) return '1 = 1';
+    const prefix = alias ? `${alias}.` : '';
+    return `LOWER(TRIM(COALESCE(${prefix}trigger, ''))) != 'thinking'
+      AND LOWER(TRIM(COALESCE(${prefix}file_type, ''))) != 'thinking'`;
+  }
+
+  private visibleEdgeSql(alias = 'e'): string {
+    if (reservedThinkingVisible()) return '1 = 1';
+    return `NOT EXISTS (
+      SELECT 1 FROM nodes visibility_endpoint
+      WHERE visibility_endpoint.id IN (${alias}.from_id, ${alias}.to_id)
+        AND (LOWER(TRIM(COALESCE(visibility_endpoint.trigger, ''))) = 'thinking'
+          OR LOWER(TRIM(COALESCE(visibility_endpoint.file_type, ''))) = 'thinking')
+    )`;
+  }
+
+  /** Read a node without applying the caller's visibility projection. */
+  private getNodeUnfiltered(id: string): GraphNodeData | null {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.rowToNode(row) : null;
+  }
+
+  private edgeVisible(edge: Pick<GraphEdgeData, 'fromId' | 'toId'>): boolean {
+    if (reservedThinkingVisible()) return true;
+    return (
+      graphNodeVisible(this.getNodeUnfiltered(edge.fromId)) &&
+      graphNodeVisible(this.getNodeUnfiltered(edge.toId))
+    );
+  }
+
+  /**
+   * Build the ordinary-work projection from the complete cache. Keeping the
+   * unrestricted graph as the source prevents one concurrent MCP mode from
+   * poisoning another mode's cache.
+   */
+  private getOrdinaryGraph(): GraphType {
+    if (this.ordinaryGraph) return this.ordinaryGraph;
+    if (!this.graph) throw new Error('Failed to load graph');
+
+    // biome-ignore lint/suspicious/noExplicitAny: graphology ESM/CJS compatibility
+    const projected = new (GraphConstructor as any)({
+      type: 'directed',
+      allowSelfLoops: false,
+    }) as GraphType;
+
+    this.graph.forEachNode(
+      (id: string, attributes: Record<string, unknown>) => {
+        const node = this.nodesCache.get(id);
+        if (graphNodeVisible(node)) projected.addNode(id, { ...attributes });
+      },
+    );
+    this.graph.forEachEdge(
+      (
+        _key: string,
+        attributes: Record<string, unknown>,
+        source: string,
+        target: string,
+      ) => {
+        if (
+          projected.hasNode(source) &&
+          projected.hasNode(target) &&
+          !projected.hasEdge(source, target)
+        ) {
+          projected.addEdge(source, target, { ...attributes });
+        }
+      },
+    );
+
+    this.ordinaryGraph = projected;
+    return projected;
   }
 
   // --------------------------------------------------------------------------
@@ -314,6 +450,7 @@ export class GraphStore {
     }) as GraphType;
     this.nodesCache.clear();
     this.edgesCache.clear();
+    this.ordinaryGraph = null;
 
     // Load nodes
     const nodeQuery = includeInactive
@@ -335,6 +472,19 @@ export class GraphStore {
 
     for (const row of edgeRows) {
       const edge = this.rowToEdge(row);
+
+      // Older databases could persist self-loops even though the in-memory
+      // graph deliberately disallows them. Preserve the row for explicit
+      // repair, but quarantine it from graph algorithms so one legacy edge
+      // cannot prevent every graph read from loading.
+      if (edge.fromId === edge.toId) {
+        console.warn(
+          `[understanding-graph] Quarantined legacy self-loop edge "${edge.id}" on node "${edge.fromId}". ` +
+            'The persisted row was not deleted, but it is excluded from the in-memory graph until archived with graph_disconnect or repaired explicitly.',
+        );
+        continue;
+      }
+
       this.edgesCache.set(edge.id, edge);
       // Only add edge if both endpoints exist and edge doesn't already exist
       if (
@@ -347,7 +497,7 @@ export class GraphStore {
     }
 
     this.dirty = false;
-    return this.graph;
+    return reservedThinkingVisible() ? this.graph : this.getOrdinaryGraph();
   }
 
   /**
@@ -360,7 +510,7 @@ export class GraphStore {
     if (!this.graph) {
       throw new Error('Failed to load graph');
     }
-    return this.graph;
+    return reservedThinkingVisible() ? this.graph : this.getOrdinaryGraph();
   }
 
   // --------------------------------------------------------------------------
@@ -368,6 +518,15 @@ export class GraphStore {
   // --------------------------------------------------------------------------
 
   createNode(input: CreateNodeInput): GraphNodeData & { seq: number } {
+    if (input.trigger !== undefined) assertTriggerType(input.trigger);
+    if (
+      !reservedThinkingVisible() &&
+      !graphNodeVisible({ trigger: input.trigger, fileType: input.fileType })
+    ) {
+      throw new Error(
+        'Reserved synthetic Reader/CMP thinking artifacts can only be created in an explicit synthetic visibility scope.',
+      );
+    }
     // --- STRICT VALIDATION (Impossible to create illegal nodes) ---
     const isDocument = !!input.content || !!input.level;
 
@@ -439,11 +598,8 @@ export class GraphStore {
   }
 
   getNode(id: string): GraphNodeData | null {
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id) as
-      | Record<string, unknown>
-      | undefined;
-    return row ? this.rowToNode(row) : null;
+    const node = this.getNodeUnfiltered(id);
+    return graphNodeVisible(node) ? node : null;
   }
 
   updateNode(
@@ -451,11 +607,44 @@ export class GraphStore {
     input: UpdateNodeInput,
   ): GraphNodeData & { seq: number } {
     const db = getDb();
+    if (input.trigger !== undefined) assertTriggerType(input.trigger);
 
     // Get current state for revision
     const current = this.getNode(id);
     if (!current) {
       throw new Error(`Node not found: ${id}`);
+    }
+    if (
+      input.isDocRoot !== undefined &&
+      input.isDocRoot !== Boolean(current.isDocRoot)
+    ) {
+      throw new Error(
+        'DOCUMENT_STRUCTURE_CHANGE_NOT_ALLOWED: updateNode cannot change isDocRoot without atomically rewiring the document topology.',
+      );
+    }
+    const resultingTrigger = input.trigger ?? current.trigger;
+    const resultingFileType = input.fileType ?? current.fileType;
+    if (
+      isReservedThinkingNode(current) &&
+      !isReservedThinkingNode({
+        trigger: resultingTrigger,
+        fileType: resultingFileType,
+      })
+    ) {
+      throw new Error(
+        'RESERVED_RECLASSIFICATION: a synthetic Reader/CMP thinking artifact cannot be converted into an ordinary node in place.',
+      );
+    }
+    if (
+      !reservedThinkingVisible() &&
+      !graphNodeVisible({
+        trigger: resultingTrigger,
+        fileType: resultingFileType,
+      })
+    ) {
+      throw new Error(
+        'Reserved synthetic Reader/CMP thinking artifacts can only be created or revised in an explicit synthetic visibility scope.',
+      );
     }
 
     // Build revision
@@ -464,6 +653,8 @@ export class GraphStore {
       trigger: current.trigger || undefined,
       why: current.why || undefined,
       understanding: current.understanding || undefined,
+      content: current.content ?? undefined,
+      summary: current.summary ?? undefined,
       version: current.version,
       timestamp: new Date().toISOString(),
       revisionWhy: input.revisionWhy || 'Updated',
@@ -685,9 +876,51 @@ export class GraphStore {
     } = {},
   ): GraphNodeData & { seq: number } {
     const db = getDb();
+    const requestedTrigger: unknown = options.trigger;
+    if (requestedTrigger !== undefined) assertTriggerType(requestedTrigger);
+
     const current = this.getNode(id);
     if (!current) {
       throw new Error(`Node not found: ${id}`);
+    }
+    const structuralEdge = db
+      .prepare(
+        `SELECT id, type FROM edges
+         WHERE active = 1
+           AND type IN ('contains', 'next')
+           AND (from_id = ? OR to_id = ?)
+         LIMIT 1`,
+      )
+      .get(id, id) as { id: string; type: string } | undefined;
+    if (structuralEdge) {
+      throw new Error(
+        `DOCUMENT_STRUCTURE_CHANGE_NOT_ALLOWED: doc_to_concept cannot convert a node while active ${structuralEdge.type} edge ${structuralEdge.id} attaches it to document topology. Move or remove the structure explicitly first.`,
+      );
+    }
+    const resultingTrigger =
+      (requestedTrigger as TriggerType | undefined) ||
+      current.trigger ||
+      'foundation';
+    if (!isTriggerType(resultingTrigger)) {
+      throw new Error(
+        'INVALID_TRIGGER: doc_to_concept would preserve a non-canonical graph trigger.',
+      );
+    }
+    if (
+      isReservedThinkingNode(current) &&
+      !isReservedThinkingNode({ trigger: resultingTrigger })
+    ) {
+      throw new Error(
+        'RESERVED_RECLASSIFICATION: a synthetic Reader/CMP thinking artifact cannot be converted into an ordinary node in place.',
+      );
+    }
+    if (
+      !reservedThinkingVisible() &&
+      !graphNodeVisible({ trigger: resultingTrigger })
+    ) {
+      throw new Error(
+        'Reserved synthetic Reader/CMP thinking artifacts can only be created in an explicit synthetic visibility scope.',
+      );
     }
 
     // Determine new understanding
@@ -702,7 +935,8 @@ export class GraphStore {
       trigger: current.trigger || undefined,
       why: current.why || undefined,
       understanding: current.understanding || undefined,
-      content: current.content || undefined,
+      content: current.content ?? undefined,
+      summary: current.summary ?? undefined,
       version: current.version,
       timestamp: new Date().toISOString(),
       revisionWhy: options.why || 'Converted from document to concept node',
@@ -728,7 +962,7 @@ export class GraphStore {
     `);
 
     stmt.run(
-      options.trigger || current.trigger || 'foundation',
+      resultingTrigger,
       newUnderstanding || null,
       JSON.stringify(revisions),
       id,
@@ -754,9 +988,11 @@ export class GraphStore {
     const row = db
       .prepare(`
       SELECT * FROM nodes WHERE active = 1 AND LOWER(title) = LOWER(?)
+        AND ${this.visibleNodeSql()}
     `)
       .get(name) as Record<string, unknown> | undefined;
-    return row ? this.rowToNode(row) : null;
+    const node = row ? this.rowToNode(row) : null;
+    return graphNodeVisible(node) ? node : null;
   }
 
   findSimilarNodes(name: string, limit = 5): GraphNodeData[] {
@@ -764,10 +1000,11 @@ export class GraphStore {
     const rows = db
       .prepare(`
       SELECT * FROM nodes WHERE active = 1 AND LOWER(title) LIKE LOWER(?)
+        AND ${this.visibleNodeSql()}
       ORDER BY LENGTH(title) ASC LIMIT ?
     `)
       .all(`%${name}%`, limit) as Record<string, unknown>[];
-    return rows.map((r) => this.rowToNode(r));
+    return rows.map((r) => this.rowToNode(r)).filter(graphNodeVisible);
   }
 
   // --------------------------------------------------------------------------
@@ -777,6 +1014,13 @@ export class GraphStore {
   createEdge(input: CreateEdgeInput): GraphEdgeData & { seq: number } {
     const db = getDb();
     const id = `e_${uuidv4().slice(0, 8)}`;
+
+    if (input.fromId === input.toId) {
+      throw new Error(
+        `Self-loop edges are not allowed: source and target are both "${input.fromId}". ` +
+          'Choose two distinct nodes for a meaningful relationship.',
+      );
+    }
 
     // Verify nodes exist to prevent FK constraint failure
     const fromNode = this.getNode(input.fromId);
@@ -792,42 +1036,16 @@ export class GraphStore {
       );
     }
 
-    // Validate edge type - ordered by category, 'relates' is LAST RESORT
-    const VALID_EDGE_TYPES = [
-      // Semantic - how ideas relate conceptually
-      'supersedes', // New understanding replaces old
-      'contradicts', // Creates tension (one must yield)
-      'diverse_from', // Different perspective (both valid)
-      'refines', // Adds precision to existing concept
-      'answers', // Resolves a question
-      'questions', // Raises doubt about a concept
-      'expresses', // Document → concept it discusses
-      'implements', // Abstract → concrete realization
-      'contextualizes', // Provides framing
-      // Epistemic - how knowledge was acquired
-      'learned_from', // Derived understanding from source
-      // Predictive - tracking forecasts
-      'validates', // Later evidence confirms a prediction
-      'invalidates', // Later evidence refutes a prediction
-      // Structural - document organization
-      'contains', // Parent → child
-      'next', // Sequence ordering
-      // LAST RESORT - only use if NONE of the above fit
-      'relates', // Avoid! Pick a specific type above
-    ];
+    // Validate against the same canonical contract used by edge updates and
+    // model-facing schemas. 'relates' remains the last-resort relation.
     if (!input.type) {
       throw new Error(
-        `Edge type is required. Pick one: ${VALID_EDGE_TYPES.slice(0, -1).join(', ')}. ` +
+        `Edge type is required. Pick one: ${EDGE_TYPES.slice(0, -1).join(', ')}. ` +
           `(Use 'relates' ONLY if nothing else fits.) ` +
           `Think: How does "${fromNode.title}" affect understanding of "${toNode.title}"?`,
       );
     }
-    if (!VALID_EDGE_TYPES.includes(input.type)) {
-      throw new Error(
-        `Invalid edge type: "${input.type}". Valid types are: ${VALID_EDGE_TYPES.join(', ')}. ` +
-          `Do not invent edge types like "chosen as" or "considered for".`,
-      );
-    }
+    assertEdgeType(input.type);
 
     // Require why field for ALL edges - every connection is a cognitive decision
     if (!input.why || input.why.trim().length < 3) {
@@ -874,7 +1092,8 @@ export class GraphStore {
     const row = db.prepare('SELECT * FROM edges WHERE id = ?').get(id) as
       | Record<string, unknown>
       | undefined;
-    return row ? this.rowToEdge(row) : null;
+    const edge = row ? this.rowToEdge(row) : null;
+    return edge && this.edgeVisible(edge) ? edge : null;
   }
 
   getEdgesBetween(fromId: string, toId: string): GraphEdgeData[] {
@@ -884,7 +1103,9 @@ export class GraphStore {
         'SELECT * FROM edges WHERE from_id = ? AND to_id = ? AND active = 1',
       )
       .all(fromId, toId) as Record<string, unknown>[];
-    return rows.map((row) => this.rowToEdge(row));
+    return rows
+      .map((row) => this.rowToEdge(row))
+      .filter((edge) => this.edgeVisible(edge));
   }
 
   updateEdge(
@@ -896,6 +1117,10 @@ export class GraphStore {
     if (!current) {
       throw new Error(`Edge not found: ${id}`);
     }
+
+    // updateEdge is a public persistence boundary and may be reached without
+    // an MCP schema (for example through raw graph_batch dispatch).
+    if (input.type !== undefined) assertEdgeType(input.type);
 
     const revision: Revision = {
       explanation: current.explanation || undefined,
@@ -970,11 +1195,12 @@ export class GraphStore {
       SELECT n.* FROM nodes n
       JOIN nodes_fts fts ON n.id = fts.id
       WHERE nodes_fts MATCH ? AND n.active = 1
+        AND ${this.visibleNodeSql('n')}
       ORDER BY rank
       LIMIT ?
     `)
       .all(query, limit) as Record<string, unknown>[];
-    return rows.map((r) => this.rowToNode(r));
+    return rows.map((r) => this.rowToNode(r)).filter(graphNodeVisible);
   }
 
   // --------------------------------------------------------------------------
@@ -1200,17 +1426,20 @@ export class GraphStore {
   findSemanticGaps(limit = 20): SemanticGap[] {
     const graph = this.getGraph();
     const gaps: SemanticGap[] = [];
+    const visibleNodes = Array.from(this.nodesCache.entries()).filter(
+      ([, node]) => graphNodeVisible(node),
+    );
 
     // Build term index
     const nodeTerms = new Map<string, Set<string>>();
-    this.nodesCache.forEach((node, id) => {
+    for (const [id, node] of visibleNodes) {
       const text = `${node.title} ${node.understanding || ''}`.toLowerCase();
       const terms = new Set(text.split(/\W+/).filter((t) => t.length > 3));
       nodeTerms.set(id, terms);
-    });
+    }
 
     // Find pairs with shared terms but no connection
-    const nodeIds = Array.from(this.nodesCache.keys());
+    const nodeIds = visibleNodes.map(([id]) => id);
     for (let i = 0; i < nodeIds.length; i++) {
       for (let j = i + 1; j < nodeIds.length; j++) {
         const id1 = nodeIds[i];
@@ -1256,10 +1485,16 @@ export class GraphStore {
       .prepare('SELECT * FROM edges WHERE active = 1')
       .all() as Record<string, unknown>[];
 
-    return {
-      nodes: nodeRows.map((r) => this.rowToNode(r)),
-      edges: edgeRows.map((r) => this.rowToEdge(r)),
-    };
+    const nodes = nodeRows
+      .map((row) => this.rowToNode(row))
+      .filter(graphNodeVisible);
+    const visibleIds = new Set(nodes.map((node) => node.id));
+    const edges = edgeRows
+      .map((row) => this.rowToEdge(row))
+      .filter(
+        (edge) => visibleIds.has(edge.fromId) && visibleIds.has(edge.toId),
+      );
+    return { nodes, edges };
   }
 
   /**
@@ -1277,11 +1512,11 @@ export class GraphStore {
     const edgeRows = db
       .prepare('SELECT * FROM edges WHERE active = 1')
       .all() as Record<string, unknown>[];
-    const edges = edgeRows.map((r) => this.rowToEdge(r));
+    const allEdges = edgeRows.map((r) => this.rowToEdge(r));
 
     // Find nodes that are superseded (have incoming supersedes edge)
     const supersededNodeIds = new Set(
-      edges.filter((e) => e.type === 'supersedes').map((e) => e.toId),
+      allEdges.filter((e) => e.type === 'supersedes').map((e) => e.toId),
     );
 
     // Get active nodes
@@ -1303,11 +1538,20 @@ export class GraphStore {
       inactiveSupersededNodes = inactiveRows.map((r) => this.rowToNode(r));
     }
 
-    return {
-      nodes: [...activeNodes, ...inactiveSupersededNodes],
-      edges,
-      supersededNodeIds,
-    };
+    const nodes = [...activeNodes, ...inactiveSupersededNodes].filter(
+      graphNodeVisible,
+    );
+    const visibleIds = new Set(nodes.map((node) => node.id));
+    const edges = allEdges.filter(
+      (edge) => visibleIds.has(edge.fromId) && visibleIds.has(edge.toId),
+    );
+    const visibleSupersededNodeIds = new Set(
+      edges
+        .filter((edge) => edge.type === 'supersedes')
+        .map((edge) => edge.toId),
+    );
+
+    return { nodes, edges, supersededNodeIds: visibleSupersededNodeIds };
   }
 
   /**
@@ -1317,10 +1561,12 @@ export class GraphStore {
     const db = getDb();
     const rows = db
       .prepare(`
-      SELECT * FROM nodes WHERE active = 1 ORDER BY RANDOM() LIMIT ?
+      SELECT * FROM nodes WHERE active = 1
+        AND ${this.visibleNodeSql()}
+      ORDER BY RANDOM() LIMIT ?
     `)
       .all(count) as Record<string, unknown>[];
-    return rows.map((r) => this.rowToNode(r));
+    return rows.map((r) => this.rowToNode(r)).filter(graphNodeVisible);
   }
 
   /**
@@ -1330,10 +1576,14 @@ export class GraphStore {
     const db = getDb();
     const rows = db
       .prepare(`
-      SELECT * FROM edges WHERE active = 1 ORDER BY RANDOM() LIMIT ?
+      SELECT e.* FROM edges e WHERE e.active = 1
+        AND ${this.visibleEdgeSql('e')}
+      ORDER BY RANDOM() LIMIT ?
     `)
       .all(count) as Record<string, unknown>[];
-    return rows.map((r) => this.rowToEdge(r));
+    return rows
+      .map((r) => this.rowToEdge(r))
+      .filter((edge) => this.edgeVisible(edge));
   }
 
   /**
@@ -1354,12 +1604,15 @@ export class GraphStore {
       .prepare(`
       SELECT * FROM nodes
       WHERE active = 1 AND trigger = 'question'
+        AND ${this.visibleNodeSql()}
       ORDER BY RANDOM()
       LIMIT ?
     `)
       .all(questionsLimit) as Record<string, unknown>[];
 
-    const questions = questionRows.map((r) => this.rowToNode(r));
+    const questions = questionRows
+      .map((r) => this.rowToNode(r))
+      .filter(graphNodeVisible);
 
     if (questions.length === 0) {
       return [];
@@ -1376,12 +1629,15 @@ export class GraphStore {
         .prepare(`
         SELECT * FROM nodes
         WHERE active = 1 AND id != ? AND trigger != 'question'
+          AND ${this.visibleNodeSql()}
         ORDER BY RANDOM()
         LIMIT ?
       `)
         .all(question.id, randomPerQuestion) as Record<string, unknown>[];
 
-      const randomNodes = randomRows.map((r) => this.rowToNode(r));
+      const randomNodes = randomRows
+        .map((r) => this.rowToNode(r))
+        .filter(graphNodeVisible);
 
       if (randomNodes.length > 0) {
         results.push({ question, randomNodes });
@@ -1402,7 +1658,8 @@ export class GraphStore {
     // Walk backwards through supersession edges
     while (currentId) {
       const node = this.getNode(currentId);
-      if (node) chain.unshift(node);
+      if (!node) break;
+      chain.unshift(node);
 
       // Find what this node supersedes
       const supersedes = db
@@ -1418,6 +1675,7 @@ export class GraphStore {
     // Also walk forward to find what supersedes this node
     currentId = nodeId;
     while (currentId) {
+      if (!this.getNode(currentId)) break;
       const supersededBy = db
         .prepare(`
         SELECT from_id FROM edges
@@ -1453,7 +1711,7 @@ export class GraphStore {
     }> = [];
 
     // Find nodes with no path between them
-    const nodeIds = Array.from(this.nodesCache.keys());
+    const nodeIds = graph.nodes() as string[];
 
     for (let i = 0; i < Math.min(nodeIds.length, 50); i++) {
       for (let j = i + 1; j < Math.min(nodeIds.length, 50); j++) {
@@ -1528,15 +1786,23 @@ export class GraphStore {
     const db = getDb();
     const rows = db
       .prepare(`
-      SELECT id FROM nodes WHERE active = 1 AND embedding IS NULL
+      SELECT id, trigger, file_type FROM nodes
+      WHERE active = 1 AND embedding IS NULL
     `)
-      .all() as Array<{ id: string }>;
+      .all() as Array<{
+      id: string;
+      trigger: string | null;
+      file_type: string | null;
+    }>;
+    const visibleRows = rows.filter(graphNodeVisible);
 
     let processed = 0;
-    for (const row of rows) {
-      await this.generateAndStoreEmbedding(row.id);
-      processed++;
-      if (onProgress) onProgress(processed, rows.length);
+    for (let index = 0; index < visibleRows.length; index++) {
+      const stored = await this.generateAndStoreEmbedding(
+        visibleRows[index].id,
+      );
+      if (stored) processed++;
+      if (onProgress) onProgress(index + 1, visibleRows.length);
     }
 
     return processed;
@@ -1565,6 +1831,7 @@ export class GraphStore {
     const results: SemanticSearchResult[] = [];
     for (const row of rows) {
       const node = this.rowToNode(row);
+      if (!graphNodeVisible(node)) continue;
       if (node.embedding) {
         const similarity = cosineSimilarity(queryEmbedding, node.embedding);
         results.push({ node, similarity });
@@ -1590,7 +1857,7 @@ export class GraphStore {
 
     // Get nodes with embeddings
     const nodesWithEmbeddings = Array.from(this.nodesCache.values()).filter(
-      (n) => n.embedding !== null,
+      (node) => graphNodeVisible(node) && node.embedding !== null,
     );
 
     // Compare all pairs
@@ -1642,18 +1909,20 @@ export class GraphStore {
     coverage: number;
   } {
     const db = getDb();
-    const total = (
-      db
-        .prepare('SELECT COUNT(*) as count FROM nodes WHERE active = 1')
-        .get() as { count: number }
-    ).count;
-    const withEmbedding = (
-      db
-        .prepare(
-          'SELECT COUNT(*) as count FROM nodes WHERE active = 1 AND embedding IS NOT NULL',
-        )
-        .get() as { count: number }
-    ).count;
+    const rows = db
+      .prepare(
+        'SELECT trigger, file_type, embedding IS NOT NULL AS has_embedding FROM nodes WHERE active = 1',
+      )
+      .all() as Array<{
+      trigger: string | null;
+      file_type: string | null;
+      has_embedding: number;
+    }>;
+    const visibleRows = rows.filter(graphNodeVisible);
+    const total = visibleRows.length;
+    const withEmbedding = visibleRows.filter((row) =>
+      Boolean(row.has_embedding),
+    ).length;
     return {
       total,
       withEmbedding,
@@ -1667,6 +1936,7 @@ export class GraphStore {
    * Record an access to a node (increments access_count, updates last_accessed)
    */
   recordAccess(nodeId: string): void {
+    if (!this.getNode(nodeId)) return;
     const db = getDb();
     db.prepare(`
       UPDATE nodes
@@ -1688,7 +1958,7 @@ export class GraphStore {
       WHERE id = ?
     `);
     for (const id of nodeIds) {
-      stmt.run(id);
+      if (this.getNode(id)) stmt.run(id);
     }
   }
 
@@ -1698,6 +1968,7 @@ export class GraphStore {
    * Higher = hotter (more recently/frequently accessed)
    */
   getNodeTemperature(nodeId: string): number {
+    if (!this.getNode(nodeId)) return 0;
     const db = getDb();
     const row = db
       .prepare(`
@@ -1751,13 +2022,13 @@ export class GraphStore {
     `)
       .all() as Record<string, unknown>[];
 
-    const ranked = rows.map((row) => {
-      const node = this.rowToNode(row);
-      return {
+    const ranked = rows
+      .map((row) => this.rowToNode(row))
+      .filter(graphNodeVisible)
+      .map((node) => ({
         node,
         temperature: this.getNodeTemperature(node.id),
-      };
-    });
+      }));
 
     ranked.sort((a, b) => b.temperature - a.temperature);
     return ranked.slice(0, limit);
@@ -1778,14 +2049,14 @@ export class GraphStore {
         COALESCE(access_count, 0) as access_count,
         COALESCE(last_accessed, created_at) as effective_last_accessed
       FROM nodes
-      WHERE active = 1
+      WHERE active = 1 AND ${this.visibleNodeSql()}
       ORDER BY access_count ASC, effective_last_accessed ASC
       LIMIT ?
     `)
       .all(limit) as Record<string, unknown>[];
 
     const now = new Date();
-    return rows.map((row) => {
+    return rows.filter(graphNodeVisible).map((row) => {
       const node = this.rowToNode(row);
       const lastAccessed =
         (row.last_accessed as string) || (row.created_at as string);
@@ -1834,18 +2105,22 @@ export class GraphStore {
     coldestNode: { id: string; name: string; temperature: number } | null;
   } {
     const db = getDb();
-    const totalNodes = (
-      db
-        .prepare('SELECT COUNT(*) as count FROM nodes WHERE active = 1')
-        .get() as { count: number }
-    ).count;
-    const accessedNodes = (
+    const visibleRows = (
       db
         .prepare(
-          'SELECT COUNT(*) as count FROM nodes WHERE active = 1 AND access_count > 0',
+          'SELECT id, trigger, file_type, access_count FROM nodes WHERE active = 1',
         )
-        .get() as { count: number }
-    ).count;
+        .all() as Array<{
+        id: string;
+        trigger: string | null;
+        file_type: string | null;
+        access_count: number | null;
+      }>
+    ).filter(graphNodeVisible);
+    const totalNodes = visibleRows.length;
+    const accessedNodes = visibleRows.filter(
+      (row) => (row.access_count ?? 0) > 0,
+    ).length;
 
     const ranking = this.getTemperatureRanking(totalNodes);
     const avgTemperature =
@@ -1888,41 +2163,19 @@ export class GraphStore {
    * Get neighbors of a node (both directions)
    */
   private getNeighbors(nodeId: string): Set<string> {
-    const db = getDb();
-    const outgoing = db
-      .prepare(`
-      SELECT to_id FROM edges WHERE from_id = ? AND active = 1
-    `)
-      .all(nodeId) as Array<{ to_id: string }>;
-    const incoming = db
-      .prepare(`
-      SELECT from_id FROM edges WHERE to_id = ? AND active = 1
-    `)
-      .all(nodeId) as Array<{ from_id: string }>;
-
-    const neighbors = new Set<string>();
-    for (const r of outgoing) {
-      neighbors.add(r.to_id);
-    }
-    for (const r of incoming) {
-      neighbors.add(r.from_id);
-    }
-    return neighbors;
+    const graph = this.getGraph();
+    return graph.hasNode(nodeId)
+      ? new Set<string>(graph.neighbors(nodeId) as string[])
+      : new Set<string>();
   }
 
   /**
    * Check if two nodes are connected
    */
   private areConnected(nodeId1: string, nodeId2: string): boolean {
-    const db = getDb();
-    const edge = db
-      .prepare(`
-      SELECT id FROM edges
-      WHERE ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?))
-      AND active = 1
-    `)
-      .get(nodeId1, nodeId2, nodeId2, nodeId1);
-    return !!edge;
+    const graph = this.getGraph();
+    if (!graph.hasNode(nodeId1) || !graph.hasNode(nodeId2)) return false;
+    return graph.hasEdge(nodeId1, nodeId2) || graph.hasEdge(nodeId2, nodeId1);
   }
 
   /**
@@ -2041,7 +2294,9 @@ export class GraphStore {
     const nodes = db
       .prepare('SELECT * FROM nodes WHERE active = 1')
       .all() as Record<string, unknown>[];
-    const nodeList = nodes.map((r) => this.rowToNode(r));
+    const nodeList = nodes
+      .map((r) => this.rowToNode(r))
+      .filter(graphNodeVisible);
 
     // Check embedding coverage
     const embeddingStats = this.getEmbeddingStats();
@@ -2164,6 +2419,7 @@ export class GraphStore {
 
     for (const row of otherNodes) {
       const target = this.rowToNode(row);
+      if (!graphNodeVisible(target)) continue;
 
       // Skip if already connected
       if (this.areConnected(nodeId, target.id)) continue;
@@ -2245,6 +2501,7 @@ export class GraphStore {
       string,
       { energy: number; pathLength: number; source: string }
     >();
+    const graph = this.getGraph();
 
     // Initialize seeds
     for (const seedId of seedIds) {
@@ -2268,7 +2525,8 @@ export class GraphStore {
       );
 
       for (const [nodeId, data] of currentNodes) {
-        const neighbors = this.graph.neighbors(nodeId);
+        if (!graph.hasNode(nodeId)) continue;
+        const neighbors = graph.neighbors(nodeId);
         const spreadEnergy =
           (data.energy * decayFactor) / Math.max(neighbors.length, 1);
 
@@ -2426,6 +2684,7 @@ export class GraphStore {
     }>
   > {
     const { limit = 10, seedStrategy = 'mixed', numSeeds = 3 } = options;
+    const graph = this.getGraph();
 
     // Step 1: Select seeds based on strategy
     const seeds: string[] = [];
@@ -2519,8 +2778,8 @@ export class GraphStore {
     for (const act of activated.slice(0, 20)) {
       for (const other of activated.slice(0, 20)) {
         if (act.node.id >= other.node.id) continue; // Avoid duplicates
-        if (this.graph.hasEdge(act.node.id, other.node.id)) continue;
-        if (this.graph.hasEdge(other.node.id, act.node.id)) continue;
+        if (graph.hasEdge(act.node.id, other.node.id)) continue;
+        if (graph.hasEdge(other.node.id, act.node.id)) continue;
 
         const key = `${act.node.id}:${other.node.id}`;
         if (!candidates.has(key)) {
@@ -2660,6 +2919,701 @@ export class GraphStore {
   // ============================================================================
 
   /**
+   * Resolve a document path while enforcing the single-parent tree invariant.
+   * getDocumentPath is intentionally permissive for reading legacy graphs;
+   * structural mutations must fail closed instead of choosing one of several
+   * parents or silently walking through a cycle.
+   */
+  private requireValidDocumentPath(nodeId: string): GraphNodeData[] {
+    const db = getDb();
+    const path: GraphNodeData[] = [];
+    const visited = new Set<string>();
+    let currentId: string | null = nodeId;
+
+    while (currentId) {
+      if (visited.has(currentId)) {
+        throw new Error(
+          `Invalid document tree: contains cycle encountered at ${currentId}.`,
+        );
+      }
+      visited.add(currentId);
+
+      const node = this.getNode(currentId);
+      if (!node || !node.active) {
+        throw new Error(`Document node not found or inactive: ${currentId}`);
+      }
+      path.unshift(node);
+
+      const parents = db
+        .prepare(
+          `SELECT e.id, e.from_id
+           FROM edges e
+           JOIN nodes p ON p.id = e.from_id
+           WHERE e.to_id = ? AND e.type = 'contains'
+             AND e.active = 1 AND p.active = 1`,
+        )
+        .all(currentId) as Array<{ id: string; from_id: string }>;
+
+      if (node.isDocRoot) {
+        if (parents.length > 0) {
+          throw new Error(
+            `Invalid document tree: root "${node.title}" (${node.id}) is also contained by another node.`,
+          );
+        }
+        return path;
+      }
+
+      if (parents.length !== 1) {
+        throw new Error(
+          `Invalid document tree: "${node.title}" (${node.id}) must have exactly one active contains parent; found ${parents.length}.`,
+        );
+      }
+      currentId = parents[0].from_id;
+    }
+
+    throw new Error(`No valid document root found for ${nodeId}.`);
+  }
+
+  /**
+   * Return one parent's complete sibling order. A move refuses malformed or
+   * ambiguous next-edge topology rather than normalizing an arbitrary SQL row
+   * order and accidentally changing prose/code order.
+   */
+  private getStrictDocumentSiblingOrder(
+    parentId: string,
+  ): DocumentSiblingOrder {
+    const db = getDb();
+    const containsRows = db
+      .prepare(
+        `SELECT e.id AS edge_id, e.to_id
+         FROM edges e
+         JOIN nodes n ON n.id = e.to_id
+         WHERE e.from_id = ? AND e.type = 'contains'
+           AND e.active = 1 AND n.active = 1
+         ORDER BY e.created_at, e.id`,
+      )
+      .all(parentId) as Array<{ edge_id: string; to_id: string }>;
+
+    const containsEdgeByChild = new Map<string, string>();
+    for (const row of containsRows) {
+      if (containsEdgeByChild.has(row.to_id)) {
+        throw new Error(
+          `Invalid document tree: child ${row.to_id} has duplicate active contains edges from parent ${parentId}.`,
+        );
+      }
+      containsEdgeByChild.set(row.to_id, row.edge_id);
+    }
+
+    const childIds = [...containsEdgeByChild.keys()];
+    const childById = new Map<string, GraphNodeData>();
+    for (const childId of childIds) {
+      const child = this.getNode(childId);
+      if (!child || !child.active) {
+        throw new Error(`Document child not found or inactive: ${childId}`);
+      }
+      childById.set(childId, child);
+    }
+
+    if (childIds.length === 0) {
+      return { children: [], containsEdgeByChild, nextEdges: [] };
+    }
+
+    const placeholders = childIds.map(() => '?').join(',');
+    const nextRows = db
+      .prepare(
+        `SELECT id, from_id, to_id
+         FROM edges
+         WHERE type = 'next' AND active = 1
+           AND (from_id IN (${placeholders}) OR to_id IN (${placeholders}))
+         ORDER BY created_at, id`,
+      )
+      .all(...childIds, ...childIds) as Array<{
+      id: string;
+      from_id: string;
+      to_id: string;
+    }>;
+
+    const childSet = new Set(childIds);
+    const outgoing = new Map<string, string>();
+    const incoming = new Map<string, string>();
+    const nextEdges: DocumentSiblingOrder['nextEdges'] = [];
+
+    for (const row of nextRows) {
+      if (!childSet.has(row.from_id) || !childSet.has(row.to_id)) {
+        throw new Error(
+          `Invalid document order under ${parentId}: next edge ${row.id} crosses a parent boundary.`,
+        );
+      }
+      if (outgoing.has(row.from_id)) {
+        throw new Error(
+          `Invalid document order under ${parentId}: child ${row.from_id} has more than one next edge.`,
+        );
+      }
+      if (incoming.has(row.to_id)) {
+        throw new Error(
+          `Invalid document order under ${parentId}: child ${row.to_id} has more than one previous sibling.`,
+        );
+      }
+      outgoing.set(row.from_id, row.to_id);
+      incoming.set(row.to_id, row.from_id);
+      nextEdges.push({
+        id: row.id,
+        fromId: row.from_id,
+        toId: row.to_id,
+      });
+    }
+
+    if (childIds.length === 1) {
+      if (nextEdges.length !== 0) {
+        throw new Error(
+          `Invalid document order under ${parentId}: a sole child cannot have a sibling next edge.`,
+        );
+      }
+      const only = childById.get(childIds[0]);
+      return {
+        children: only ? [only] : [],
+        containsEdgeByChild,
+        nextEdges,
+      };
+    }
+
+    if (nextEdges.length !== childIds.length - 1) {
+      throw new Error(
+        `Invalid document order under ${parentId}: ${childIds.length} children must form one complete next chain with ${childIds.length - 1} edges; found ${nextEdges.length}.`,
+      );
+    }
+
+    const heads = childIds.filter((childId) => !incoming.has(childId));
+    if (heads.length !== 1) {
+      throw new Error(
+        `Invalid document order under ${parentId}: expected one first child; found ${heads.length}.`,
+      );
+    }
+
+    const ordered: GraphNodeData[] = [];
+    const orderedIds = new Set<string>();
+    let currentId: string | undefined = heads[0];
+    while (currentId) {
+      if (orderedIds.has(currentId)) {
+        throw new Error(
+          `Invalid document order under ${parentId}: next-edge cycle encountered at ${currentId}.`,
+        );
+      }
+      const child = childById.get(currentId);
+      if (!child) break;
+      ordered.push(child);
+      orderedIds.add(currentId);
+      currentId = outgoing.get(currentId);
+    }
+
+    if (ordered.length !== childIds.length) {
+      throw new Error(
+        `Invalid document order under ${parentId}: next edges do not cover every child exactly once.`,
+      );
+    }
+
+    return { children: ordered, containsEdgeByChild, nextEdges };
+  }
+
+  /**
+   * Move one non-root document node and its untouched subtree. The caller is
+   * responsible for an enclosing transaction; the MCP surface intentionally
+   * exposes this only as an operation nested inside graph_batch.
+   */
+  moveDocumentNode(input: {
+    nodeId: string;
+    parentId?: string;
+    afterId?: string;
+    conversationId?: string;
+    toolCallId?: number | null;
+  }): DocumentMoveResult {
+    const nodePath = this.requireValidDocumentPath(input.nodeId);
+    const node = nodePath[nodePath.length - 1];
+    if (!node || node.isDocRoot || nodePath.length < 2) {
+      throw new Error('Document roots cannot be moved under another node.');
+    }
+
+    const sourceParent = nodePath[nodePath.length - 2];
+    const sourceRoot = nodePath[0];
+    if (!sourceParent || !sourceRoot?.isDocRoot) {
+      throw new Error(
+        `No valid source document root found for ${input.nodeId}.`,
+      );
+    }
+
+    const destinationParentId = input.parentId || sourceParent.id;
+    if (destinationParentId === node.id) {
+      throw new Error('A document node cannot be its own parent.');
+    }
+    if (input.afterId === node.id) {
+      throw new Error('A document node cannot be placed after itself.');
+    }
+
+    const destinationPath = this.requireValidDocumentPath(destinationParentId);
+    const destinationParent = destinationPath[destinationPath.length - 1];
+    const destinationRoot = destinationPath[0];
+    if (!destinationParent || !destinationRoot?.isDocRoot) {
+      throw new Error(
+        `No valid destination document root found for ${destinationParentId}.`,
+      );
+    }
+    if (destinationPath.some((entry) => entry.id === node.id)) {
+      throw new Error(
+        `Cannot move "${node.title}" (${node.id}) beneath itself or one of its descendants.`,
+      );
+    }
+
+    const sourceOrder = this.getStrictDocumentSiblingOrder(sourceParent.id);
+    const movingIndex = sourceOrder.children.findIndex(
+      (child) => child.id === node.id,
+    );
+    if (movingIndex < 0) {
+      throw new Error(
+        `Invalid document tree: ${node.id} is not an ordered child of ${sourceParent.id}.`,
+      );
+    }
+
+    const sameParent = sourceParent.id === destinationParent.id;
+    const destinationOrder = sameParent
+      ? sourceOrder
+      : this.getStrictDocumentSiblingOrder(destinationParent.id);
+
+    if (
+      input.afterId &&
+      !destinationOrder.children.some((child) => child.id === input.afterId)
+    ) {
+      throw new Error(
+        `afterId ${input.afterId} is not a direct child of destination parent ${destinationParent.id}.`,
+      );
+    }
+
+    const sourceChildren = sourceOrder.children.filter(
+      (child) => child.id !== node.id,
+    );
+    const finalDestinationChildren = sameParent
+      ? [...sourceChildren]
+      : [...destinationOrder.children];
+    const insertionIndex = input.afterId
+      ? finalDestinationChildren.findIndex(
+          (child) => child.id === input.afterId,
+        ) + 1
+      : 0;
+    finalDestinationChildren.splice(insertionIndex, 0, node);
+
+    const affectedEdgeIds = new Set<string>();
+    const structuralNextEdges = sameParent
+      ? sourceOrder.nextEdges
+      : [...sourceOrder.nextEdges, ...destinationOrder.nextEdges];
+    for (const edge of structuralNextEdges) {
+      if (!this.archiveEdge(edge.id, input.conversationId)) {
+        throw new Error(`Failed to archive document order edge: ${edge.id}`);
+      }
+      affectedEdgeIds.add(edge.id);
+    }
+
+    if (!sameParent) {
+      const containsEdgeId = sourceOrder.containsEdgeByChild.get(node.id);
+      if (
+        !containsEdgeId ||
+        !this.archiveEdge(containsEdgeId, input.conversationId)
+      ) {
+        throw new Error(
+          `Failed to detach ${node.id} from source parent ${sourceParent.id}.`,
+        );
+      }
+      affectedEdgeIds.add(containsEdgeId);
+
+      const containsEdge = this.createEdge({
+        fromId: destinationParent.id,
+        toId: node.id,
+        type: 'contains',
+        explanation: 'Moved document subtree',
+        why: `"${destinationParent.title}" now contains moved subtree "${node.title}"`,
+        conversationId: input.conversationId,
+        toolCallId: input.toolCallId,
+      });
+      affectedEdgeIds.add(containsEdge.id);
+    }
+
+    const createOrderEdges = (children: GraphNodeData[]) => {
+      for (let index = 1; index < children.length; index++) {
+        const previous = children[index - 1];
+        const current = children[index];
+        const edge = this.createEdge({
+          fromId: previous.id,
+          toId: current.id,
+          type: 'next',
+          explanation: 'Document sibling order after move',
+          why: `"${current.title}" follows "${previous.title}" after moving "${node.title}"`,
+          conversationId: input.conversationId,
+          toolCallId: input.toolCallId,
+        });
+        affectedEdgeIds.add(edge.id);
+      }
+    };
+
+    if (!sameParent) createOrderEdges(sourceChildren);
+    createOrderEdges(finalDestinationChildren);
+
+    const summarize = (children: GraphNodeData[]) =>
+      children.map((child) => ({ id: child.id, title: child.title }));
+    const affectedRootIds = [...new Set([sourceRoot.id, destinationRoot.id])];
+
+    return {
+      node,
+      sourceParent,
+      destinationParent,
+      sourceRoot,
+      destinationRoot,
+      finalChildren: summarize(finalDestinationChildren),
+      ...(sameParent ? {} : { sourceChildren: summarize(sourceChildren) }),
+      affectedNodeIds: [node.id],
+      affectedEdgeIds: [...affectedEdgeIds],
+      affectedRootIds,
+    };
+  }
+
+  /**
+   * Merge consecutive leaf siblings into the first sibling without weakening
+   * the document-tree invariants. The complete mutation runs in a nested-safe
+   * better-sqlite3 transaction: direct callers get an atomic operation, while
+   * graph_batch gets a savepoint inside its wider transaction.
+   *
+   * Roots and subtrees are deliberately out of scope. A root has no direct
+   * parent whose order can be rebuilt, and silently adopting children from an
+   * archived section would invent hierarchy rather than preserve it.
+   */
+  mergeDocumentNodes(input: {
+    nodeIds: string[];
+    separator?: string;
+    newTitle?: string;
+    conversationId?: string;
+    toolCallId?: number | null;
+  }): DocumentMergeResult {
+    const db = getDb();
+
+    if (!Array.isArray(input.nodeIds) || input.nodeIds.length < 2) {
+      throw new Error('doc_merge requires at least 2 node IDs.');
+    }
+    if (
+      input.nodeIds.some(
+        (nodeId) => typeof nodeId !== 'string' || nodeId.trim().length === 0,
+      )
+    ) {
+      throw new Error('doc_merge nodeIds must be non-empty strings.');
+    }
+    if (new Set(input.nodeIds).size !== input.nodeIds.length) {
+      throw new Error(
+        'doc_merge requires distinct node IDs; a document node cannot be merged with itself.',
+      );
+    }
+    if (input.separator !== undefined && typeof input.separator !== 'string') {
+      throw new Error('doc_merge separator must be a string.');
+    }
+    if (
+      input.newTitle !== undefined &&
+      (typeof input.newTitle !== 'string' || input.newTitle.trim().length === 0)
+    ) {
+      throw new Error('doc_merge newTitle must be a non-empty string.');
+    }
+    // Resolve every path before the first write. Besides proving that each
+    // node is active and belongs to a rooted document, require one shared
+    // direct parent so a single sibling chain has an unambiguous meaning.
+    const paths = input.nodeIds.map((nodeId) =>
+      this.requireValidDocumentPath(nodeId),
+    );
+    const nodes = paths.map((path) => path[path.length - 1]);
+    if (nodes.some((node) => !node || node.isDocRoot)) {
+      throw new Error('doc_merge only supports non-root document siblings.');
+    }
+    const isDocumentArtifact = (node: GraphNodeData) =>
+      node.content !== null ||
+      node.summary !== null ||
+      node.level !== null ||
+      node.fileType !== null ||
+      node.isDocRoot !== null;
+    if (nodes.some((node) => !isDocumentArtifact(node))) {
+      throw new Error(
+        'INVALID_DOCUMENT_NODE: doc_merge requires document-classified siblings; an ordinary concept cannot become a document section through merging.',
+      );
+    }
+    if (new Set(nodes.map((node) => isReservedThinkingNode(node))).size !== 1) {
+      throw new Error(
+        'RESERVED_CLASSIFICATION_MISMATCH: doc_merge cannot combine ordinary document content with reserved synthetic Reader/CMP thinking content.',
+      );
+    }
+
+    const firstPath = paths[0];
+    const parent = firstPath[firstPath.length - 2];
+    const root = firstPath[0];
+    if (!parent || !root?.isDocRoot) {
+      throw new Error('doc_merge could not resolve a shared document parent.');
+    }
+    for (const path of paths) {
+      const candidateParent = path[path.length - 2];
+      if (!candidateParent || candidateParent.id !== parent.id) {
+        throw new Error(
+          'doc_merge requires all nodes to be direct siblings under the same parent.',
+        );
+      }
+    }
+
+    // A merge of subtrees would need a policy for combining two independent
+    // child sequences. Reject it rather than silently reparenting content.
+    for (const node of nodes) {
+      const childEdge = db
+        .prepare(
+          `SELECT id FROM edges
+           WHERE from_id = ? AND type = 'contains' AND active = 1
+           LIMIT 1`,
+        )
+        .get(node.id) as { id: string } | undefined;
+      if (childEdge) {
+        throw new Error(
+          `doc_merge only supports leaf siblings; "${node.title}" (${node.id}) has a child subtree.`,
+        );
+      }
+    }
+
+    const siblingOrder = this.getStrictDocumentSiblingOrder(parent.id);
+    const siblingIndices = input.nodeIds.map((nodeId) =>
+      siblingOrder.children.findIndex((child) => child.id === nodeId),
+    );
+    if (siblingIndices.some((index) => index < 0)) {
+      throw new Error(
+        'doc_merge requires every node to appear exactly once in the parent sibling order.',
+      );
+    }
+    for (let index = 1; index < siblingIndices.length; index++) {
+      if (siblingIndices[index] !== siblingIndices[0] + index) {
+        throw new Error(
+          'doc_merge nodeIds must be consecutive siblings supplied in current document order.',
+        );
+      }
+    }
+
+    const survivor = nodes[0];
+    const archivedNodes = nodes.slice(1);
+    const archivedNodeIds = archivedNodes.map((node) => node.id);
+    const archivedNodeIdSet = new Set(archivedNodeIds);
+    const selectedNodeIdSet = new Set(input.nodeIds);
+    const finalChildren = siblingOrder.children.filter(
+      (child) => !archivedNodeIdSet.has(child.id),
+    );
+
+    interface IncidentEdgeRow {
+      id: string;
+      from_id: string;
+      to_id: string;
+      type: string;
+      explanation: string | null;
+      why: string | null;
+    }
+
+    const placeholders = archivedNodeIds.map(() => '?').join(',');
+    const incidentEdges = db
+      .prepare(
+        `SELECT id, from_id, to_id, type, explanation, why
+         FROM edges
+         WHERE active = 1
+           AND (from_id IN (${placeholders}) OR to_id IN (${placeholders}))
+         ORDER BY created_at, id`,
+      )
+      .all(...archivedNodeIds, ...archivedNodeIds) as IncidentEdgeRow[];
+
+    // Every structural edge touching a source must belong to the one validated
+    // sibling topology. This catches dangling/legacy contains edges that the
+    // active-node path query would otherwise ignore.
+    const sourceContainsEdgeIds = new Set<string>();
+    for (const sourceId of archivedNodeIds) {
+      const containsEdgeId = siblingOrder.containsEdgeByChild.get(sourceId);
+      if (!containsEdgeId) {
+        throw new Error(
+          `Invalid document tree: missing contains edge for merge source ${sourceId}.`,
+        );
+      }
+      sourceContainsEdgeIds.add(containsEdgeId);
+    }
+    const siblingNextEdgeIds = new Set(
+      siblingOrder.nextEdges.map((edge) => edge.id),
+    );
+    for (const edge of incidentEdges) {
+      if (edge.type === 'contains' && !sourceContainsEdgeIds.has(edge.id)) {
+        throw new Error(
+          `Invalid document tree: unexpected contains edge ${edge.id} touches a merge source.`,
+        );
+      }
+      if (edge.type === 'next' && !siblingNextEdgeIds.has(edge.id)) {
+        throw new Error(
+          `Invalid document order: unexpected next edge ${edge.id} touches a merge source.`,
+        );
+      }
+    }
+
+    type RedirectPlan = Omit<IncidentEdgeRow, 'id' | 'from_id' | 'to_id'> & {
+      fromId: string;
+      toId: string;
+    };
+    const redirectPlan: RedirectPlan[] = [];
+    let deduplicatedRelationshipCount = 0;
+    let collapsedInternalRelationshipCount = 0;
+
+    // Seed result keys with relationships that survive untouched. Redirected
+    // relationships then claim each (from,to,type) key at most once.
+    const activeEdges = db
+      .prepare(
+        `SELECT id, from_id, to_id, type, explanation, why
+         FROM edges WHERE active = 1
+         ORDER BY created_at, id`,
+      )
+      .all() as IncidentEdgeRow[];
+    const relationshipKey = (fromId: string, toId: string, type: string) =>
+      `${fromId}\u0000${toId}\u0000${type}`;
+    const claimedRelationshipKeys = new Set(
+      activeEdges
+        .filter(
+          (edge) =>
+            !archivedNodeIdSet.has(edge.from_id) &&
+            !archivedNodeIdSet.has(edge.to_id),
+        )
+        .map((edge) => relationshipKey(edge.from_id, edge.to_id, edge.type)),
+    );
+
+    for (const edge of incidentEdges) {
+      if (edge.type === 'contains' || edge.type === 'next') continue;
+      // A legacy relationship type cannot be recreated through the canonical
+      // graph boundary. Fail before modifying the survivor or topology.
+      assertEdgeType(edge.type);
+
+      const fromId = selectedNodeIdSet.has(edge.from_id)
+        ? survivor.id
+        : edge.from_id;
+      const toId = selectedNodeIdSet.has(edge.to_id) ? survivor.id : edge.to_id;
+
+      // Relations among sections being fused have no external endpoint after
+      // the merge. Archive them with their source nodes; never create a loop.
+      if (fromId === toId) {
+        collapsedInternalRelationshipCount++;
+        continue;
+      }
+
+      const fromNode = this.getNode(fromId);
+      const toNode = this.getNode(toId);
+      if (!fromNode?.active || !toNode?.active) {
+        throw new Error(
+          `Cannot preserve relationship ${edge.id}: its redirected endpoints are not both active.`,
+        );
+      }
+
+      const key = relationshipKey(fromId, toId, edge.type);
+      if (claimedRelationshipKeys.has(key)) {
+        deduplicatedRelationshipCount++;
+        continue;
+      }
+      claimedRelationshipKeys.add(key);
+      redirectPlan.push({
+        fromId,
+        toId,
+        type: edge.type,
+        explanation: edge.explanation,
+        why: edge.why,
+      });
+    }
+
+    const separator = input.separator ?? '\n\n';
+    const combinedContent = nodes
+      .map((node) => node.content ?? '')
+      .join(separator);
+
+    const runMerge = db.transaction((): DocumentMergeResult => {
+      const affectedEdgeIds = new Set<string>();
+      const redirectedEdgeIds: string[] = [];
+
+      const edgeIdsToArchive = new Set<string>([
+        ...siblingOrder.nextEdges.map((edge) => edge.id),
+        ...sourceContainsEdgeIds,
+        ...incidentEdges.map((edge) => edge.id),
+      ]);
+      for (const edgeId of edgeIdsToArchive) {
+        if (!this.archiveEdge(edgeId, input.conversationId)) {
+          throw new Error(`Failed to archive merge edge: ${edgeId}`);
+        }
+        affectedEdgeIds.add(edgeId);
+      }
+
+      const updated = this.updateNode(survivor.id, {
+        title: input.newTitle ?? survivor.title,
+        content: combinedContent,
+        revisionWhy: `Merged consecutive document siblings: ${input.nodeIds.join(', ')}`,
+        conversationId: input.conversationId,
+      });
+
+      for (const edge of redirectPlan) {
+        const redirected = this.createEdge({
+          fromId: edge.fromId,
+          toId: edge.toId,
+          type: edge.type,
+          explanation: edge.explanation || undefined,
+          why:
+            edge.why && edge.why.trim().length >= 3
+              ? edge.why
+              : `Relationship preserved while merging into "${updated.title}"`,
+          conversationId: input.conversationId,
+          toolCallId: input.toolCallId,
+        });
+        affectedEdgeIds.add(redirected.id);
+        redirectedEdgeIds.push(redirected.id);
+      }
+
+      for (let index = 1; index < finalChildren.length; index++) {
+        const previous = finalChildren[index - 1];
+        const current = finalChildren[index];
+        const edge = this.createEdge({
+          fromId: previous.id,
+          toId: current.id,
+          type: 'next',
+          explanation: 'Document sibling order after merge',
+          why: `"${current.title}" follows "${previous.title}" after merging consecutive siblings`,
+          conversationId: input.conversationId,
+          toolCallId: input.toolCallId,
+        });
+        affectedEdgeIds.add(edge.id);
+      }
+
+      for (const source of archivedNodes) {
+        if (
+          !this.archiveNode(
+            source.id,
+            `Merged into ${survivor.id}`,
+            input.conversationId,
+          )
+        ) {
+          throw new Error(`Failed to archive merged node: ${source.id}`);
+        }
+      }
+
+      return {
+        node: updated,
+        parent,
+        root,
+        archivedNodeIds,
+        finalChildren: finalChildren.map((child) => ({
+          id: child.id,
+          title: child.id === updated.id ? updated.title : child.title,
+        })),
+        affectedNodeIds: [...input.nodeIds],
+        affectedEdgeIds: [...affectedEdgeIds],
+        affectedRootIds: [root.id],
+        redirectedEdgeIds,
+        deduplicatedRelationshipCount,
+        collapsedInternalRelationshipCount,
+      };
+    });
+
+    return runMerge();
+  }
+
+  /**
    * Get all document root nodes (nodes with isDocRoot = true)
    */
   getDocumentRoots(): GraphNodeData[] {
@@ -2670,7 +3624,7 @@ export class GraphStore {
         ORDER BY created_at DESC
       `)
       .all() as Record<string, unknown>[];
-    return rows.map((r) => this.rowToNode(r));
+    return rows.map((r) => this.rowToNode(r)).filter(graphNodeVisible);
   }
 
   /**
@@ -2678,6 +3632,7 @@ export class GraphStore {
    * Returns children in order based on their position in "next" chains within the parent
    */
   getChildren(parentId: string): GraphNodeData[] {
+    if (!this.getNode(parentId)) return [];
     const db = getDb();
 
     // Get all nodes that this parent contains
@@ -2689,9 +3644,12 @@ export class GraphStore {
       `)
       .all(parentId) as Record<string, unknown>[];
 
+    // Preserve the complete sibling topology while ordering. Filtering first
+    // would turn A -> hidden -> B into two disconnected fragments and could
+    // reorder B nondeterministically.
     const children = childRows.map((r) => this.rowToNode(r));
 
-    if (children.length <= 1) return children;
+    if (children.length <= 1) return children.filter(graphNodeVisible);
 
     // Order children by following "next" chains within the parent
     // Find child that has no "next" pointing TO it (the first in sequence)
@@ -2731,7 +3689,7 @@ export class GraphStore {
 
     if (!firstId) {
       // No clear first - just return unordered
-      return children;
+      return children.filter(graphNodeVisible);
     }
 
     // Follow the chain
@@ -2753,7 +3711,7 @@ export class GraphStore {
       ordered.push(remaining);
     }
 
-    return ordered;
+    return ordered.filter(graphNodeVisible);
   }
 
   /**
@@ -2782,12 +3740,11 @@ export class GraphStore {
 
       if (!nextEdge || visited.has(nextEdge.to_id)) break;
 
-      const nextNode = this.getNode(nextEdge.to_id);
-      if (!nextNode) break;
-
-      chain.push(nextNode);
       visited.add(nextEdge.to_id);
       currentId = nextEdge.to_id;
+      const nextNode = this.getNodeUnfiltered(nextEdge.to_id);
+      if (!nextNode || !nextNode.active) break;
+      if (graphNodeVisible(nextNode)) chain.push(nextNode);
     }
 
     return chain;
@@ -2824,6 +3781,7 @@ export class GraphStore {
    * Get concepts that a document node expresses (linked via "expresses" edges)
    */
   getExpressedConcepts(nodeId: string): GraphNodeData[] {
+    if (!this.getNode(nodeId)) return [];
     const db = getDb();
     const rows = db
       .prepare(`
@@ -2832,13 +3790,14 @@ export class GraphStore {
         WHERE e.from_id = ? AND e.type = 'expresses' AND e.active = 1 AND n.active = 1
       `)
       .all(nodeId) as Record<string, unknown>[];
-    return rows.map((r) => this.rowToNode(r));
+    return rows.map((r) => this.rowToNode(r)).filter(graphNodeVisible);
   }
 
   /**
    * Get document nodes that express a given concept (reverse lookup)
    */
   getExpressingDocuments(conceptId: string): GraphNodeData[] {
+    if (!this.getNode(conceptId)) return [];
     const db = getDb();
     const rows = db
       .prepare(`
@@ -2847,13 +3806,14 @@ export class GraphStore {
         WHERE e.to_id = ? AND e.type = 'expresses' AND e.active = 1 AND n.active = 1
       `)
       .all(conceptId) as Record<string, unknown>[];
-    return rows.map((r) => this.rowToNode(r));
+    return rows.map((r) => this.rowToNode(r)).filter(graphNodeVisible);
   }
 
   /**
    * Get the parent of a document node (via "contains" edge where this node is the target)
    */
   getParent(nodeId: string): GraphNodeData | null {
+    if (!this.getNode(nodeId)) return null;
     const db = getDb();
     const edge = db
       .prepare(`
@@ -2897,20 +3857,25 @@ export class GraphStore {
    * Create a document node with proper structure
    * Convenience method that sets up the node with document fields
    */
-  createDocumentNode(input: {
-    title: string;
-    content: string;
-    summary?: string;
-    level?: string;
-    isDocRoot?: boolean;
-    fileType?: string; // File extension for generation (e.g., 'md', 'py', 'txt')
-    trigger?: TriggerType; // Trigger type (e.g., 'thinking', 'foundation')
-    parentId?: string; // If provided, creates "contains" edge from parent
-    afterId?: string; // If provided, creates "next" edge from this node
-    expressesIds?: string[]; // Concept IDs this node expresses
-    conversationId?: string; // Optional - only set if session is active
-    toolCallId?: number | null;
-  }): GraphNodeData & { seq: number } {
+  createDocumentNode(
+    input: {
+      title: string;
+      content: string;
+      summary?: string;
+      level?: string;
+      isDocRoot?: boolean;
+      fileType?: string; // File extension for generation (e.g., 'md', 'py', 'txt')
+      trigger?: TriggerType; // Trigger type (e.g., 'thinking', 'foundation')
+      parentId?: string; // If provided, creates "contains" edge from parent
+      afterId?: string; // Active tail sibling; appends a "next" edge
+      expressesIds?: string[]; // Concept IDs this node expresses
+      conversationId?: string; // Optional - only set if session is active
+      toolCallId?: number | null;
+    },
+    options: {
+      allowDetachedSiblingOrderDuringAtomicRewire?: boolean;
+    } = {},
+  ): GraphNodeData & { seq: number } {
     // Validate document hierarchy requirement
     if (!input.isDocRoot && !input.parentId) {
       throw new Error(
@@ -2919,12 +3884,135 @@ export class GraphStore {
       );
     }
 
-    // If parentId provided, verify it exists
+    // Resolve and validate every endpoint before the first write. This method
+    // is also called inside graph_batch's transaction, so prevalidation keeps
+    // direct calls atomic without opening a transaction that could interfere
+    // with the caller's transaction boundary.
+    let parent: GraphNodeData | null = null;
     if (input.parentId) {
-      const parent = this.getNode(input.parentId);
-      if (!parent) {
-        throw new Error(`Parent node not found: ${input.parentId}`);
+      if (input.isDocRoot) {
+        throw new Error('A document root cannot also have a parentId.');
       }
+      const parentPath = this.requireValidDocumentPath(input.parentId);
+      parent = parentPath[parentPath.length - 1] || null;
+      if (!parent?.active) {
+        throw new Error(`Parent node not found or inactive: ${input.parentId}`);
+      }
+      if (!input.afterId) {
+        const existingChild = getDb()
+          .prepare(
+            `SELECT e.to_id FROM edges e
+             JOIN nodes n ON n.id = e.to_id
+             WHERE e.from_id = ? AND e.type = 'contains'
+               AND e.active = 1 AND n.active = 1
+             LIMIT 1`,
+          )
+          .get(parent.id) as { to_id: string } | undefined;
+        if (existingChild) {
+          throw new Error(
+            `afterId is required because parent ${parent.id} already has active children. doc_create only appends; use doc_move inside graph_batch to insert or reorder.`,
+          );
+        }
+      }
+    }
+
+    let previousSibling: GraphNodeData | null = null;
+    if (input.afterId) {
+      if (input.parentId && parent) {
+        const candidate = this.getNode(input.afterId);
+        if (!candidate?.active) {
+          throw new Error(
+            `Previous document sibling not found or inactive: ${input.afterId}`,
+          );
+        }
+
+        if (options.allowDetachedSiblingOrderDuringAtomicRewire) {
+          const db = getDb();
+          const directContains = db
+            .prepare(
+              `SELECT id FROM edges
+               WHERE from_id = ? AND to_id = ? AND type = 'contains' AND active = 1
+               LIMIT 1`,
+            )
+            .get(parent.id, candidate.id) as { id: string } | undefined;
+          if (!directContains) {
+            throw new Error(
+              `afterId ${input.afterId} is not an active direct child of parent ${parent.id}.`,
+            );
+          }
+
+          const outgoingNext = db
+            .prepare(
+              `SELECT id FROM edges
+               WHERE from_id = ? AND type = 'next' AND active = 1
+               LIMIT 1`,
+            )
+            .get(candidate.id) as { id: string } | undefined;
+          if (outgoingNext) {
+            throw new Error(
+              `afterId ${input.afterId} cannot be used during an atomic rewire while it still has an active next edge.`,
+            );
+          }
+        } else {
+          const siblingOrder = this.getStrictDocumentSiblingOrder(parent.id);
+          const siblingIndex = siblingOrder.children.findIndex(
+            (child) => child.id === candidate.id,
+          );
+          if (siblingIndex < 0) {
+            throw new Error(
+              `afterId ${input.afterId} is not an active direct child of parent ${parent.id}.`,
+            );
+          }
+          if (siblingIndex !== siblingOrder.children.length - 1) {
+            throw new Error(
+              `afterId ${input.afterId} is not the final child of parent ${parent.id}; doc_create cannot fork an active next edge.`,
+            );
+          }
+        }
+        previousSibling = candidate;
+      } else if (input.isDocRoot) {
+        const candidatePath = this.requireValidDocumentPath(input.afterId);
+        const candidate = candidatePath[candidatePath.length - 1];
+        if (!candidate?.active || !candidate.isDocRoot) {
+          throw new Error(
+            `Previous document root not found or inactive: ${input.afterId}`,
+          );
+        }
+        const outgoingNext = getDb()
+          .prepare(
+            `SELECT id FROM edges
+             WHERE from_id = ? AND type = 'next' AND active = 1
+             LIMIT 1`,
+          )
+          .get(candidate.id) as { id: string } | undefined;
+        if (outgoingNext) {
+          throw new Error(
+            `afterId ${input.afterId} is not the final document root in its next chain; doc_create can append but cannot fork an existing chain.`,
+          );
+        }
+        previousSibling = candidate;
+      } else {
+        throw new Error(
+          'afterId requires parentId unless the new node is a document root.',
+        );
+      }
+    }
+
+    const expressedConcepts: GraphNodeData[] = [];
+    for (const conceptId of input.expressesIds || []) {
+      if (typeof conceptId !== 'string' || conceptId.trim().length === 0) {
+        throw new Error(
+          'expressesIds must contain non-empty concept node IDs.',
+        );
+      }
+
+      const concept = this.getNode(conceptId);
+      if (!concept?.active) {
+        throw new Error(
+          `Expressed concept not found or inactive: ${conceptId}`,
+        );
+      }
+      expressedConcepts.push(concept);
     }
 
     // Create the node
@@ -2944,8 +4032,7 @@ export class GraphStore {
     });
 
     // Create contains edge if parent specified
-    if (input.parentId) {
-      const parent = this.getNode(input.parentId);
+    if (input.parentId && parent) {
       this.createEdge({
         fromId: input.parentId,
         toId: node.id,
@@ -2958,33 +4045,30 @@ export class GraphStore {
     }
 
     // Create next edge if afterId specified
-    if (input.afterId) {
-      const prev = this.getNode(input.afterId);
+    if (input.afterId && previousSibling) {
       this.createEdge({
         fromId: input.afterId,
         toId: node.id,
         type: 'next',
         explanation: 'Sequence',
-        why: `"${node.title}" follows "${prev?.title || 'Previous'}" in the reading order of the document`,
+        why: `"${node.title}" follows "${previousSibling.title}" in the reading order of the document`,
         conversationId: input.conversationId,
         toolCallId: input.toolCallId,
       });
     }
 
     // Create expresses edges for linked concepts
-    if (input.expressesIds) {
-      for (const conceptId of input.expressesIds) {
-        const concept = this.getNode(conceptId);
-        this.createEdge({
-          fromId: node.id,
-          toId: conceptId,
-          type: 'expresses',
-          explanation: 'Expresses concept',
-          why: `This document section discusses or elaborates on the concept "${concept?.title || conceptId}"`,
-          conversationId: input.conversationId,
-          toolCallId: input.toolCallId,
-        });
-      }
+    for (const concept of expressedConcepts) {
+      const conceptId = concept.id;
+      this.createEdge({
+        fromId: node.id,
+        toId: conceptId,
+        type: 'expresses',
+        explanation: 'Expresses concept',
+        why: `This document section discusses or elaborates on the concept "${concept.title}"`,
+        conversationId: input.conversationId,
+        toolCallId: input.toolCallId,
+      });
     }
 
     return node;
@@ -3076,7 +4160,7 @@ export class GraphStore {
    */
   getNodeByName(name: string): GraphNodeData | null {
     for (const node of this.nodesCache.values()) {
-      if (node.active && node.title === name) {
+      if (node.active && graphNodeVisible(node) && node.title === name) {
         return node;
       }
     }
@@ -3120,6 +4204,11 @@ export class GraphStore {
         newName,
       },
     );
+
+    // getNode() returns a fresh row object, not the cached graphology node.
+    // Invalidate both graph projections so graph-backed neighborhood/path/
+    // community reads cannot keep serving the pre-rename title.
+    this.markDirty();
 
     return node;
   }

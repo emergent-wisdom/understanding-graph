@@ -1,16 +1,29 @@
 import {
   AnalysisService,
   ContextService,
+  EmbeddingService,
   type GraphStore,
   getGraphStore,
   isProjectLoaded,
+  isReservedThinkingNode,
   lookupExternalNode,
   queryEdges,
   queryNodes,
+  reservedThinkingVisible,
   sqlite,
+  TRIGGER_TYPES,
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
+
+function escapeHistoryXml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
 
 /**
  * Helper to check if we should read from another project.
@@ -68,25 +81,6 @@ const {
   findPath,
 } = ContextService;
 
-// Valid trigger types for reference
-const _TRIGGER_TYPES = [
-  'foundation',
-  'surprise',
-  'tension',
-  'consequence',
-  'repetition',
-  'question',
-  'serendipity',
-  'decision',
-  'experiment',
-  'analysis',
-  'library',
-  'prediction',
-  'evaluation',
-  'anchor', // deprecated but may exist
-  'synthesis', // deprecated but may exist
-] as const;
-
 export const reflectionTools: Tool[] = [
   {
     name: 'node_get_revisions',
@@ -135,23 +129,8 @@ export const reflectionTools: Tool[] = [
       properties: {
         trigger: {
           type: 'string',
-          description:
-            'Trigger type to search for: foundation, surprise, tension, consequence, repetition, question, serendipity, decision, experiment, analysis, library, prediction, evaluation',
-          enum: [
-            'foundation',
-            'surprise',
-            'tension',
-            'consequence',
-            'repetition',
-            'question',
-            'serendipity',
-            'decision',
-            'experiment',
-            'analysis',
-            'library',
-            'prediction',
-            'evaluation',
-          ],
+          description: `Trigger type to search for: ${TRIGGER_TYPES.join(', ')}`,
+          enum: [...TRIGGER_TYPES],
         },
         unresolvedOnly: {
           type: 'boolean',
@@ -462,7 +441,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_history',
     description:
-      'Read the recent activity feed for the current project: who created/revised which nodes and edges, with their commit messages, in chronological order. Returns XML so structure is preserved when other agents quote from it. Use this at the start of every session to see what teammates have done since you last looked.',
+      'Read the recent activity and commit feeds for the current project: who created/revised which nodes and edges, with commit messages and agent attribution in chronological order. Returns one XML packet so structure is preserved when other agents quote from it. Use this at the start of every session to see what teammates have done since you last looked.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -484,7 +463,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'project_switch',
     description:
-      'Switch to a different project, creating it if it does not exist yet. The project becomes the active target for all subsequent graph mutations and queries. Pass the projectId you want to use; the matching directory + SQLite database are loaded (or created) on demand. Set goal to describe the project purpose (shown in the UI).',
+      'Switch to a different project, creating it if it does not exist yet. The project becomes the active target for all subsequent graph mutations and queries. Pass the project you want to use; the matching directory + SQLite database are loaded (or created) on demand. Set goal to describe the project purpose (shown in the UI).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -700,7 +679,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_thermostat',
     description:
-      'Measures the cognitive temperature of the graph to govern the Explore/Exploit trade-off. Returns a strategy (DIVERGE/CONVERGE) based on graph entropy.',
+      'Optional descriptive pulse when the next move is genuinely unclear. Summarizes unresolved and disconnected structure, then offers a non-binding deepen/connect/disrupt direction. It is not a score, quota, or governor; the current evidence and task remain authoritative.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -767,17 +746,13 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_score',
     description:
-      'Calculate chronological understanding score based on graph structure. Measures how well thinking nodes integrate with concepts, track belief evolution, and build coherent understanding trails. All metrics are structural (cannot be gamed).',
+      'Calculate a structural diagnostic for ordinary graph state: chronological references, supersession, question resolution, edge specificity, connectivity, and explanations. Reserved Reader/CMP artifacts are excluded. This score is a proxy, not evidence of semantic quality.',
     inputSchema: {
       type: 'object',
       properties: {
         project: {
           type: 'string',
           description: 'Project ID (optional)',
-        },
-        detailed: {
-          type: 'boolean',
-          description: 'Show per-node issues and detailed breakdown',
         },
       },
     },
@@ -787,47 +762,6 @@ export const reflectionTools: Tool[] = [
 // ============================================================================
 // Helper functions for graph_score
 // ============================================================================
-
-/**
- * Calculate the longest thinking→thinking chain depth using DFS.
- * Only counts non-"next" edges between thinking nodes.
- */
-function calculateThinkingChainDepth(
-  thinkingNodes: Array<{ id: string }>,
-  edges: Array<{ fromId: string; toId: string; type: string }>,
-): number {
-  const thinkingIds = new Set(thinkingNodes.map((n) => n.id));
-  const adj = new Map<string, string[]>();
-
-  for (const e of edges) {
-    if (
-      thinkingIds.has(e.fromId) &&
-      thinkingIds.has(e.toId) &&
-      e.type !== 'next'
-    ) {
-      if (!adj.has(e.fromId)) adj.set(e.fromId, []);
-      adj.get(e.fromId)?.push(e.toId);
-    }
-  }
-
-  let maxDepth = 0;
-  const visited = new Set<string>();
-
-  function dfs(nodeId: string, depth: number) {
-    maxDepth = Math.max(maxDepth, depth);
-    visited.add(nodeId);
-    for (const next of adj.get(nodeId) || []) {
-      if (!visited.has(next)) dfs(next, depth + 1);
-    }
-    visited.delete(nodeId);
-  }
-
-  for (const id of thinkingIds) {
-    dfs(id, 1);
-  }
-
-  return maxDepth;
-}
 
 /**
  * Calculate semantic coherence: average cosine similarity of edge endpoints.
@@ -912,7 +846,7 @@ export async function handleReflectionTools(
 
       if (!node) {
         return {
-          error: `Node not found: ${nodeId}`,
+          error: 'Node not found in the current visible graph',
         };
       }
 
@@ -957,7 +891,7 @@ export async function handleReflectionTools(
 
       if (!edge) {
         return {
-          error: `Edge not found: ${edgeId}`,
+          error: 'Edge not found in the current visible graph',
         };
       }
 
@@ -1000,6 +934,11 @@ export async function handleReflectionTools(
       );
 
       const trigger = args.trigger as string;
+      if (trigger === 'thinking' && !reservedThinkingVisible()) {
+        throw new Error(
+          'Reserved Reader/CMP thinking blocks are only visible in TOOL_MODE "synthetic_reader". Ordinary workflows use non-thinking typed testimony.',
+        );
+      }
       const includeArchived = args.includeArchived as boolean | undefined;
       const unresolvedOnly = args.unresolvedOnly as boolean | undefined;
       const missingMetadata = args.missingMetadata as string | undefined;
@@ -1294,6 +1233,7 @@ export async function handleReflectionTools(
 
       // Actually delete - use raw SQL since we're bypassing normal soft-delete
       const result = sqlite.purgeNodes(nodeIds, edgeIds, reason);
+      store.invalidateCache();
 
       return {
         success: true,
@@ -1451,12 +1391,28 @@ export async function handleReflectionTools(
         };
       }
 
-      // Get recent history as XML context
-      const xml = ContextService.generateHistoryContext(
-        (args.limit as number) || 50,
-      );
+      // Event history explains individual mutations; commit history supplies
+      // the missing collaborative origin story (message + agent attribution).
+      // Keep both in one well-formed XML packet so a teammate can see what
+      // changed and why without making a second, private database query.
+      const limit = Math.max(1, Math.floor((args.limit as number) || 50));
+      const eventXml = ContextService.generateHistoryContext(limit);
+      const commits = sqlite.getRecentCommits(limit).reverse();
+      let commitXml = `<recent_commits count="${commits.length}">\n`;
+      for (const commit of commits) {
+        commitXml += `  <commit id="${escapeHistoryXml(commit.id)}" timestamp="${escapeHistoryXml(commit.createdAt)}">\n`;
+        commitXml += `    <message>${escapeHistoryXml(commit.message)}</message>\n`;
+        commitXml += `    <agent>${escapeHistoryXml(commit.agentName || 'unknown')}</agent>\n`;
+        if (commit.author) {
+          commitXml += `    <author>${escapeHistoryXml(commit.author)}</author>\n`;
+        }
+        commitXml += `    <node_ids>${commit.nodeIds.map(escapeHistoryXml).join(',')}</node_ids>\n`;
+        commitXml += `    <edge_ids>${commit.edgeIds.map(escapeHistoryXml).join(',')}</edge_ids>\n`;
+        commitXml += '  </commit>\n';
+      }
+      commitXml += '</recent_commits>';
 
-      return xml;
+      return `<project_history project="${escapeHistoryXml(projectId)}">\n${commitXml}\n${eventXml}\n</project_history>`;
     }
 
     case 'project_switch': {
@@ -1526,7 +1482,7 @@ export async function handleReflectionTools(
       if (!node) {
         return {
           success: false,
-          error: `Node "${nodeId}" not found in project "${targetProject}"`,
+          error: 'Node not found in the requested visible project',
         };
       }
 
@@ -1598,7 +1554,6 @@ export async function handleReflectionTools(
 
       return {
         found: false,
-        nodeId,
         searchedProjects: visibleProjects,
         hint: 'Node not found in your projects',
       };
@@ -1618,7 +1573,7 @@ export async function handleReflectionTools(
       const sourceNode = lookupExternalNode(projectsDir, projectId, nodeId);
       if (!sourceNode) {
         return {
-          error: `Node not found: ${nodeId}`,
+          error: 'Node not found in the current visible graph',
           project: projectId,
         };
       }
@@ -1666,7 +1621,7 @@ export async function handleReflectionTools(
             if (!refNode) {
               return {
                 project: ref.project,
-                nodeId: ref.nodeId,
+                nodeId: 'unavailable',
                 node: null,
                 error: `Node not found in ${ref.project}`,
               };
@@ -1737,6 +1692,13 @@ export async function handleReflectionTools(
 
       // Try to resolve node by name if not an ID
       let resolvedId = nodeId;
+      if (nodeId.startsWith('n_') && !store.getNode(nodeId)) {
+        return {
+          error: 'Node not found in the current visible graph',
+          project: projectId,
+          suggestions: [],
+        };
+      }
       if (!nodeId.startsWith('n_')) {
         const allNodes = store.getAll().nodes;
         const match = allNodes.find(
@@ -1893,12 +1855,52 @@ export async function handleReflectionTools(
 
       // Check embedding coverage first
       const stats = store.getEmbeddingStats();
-      if (stats.withEmbedding === 0) {
+      if (stats.withEmbedding === 0 || !EmbeddingService.isModelLoaded()) {
+        const terms = (
+          query.toLocaleLowerCase().match(/[\p{L}\p{N}_-]+/gu) || []
+        ).filter((term) => term.length >= 2);
+        const lexicalResults = store
+          .getAll()
+          .nodes.map((node) => {
+            const text = [
+              node.title,
+              node.trigger === 'thinking' ? node.content : node.understanding,
+              node.why,
+              node.summary,
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .toLocaleLowerCase();
+            const matches = terms.filter((term) => text.includes(term)).length;
+            return {
+              node,
+              score: terms.length > 0 ? matches / terms.length : 0,
+            };
+          })
+          .filter((result) => result.score > 0)
+          .sort(
+            (a, b) => b.score - a.score || a.node.id.localeCompare(b.node.id),
+          )
+          .slice(0, limit);
+
         return {
-          error:
-            'No embeddings found. Run graph_backfill_embeddings first to enable semantic search.',
-          stats,
+          query,
           project: projectId,
+          isExternal: false,
+          searchMode: 'lexical_fallback',
+          results: lexicalResults.map((result) => ({
+            id: result.node.id,
+            name: result.node.title,
+            similarity: null,
+            lexicalCoverage: Math.round(result.score * 1000) / 1000,
+            understanding: (result.node.trigger === 'thinking'
+              ? result.node.content
+              : result.node.understanding
+            )?.slice(0, 200),
+          })),
+          count: lexicalResults.length,
+          embeddingCoverage: `${stats.withEmbedding}/${stats.total} nodes (lexical fallback; model not loaded)`,
+          hint: 'Embeddings are optional. Run graph_backfill_embeddings only if semantic matching is needed; this also loads the optional model.',
         };
       }
 
@@ -1929,6 +1931,7 @@ export async function handleReflectionTools(
               : ''),
         })),
         count: results.length,
+        searchMode: 'semantic',
         embeddingCoverage: `${stats.withEmbedding}/${stats.total} nodes (${Math.round(stats.coverage * 100)}%)`,
       };
     }
@@ -1943,9 +1946,21 @@ export async function handleReflectionTools(
       // Get initial stats
       const beforeStats = store.getEmbeddingStats();
 
+      try {
+        await EmbeddingService.preloadModel();
+      } catch (error) {
+        return {
+          success: false,
+          error: 'EMBEDDINGS_UNAVAILABLE',
+          message: error instanceof Error ? error.message : String(error),
+          stats: beforeStats,
+          hint: 'Lexical retrieval remains available; embeddings are optional.',
+        };
+      }
+
       if (beforeStats.total === beforeStats.withEmbedding) {
         return {
-          message: 'All nodes already have embeddings',
+          message: 'Embedding model loaded; all nodes already have embeddings',
           stats: beforeStats,
         };
       }
@@ -1999,8 +2014,10 @@ export async function handleReflectionTools(
           physics: { temperature: '0.00', state: 'VOID', entropy: '0.00' },
           governance: {
             strategy: 'SEED',
-            directive: 'Graph is empty. Create foundational concepts.',
-            recommended_tool: 'graph_add_concept',
+            directive:
+              'The graph has no prior understanding. Begin the real task and preserve only what genuinely becomes salient.',
+            recommended_tool: 'graph_understand',
+            advisory: true,
           },
         };
       }
@@ -2040,14 +2057,14 @@ export async function handleReflectionTools(
         phase = 'GAS';
         strategy = 'DIVERGE';
         directive =
-          'Graph is too stable (stagnant). Inject chaos. Use graph_discover to find new paths.';
-        recommendedTool = 'graph_discover';
+          'Few live tensions or disconnected nodes are visible. If repeated re-entry is only returning familiar paths or the work is genuinely stuck, compare distant graph material with graph_discover_grounded; "no defensible connection" is a valid result.';
+        recommendedTool = 'graph_discover_grounded';
       } else if (temperature < 0.3) {
         phase = 'SOLID';
         strategy = 'CONVERGE';
         directive =
-          'Graph is unstable (fragmented). Crystallize understanding. Use graph_decide to resolve options or graph_connect to link orphans.';
-        recommendedTool = 'graph_decide';
+          'Many live tensions or disconnected nodes are visible. Re-enter the most task-relevant question or encounter and connect, qualify, or decide only when evidence warrants it.';
+        recommendedTool = 'graph_understand';
       }
 
       return {
@@ -2065,6 +2082,7 @@ export async function handleReflectionTools(
           strategy,
           directive,
           recommended_tool: recommendedTool,
+          advisory: true,
         },
       };
     }
@@ -2118,6 +2136,9 @@ export async function handleReflectionTools(
         caseSensitive,
         preview,
       });
+      if (!result.preview && result.changes.length > 0) {
+        getGraphStore().invalidateCache();
+      }
 
       const affectedNodes = new Set(
         result.changes.map(
@@ -2154,20 +2175,35 @@ export async function handleReflectionTools(
       await contextManager.getContext(projectId);
 
       const store = getGraphStore();
-      const { nodes, edges } = store.getAll();
-      const detailed = args.detailed as boolean | undefined;
+      const { nodes: allNodes, edges: allEdges } = store.getAll();
+      const reservedNodeIds = new Set(
+        (
+          sqlite
+            .getDb()
+            .prepare('SELECT id, trigger, file_type FROM nodes')
+            .all() as Array<{
+            id: string;
+            trigger: string | null;
+            file_type: string | null;
+          }>
+        )
+          .filter(isReservedThinkingNode)
+          .map((node) => node.id),
+      );
+      const nodes = allNodes.filter((node) => !reservedNodeIds.has(node.id));
+      const edges = allEdges.filter(
+        (edge) =>
+          !reservedNodeIds.has(edge.fromId) && !reservedNodeIds.has(edge.toId),
+      );
 
       // Empty graph case
       if (nodes.length === 0) {
         return {
           score: 0,
           metrics: {
-            thinkingIntegration: '0%',
-            thinkingConceptEdges: 0,
             backwardReferences: 0,
             supersessionCount: 0,
             questionResolution: '100%',
-            thinkingChainDepth: 0,
             semanticCoherence: '1.00',
             edgeTypeDiversity: '0.00',
             relatesRatio: '0%',
@@ -2175,47 +2211,14 @@ export async function handleReflectionTools(
             meaningfulEdgeRate: '100%',
           },
           issues: ['Graph is empty'],
-          hint: 'Start by adding foundational concepts with graph_add_concept',
+          hint: 'Start with connected foundational concepts in graph_batch',
         };
       }
 
       // Categorize nodes
-      const thinkingNodes = nodes.filter((n) => n.trigger === 'thinking');
       const questionNodes = nodes.filter((n) => n.trigger === 'question');
-      const nonThinkingNodes = nodes.filter((n) => n.trigger !== 'thinking');
-      const nonThinkingIds = new Set(nonThinkingNodes.map((n) => n.id));
 
-      // 1. Thinking Integration: % thinking nodes with non-"next" edges to non-thinking nodes
-      // This is the MAJOR metric - how many concept connections does each thinking block have
-      let totalThinkingConceptEdges = 0;
-      const thinkingEdgeCounts: Record<string, number> = {};
-
-      for (const t of thinkingNodes) {
-        const conceptEdges = edges.filter(
-          (e) =>
-            e.fromId === t.id &&
-            e.type !== 'next' &&
-            nonThinkingIds.has(e.toId),
-        );
-        thinkingEdgeCounts[t.id] = conceptEdges.length;
-        totalThinkingConceptEdges += conceptEdges.length;
-      }
-
-      const thinkingWithConceptEdges = thinkingNodes.filter(
-        (t) => thinkingEdgeCounts[t.id] > 0,
-      );
-      const thinkingIntegration =
-        thinkingNodes.length > 0
-          ? thinkingWithConceptEdges.length / thinkingNodes.length
-          : 1;
-
-      // Average edges per thinking node (quality indicator)
-      const avgEdgesPerThinking =
-        thinkingNodes.length > 0
-          ? totalThinkingConceptEdges / thinkingNodes.length
-          : 0;
-
-      // 2. Backward References: edges from newer to older nodes (by timestamp)
+      // 1. Backward References: edges from newer to older nodes (by timestamp)
       const nodeTimestamps = new Map(
         nodes.map((n) => [n.id, new Date(n.createdAt).getTime()]),
       );
@@ -2225,12 +2228,12 @@ export async function handleReflectionTools(
         return fromTime && toTime && fromTime > toTime && e.type !== 'next';
       }).length;
 
-      // 3. Supersession Count
+      // 2. Supersession Count
       const supersessionCount = edges.filter(
         (e) => e.type === 'supersedes',
       ).length;
 
-      // 4. Question Resolution: questions with "answers" edges pointing to them
+      // 3. Question Resolution: questions with "answers" edges pointing to them
       const answeredQuestions = questionNodes.filter((q) =>
         edges.some((e) => e.toId === q.id && e.type === 'answers'),
       );
@@ -2239,13 +2242,10 @@ export async function handleReflectionTools(
           ? answeredQuestions.length / questionNodes.length
           : 1;
 
-      // 5. Thinking Chain Depth
-      const chainDepth = calculateThinkingChainDepth(thinkingNodes, edges);
-
-      // 6. Semantic Coherence
+      // 4. Semantic Coherence
       const coherence = calculateSemanticCoherence(store, edges);
 
-      // 7. Edge Type Diversity (Shannon entropy, penalize "relates" overuse)
+      // 5. Edge Type Diversity (Shannon entropy, penalize "relates" overuse)
       const edgeTypeCounts = new Map<string, number>();
       for (const e of edges) {
         const t = e.type || 'relates';
@@ -2257,16 +2257,17 @@ export async function handleReflectionTools(
           : 0;
       const edgeTypeEntropy = calculateEntropy(edgeTypeCounts, edges.length);
 
-      // 8. Connectivity: % of nodes that have at least one edge
+      // 6. Connectivity: % of nodes that have at least one edge
+      const ordinaryNodeIds = new Set(nodes.map((node) => node.id));
       const connectedNodes = new Set<string>();
       for (const e of edges) {
-        connectedNodes.add(e.fromId);
-        connectedNodes.add(e.toId);
+        if (ordinaryNodeIds.has(e.fromId)) connectedNodes.add(e.fromId);
+        if (ordinaryNodeIds.has(e.toId)) connectedNodes.add(e.toId);
       }
       const connectivity =
         nodes.length > 0 ? connectedNodes.size / nodes.length : 1;
 
-      // 9. Meaningful Edge Rate: edges with non-empty 'explanation' or 'why'
+      // 7. Meaningful Edge Rate: edges with non-empty 'explanation' or 'why'
       const meaningfulEdges = edges.filter(
         (e) => e.explanation?.trim() || (e as { why?: string }).why?.trim(),
       );
@@ -2275,15 +2276,6 @@ export async function handleReflectionTools(
 
       // Issues detection
       const issues: string[] = [];
-      const orphanThinking = thinkingNodes.filter(
-        (t) => thinkingEdgeCounts[t.id] === 0,
-      );
-
-      if (orphanThinking.length > 0) {
-        issues.push(
-          `${orphanThinking.length} orphan thinking node(s) with no concept connections`,
-        );
-      }
       if (relatesRatio > 0.5) {
         issues.push(
           `${(relatesRatio * 100).toFixed(0)}% edges are generic "relates" - use specific edge types`,
@@ -2292,39 +2284,26 @@ export async function handleReflectionTools(
       if (coherence < 0.3) {
         issues.push(`Low semantic coherence (${coherence.toFixed(2)})`);
       }
-      if (avgEdgesPerThinking < 1 && thinkingNodes.length > 0) {
-        issues.push(
-          `Low thinking density: avg ${avgEdgesPerThinking.toFixed(1)} concept edges per thinking node`,
-        );
-      }
 
-      // Composite score (0-100 scale, weighted)
-      // Major weight on thinking integration and concept edges per thinking node
-      const score = Math.round(
-        thinkingIntegration * 25 + // % thinking nodes connected
-          Math.min(avgEdgesPerThinking / 3, 1) * 15 + // Quality: avg edges per thinking
-          Math.min(backwardRefs / 10, 1) * 10 + // Backward references
-          Math.min(supersessionCount / 5, 1) * 10 + // Belief revisions
-          questionResolution * 10 + // Questions answered
-          Math.min(chainDepth / 5, 1) * 5 + // Reasoning depth
-          coherence * 10 + // Semantic coherence
-          (1 - relatesRatio) * 5 + // Edge type quality
-          connectivity * 5 + // No orphans
-          meaningfulEdgeRate * 5, // Edge explanations
-      );
+      // Composite score, normalized from the seven ordinary-graph components.
+      const rawScore =
+        Math.min(backwardRefs / 10, 1) * 10 + // Backward references
+        Math.min(supersessionCount / 5, 1) * 10 + // Belief revisions
+        questionResolution * 10 + // Questions answered
+        Math.max(0, Math.min(coherence, 1)) * 10 + // Semantic coherence
+        (1 - relatesRatio) * 5 + // Edge type quality
+        connectivity * 5 + // No orphans
+        meaningfulEdgeRate * 5; // Edge explanations
+      const score = Math.round(Math.max(0, Math.min(rawScore / 55, 1)) * 100);
 
       // Build response
-      const response: Record<string, unknown> = {
+      return {
         score,
         project: projectId,
         metrics: {
-          thinkingIntegration: `${(thinkingIntegration * 100).toFixed(0)}%`,
-          thinkingConceptEdges: totalThinkingConceptEdges,
-          avgEdgesPerThinking: avgEdgesPerThinking.toFixed(1),
           backwardReferences: backwardRefs,
           supersessionCount,
           questionResolution: `${(questionResolution * 100).toFixed(0)}%`,
-          thinkingChainDepth: chainDepth,
           semanticCoherence: coherence.toFixed(2),
           edgeTypeDiversity: edgeTypeEntropy.toFixed(2),
           relatesRatio: `${(relatesRatio * 100).toFixed(0)}%`,
@@ -2333,45 +2312,17 @@ export async function handleReflectionTools(
         },
         counts: {
           totalNodes: nodes.length,
-          thinkingNodes: thinkingNodes.length,
           questionNodes: questionNodes.length,
           totalEdges: edges.length,
         },
         issues: issues.length > 0 ? issues : null,
         hint:
           score < 40
-            ? 'Connect thinking nodes to concepts with meaningful edges'
+            ? 'Connect relevant graph regions with specific, explained edges and make the evidence or prior state behind updates inspectable.'
             : score < 70
-              ? 'Good foundation. Add supersession edges when beliefs change, connect to earlier thinking.'
+              ? 'Good foundation. Add supersession, question-resolution, and backward-reference edges only when the work warrants them.'
               : 'Strong chronological understanding structure',
       };
-
-      // Detailed breakdown if requested
-      if (detailed && orphanThinking.length > 0) {
-        response.orphanThinkingNodes = orphanThinking.slice(0, 10).map((n) => ({
-          id: n.id,
-          text: n.title.slice(0, 80) + (n.title.length > 80 ? '...' : ''),
-        }));
-      }
-
-      if (detailed) {
-        // Show top thinking nodes by edge count
-        const thinkingByEdges = thinkingNodes
-          .map((n) => ({
-            id: n.id,
-            text: n.title,
-            edges: thinkingEdgeCounts[n.id],
-          }))
-          .sort((a, b) => b.edges - a.edges)
-          .slice(0, 5);
-        response.topThinkingNodes = thinkingByEdges.map((n) => ({
-          id: n.id,
-          text: n.text.slice(0, 60) + (n.text.length > 60 ? '...' : ''),
-          conceptEdges: n.edges,
-        }));
-      }
-
-      return response;
     }
 
     default:

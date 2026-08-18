@@ -8,11 +8,35 @@ import type {
   EventLogEntry,
   ToolCall,
 } from '../types/index.js';
+import { graphNodeVisible, reservedThinkingVisible } from '../visibility.js';
 
 // All project databases in memory
 const databases = new Map<string, DatabaseType>();
 let projectsDir: string | null = null;
 let currentProjectId: string | null = null;
+
+const RESERVED_THINKING_SQL =
+  "(LOWER(TRIM(COALESCE(trigger, ''))) = 'thinking' OR LOWER(TRIM(COALESCE(file_type, ''))) = 'thinking')";
+
+function nodeIdVisible(db: DatabaseType, nodeId: string): boolean {
+  if (reservedThinkingVisible()) return true;
+  const row = db
+    .prepare('SELECT trigger, file_type FROM nodes WHERE id = ?')
+    .get(nodeId) as
+    | { trigger: string | null; file_type: string | null }
+    | undefined;
+  return Boolean(row && graphNodeVisible(row));
+}
+
+function edgeIdVisible(db: DatabaseType, edgeId: string): boolean {
+  if (reservedThinkingVisible()) return true;
+  const row = db
+    .prepare('SELECT from_id, to_id FROM edges WHERE id = ?')
+    .get(edgeId) as { from_id: string; to_id: string } | undefined;
+  return Boolean(
+    row && nodeIdVisible(db, row.from_id) && nodeIdVisible(db, row.to_id),
+  );
+}
 
 /**
  * Initialize all databases from a projects directory.
@@ -487,6 +511,50 @@ export function initDatabase(projectPath: string): DatabaseType {
     // Column already exists
   }
 
+  // Upgrade quarantine: older builds allowed a reserved thinking document to
+  // be converted in place into an apparently ordinary concept. Its revision
+  // history still contains `trigger: "thinking"`, including the private
+  // synthetic content, but ordinary visibility previously inspected only the
+  // live trigger/file_type fields. Mark that legacy shape reserved again. The
+  // node and its history remain intact and available in synthetic Reader mode.
+  const legacyDeclassifiedRows = db
+    .prepare(
+      `SELECT id, revisions
+       FROM nodes
+       WHERE LOWER(TRIM(COALESCE(trigger, ''))) != 'thinking'
+         AND LOWER(TRIM(COALESCE(file_type, ''))) != 'thinking'
+         AND revisions IS NOT NULL
+         AND revisions != '[]'`,
+    )
+    .all() as Array<{ id: string; revisions: string }>;
+  const markLegacyReserved = db.prepare(
+    `UPDATE nodes SET file_type = 'thinking' WHERE id = ?`,
+  );
+  const quarantineLegacyDeclassifications = db.transaction(() => {
+    for (const row of legacyDeclassifiedRows) {
+      try {
+        const revisions = JSON.parse(row.revisions) as unknown;
+        if (
+          Array.isArray(revisions) &&
+          revisions.some(
+            (revision) =>
+              revision !== null &&
+              typeof revision === 'object' &&
+              'trigger' in revision &&
+              typeof revision.trigger === 'string' &&
+              revision.trigger.trim().toLowerCase() === 'thinking',
+          )
+        ) {
+          markLegacyReserved.run(row.id);
+        }
+      } catch {
+        // Malformed legacy revision JSON is preserved. It does not prove that
+        // the node was reserved, so do not silently reclassify it.
+      }
+    }
+  });
+  quarantineLegacyDeclassifications();
+
   // Migration: Add references for external sources
   try {
     db.exec(`ALTER TABLE nodes ADD COLUMN references TEXT DEFAULT '[]'`);
@@ -578,6 +646,25 @@ export function closeAllDatabases(): void {
 }
 
 /**
+ * Close and unload one project's database connection.
+ *
+ * Returns false when the project was not loaded. If the project was active,
+ * no other project is selected implicitly: callers must deliberately choose
+ * the next project before using current-project operations again.
+ */
+export function closeProjectDatabase(projectId: string): boolean {
+  const db = databases.get(projectId);
+  if (!db) return false;
+
+  db.close();
+  databases.delete(projectId);
+  if (currentProjectId === projectId) {
+    currentProjectId = null;
+  }
+  return true;
+}
+
+/**
  * Close a specific database.
  * @deprecated Use closeAllDatabases for cleanup
  */
@@ -595,11 +682,11 @@ export function globalNodeLookup(
   for (const [projectId, db] of databases) {
     const row = db
       .prepare(
-        'SELECT id, title, trigger, why, understanding, content, "references", created_at FROM nodes WHERE id = ? AND active = 1',
+        'SELECT id, title, trigger, file_type, why, understanding, content, "references", created_at FROM nodes WHERE id = ? AND active = 1',
       )
       .get(nodeId) as Record<string, unknown> | undefined;
 
-    if (row) {
+    if (row && graphNodeVisible(row)) {
       return {
         projectId,
         node: {
@@ -655,11 +742,11 @@ export function lookupExternalNode(
 
   const row = db
     .prepare(
-      'SELECT id, title, trigger, why, understanding, content, "references", created_at FROM nodes WHERE id = ?',
+      'SELECT id, title, trigger, file_type, why, understanding, content, "references", created_at FROM nodes WHERE id = ?',
     )
     .get(nodeId) as Record<string, unknown> | undefined;
 
-  if (!row) {
+  if (!row || !graphNodeVisible(row)) {
     return null;
   }
 
@@ -690,15 +777,16 @@ export function listExternalNodes(
     return [];
   }
 
-  const rows = db
-    .prepare(`
-      SELECT id, title, trigger, why, understanding, content, "references", created_at
+  let query = `
+      SELECT id, title, trigger, file_type, why, understanding, content, "references", created_at
       FROM nodes
       WHERE archived_at IS NULL
-      ORDER BY created_at DESC
-      LIMIT ?
-    `)
-    .all(limit) as Array<Record<string, unknown>>;
+  `;
+  if (!reservedThinkingVisible()) {
+    query += ` AND NOT ${RESERVED_THINKING_SQL}`;
+  }
+  query += ' ORDER BY created_at DESC LIMIT ?';
+  const rows = db.prepare(query).all(limit) as Array<Record<string, unknown>>;
 
   return rows.map((row) => ({
     id: row.id as string,
@@ -735,6 +823,10 @@ export function updateConversationResponse(id: string, response: string): void {
 }
 
 export function getConversation(id: string): Conversation | undefined {
+  // Conversation text is free-form provenance. It cannot be reliably
+  // projected after the fact, so only the explicitly privileged synthetic
+  // Reader scope may read it.
+  if (!reservedThinkingVisible()) return undefined;
   const stmt = getDb().prepare('SELECT * FROM conversations WHERE id = ?');
   const row = stmt.get(id) as { metadata?: string } | undefined;
   if (row?.metadata) {
@@ -747,6 +839,7 @@ export function getConversation(id: string): Conversation | undefined {
 }
 
 export function getRecentConversations(limit = 50): Conversation[] {
+  if (!reservedThinkingVisible()) return [];
   const stmt = getDb().prepare(`
     SELECT * FROM conversations
     ORDER BY created_at DESC
@@ -772,6 +865,43 @@ export interface Commit {
   nodeIds: string[];
   edgeIds: string[];
   createdAt: string;
+}
+
+interface CommitRow {
+  id: string;
+  message: string;
+  agent_name: string | null;
+  author: string | null;
+  node_ids: string;
+  edge_ids: string;
+  created_at: string;
+}
+
+function rowToVisibleCommit(db: DatabaseType, row: CommitRow): Commit | null {
+  const allNodeIds = JSON.parse(row.node_ids || '[]') as string[];
+  const allEdgeIds = JSON.parse(row.edge_ids || '[]') as string[];
+  const nodeIds = allNodeIds.filter((id) => nodeIdVisible(db, id));
+  const edgeIds = allEdgeIds.filter((id) => edgeIdVisible(db, id));
+
+  if (
+    !reservedThinkingVisible() &&
+    (nodeIds.length !== allNodeIds.length ||
+      edgeIds.length !== allEdgeIds.length)
+  ) {
+    // Fail closed for mixed commits too: the free-form message can describe a
+    // reserved artifact even after its ID is stripped.
+    return null;
+  }
+
+  return {
+    id: row.id,
+    message: row.message,
+    agentName: row.agent_name,
+    author: row.author ?? null,
+    nodeIds,
+    edgeIds,
+    createdAt: row.created_at,
+  };
 }
 
 /**
@@ -839,6 +969,7 @@ export function createCommit(
  */
 export function getCommitForNode(nodeId: string): Commit | null {
   const db = getDb();
+  if (!nodeIdVisible(db, nodeId)) return null;
   // First get the commit_id from the node
   const nodeRow = db
     .prepare(`SELECT commit_id FROM nodes WHERE id = ?`)
@@ -862,52 +993,38 @@ export function getCommitForNode(nodeId: string): Commit | null {
 
   if (!row) return null;
 
-  return {
-    id: row.id,
-    message: row.message,
-    agentName: row.agent_name,
-    author: row.author ?? null,
-    nodeIds: JSON.parse(row.node_ids || '[]'),
-    edgeIds: JSON.parse(row.edge_ids || '[]'),
-    createdAt: row.created_at,
-  };
+  return rowToVisibleCommit(db, row);
 }
 
 /**
  * Get recent commits for the current project.
  */
 export function getRecentCommits(limit = 50): Commit[] {
-  const stmt = getDb().prepare(`
+  const db = getDb();
+  const query = reservedThinkingVisible()
+    ? `
     SELECT * FROM commits
     ORDER BY created_at DESC
     LIMIT ?
-  `);
-  const rows = stmt.all(limit) as Array<{
-    id: string;
-    message: string;
-    agent_name: string | null;
-    author: string | null;
-    node_ids: string;
-    edge_ids: string;
-    created_at: string;
-  }>;
+  `
+    : `SELECT * FROM commits ORDER BY created_at DESC`;
+  const stmt = db.prepare(query);
+  const rows = (
+    reservedThinkingVisible() ? stmt.all(limit) : stmt.all()
+  ) as CommitRow[];
 
-  return rows.map((row) => ({
-    id: row.id,
-    message: row.message,
-    agentName: row.agent_name,
-    author: row.author ?? null,
-    nodeIds: JSON.parse(row.node_ids || '[]'),
-    edgeIds: JSON.parse(row.edge_ids || '[]'),
-    createdAt: row.created_at,
-  }));
+  return rows
+    .map((row) => rowToVisibleCommit(db, row))
+    .filter((commit): commit is Commit => commit !== null)
+    .slice(0, limit);
 }
 
 /**
  * Get a specific commit by ID.
  */
 export function getCommit(id: string): Commit | null {
-  const stmt = getDb().prepare('SELECT * FROM commits WHERE id = ?');
+  const db = getDb();
+  const stmt = db.prepare('SELECT * FROM commits WHERE id = ?');
   const row = stmt.get(id) as
     | {
         id: string;
@@ -922,23 +1039,17 @@ export function getCommit(id: string): Commit | null {
 
   if (!row) return null;
 
-  return {
-    id: row.id,
-    message: row.message,
-    agentName: row.agent_name,
-    author: row.author ?? null,
-    nodeIds: JSON.parse(row.node_ids || '[]'),
-    edgeIds: JSON.parse(row.edge_ids || '[]'),
-    createdAt: row.created_at,
-  };
+  return rowToVisibleCommit(db, row);
 }
 
 /**
  * Get all commits that affected a specific node.
  */
 export function getCommitsForNode(nodeId: string): Commit[] {
+  const db = getDb();
+  if (!nodeIdVisible(db, nodeId)) return [];
   // Query commits where node_ids array contains the nodeId
-  const stmt = getDb().prepare(`
+  const stmt = db.prepare(`
     SELECT * FROM commits
     WHERE node_ids LIKE ?
     ORDER BY created_at DESC
@@ -953,22 +1064,18 @@ export function getCommitsForNode(nodeId: string): Commit[] {
     created_at: string;
   }>;
 
-  return rows.map((row) => ({
-    id: row.id,
-    message: row.message,
-    agentName: row.agent_name,
-    author: row.author ?? null,
-    nodeIds: JSON.parse(row.node_ids || '[]'),
-    edgeIds: JSON.parse(row.edge_ids || '[]'),
-    createdAt: row.created_at,
-  }));
+  return rows
+    .map((row) => rowToVisibleCommit(db, row))
+    .filter((commit): commit is Commit => commit !== null);
 }
 
 /**
  * Get all commits that affected a specific edge.
  */
 export function getCommitsForEdge(edgeId: string): Commit[] {
-  const stmt = getDb().prepare(`
+  const db = getDb();
+  if (!edgeIdVisible(db, edgeId)) return [];
+  const stmt = db.prepare(`
     SELECT * FROM commits
     WHERE edge_ids LIKE ?
     ORDER BY created_at DESC
@@ -983,15 +1090,9 @@ export function getCommitsForEdge(edgeId: string): Commit[] {
     created_at: string;
   }>;
 
-  return rows.map((row) => ({
-    id: row.id,
-    message: row.message,
-    agentName: row.agent_name,
-    author: row.author ?? null,
-    nodeIds: JSON.parse(row.node_ids || '[]'),
-    edgeIds: JSON.parse(row.edge_ids || '[]'),
-    createdAt: row.created_at,
-  }));
+  return rows
+    .map((row) => rowToVisibleCommit(db, row))
+    .filter((commit): commit is Commit => commit !== null);
 }
 
 // Documents
@@ -1103,8 +1204,14 @@ export function getEventLog(options: EventLogOptions = {}): EventLogEntry[] {
 
   let queryStr: string;
   const params: unknown[] = [];
+  // Conversation text is free-form provenance and cannot be projected from a
+  // visible event entity. A synthetic session can create an event for an
+  // ordinary node, so entity visibility alone is not sufficient to expose the
+  // joined prompt/response.
+  const includeConversationText =
+    includeConversations && reservedThinkingVisible();
 
-  if (includeConversations) {
+  if (includeConversationText) {
     queryStr = `
       SELECT e.*, c.query as user_query, c.response as ai_response
       FROM event_log e
@@ -1128,22 +1235,59 @@ export function getEventLog(options: EventLogOptions = {}): EventLogEntry[] {
     params.push(entityId);
   }
 
-  queryStr += ` ORDER BY seq DESC LIMIT ?`;
-  params.push(limit);
+  queryStr += ' ORDER BY seq DESC';
+  if (reservedThinkingVisible()) {
+    queryStr += ' LIMIT ?';
+    params.push(limit);
+  }
 
-  const stmt = getDb().prepare(queryStr);
-  return (
-    stmt.all(...params) as Array<EventLogEntry & { details?: string }>
-  ).map((row) => {
-    if (row.details && typeof row.details === 'string') {
-      try {
-        return { ...row, details: JSON.parse(row.details) };
-      } catch {
-        return row;
+  const db = getDb();
+  const stmt = db.prepare(queryStr);
+  return (stmt.all(...params) as Array<EventLogEntry & { details?: string }>)
+    .filter((row) => {
+      if (row.entity_type === 'node') {
+        return nodeIdVisible(db, row.entity_id);
       }
-    }
-    return row;
-  });
+      if (row.entity_type === 'edge') {
+        return edgeIdVisible(db, row.entity_id);
+      }
+      if (row.entity_type === 'batch' && !reservedThinkingVisible()) {
+        let details: unknown = row.details;
+        if (typeof details === 'string') {
+          try {
+            details = JSON.parse(details);
+          } catch {
+            return false;
+          }
+        }
+        const referencedIds: string[] = [];
+        const collectIds = (value: unknown): void => {
+          if (typeof value === 'string' && /^(n|e)_/.test(value)) {
+            referencedIds.push(value);
+          } else if (Array.isArray(value)) {
+            for (const entry of value) collectIds(entry);
+          } else if (value && typeof value === 'object') {
+            for (const entry of Object.values(value)) collectIds(entry);
+          }
+        };
+        collectIds(details);
+        return referencedIds.every((id) =>
+          id.startsWith('n_') ? nodeIdVisible(db, id) : edgeIdVisible(db, id),
+        );
+      }
+      return true;
+    })
+    .map((row) => {
+      if (row.details && typeof row.details === 'string') {
+        try {
+          return { ...row, details: JSON.parse(row.details) };
+        } catch {
+          return row;
+        }
+      }
+      return row;
+    })
+    .slice(0, limit);
 }
 
 export function getEventLogRange(
@@ -1234,16 +1378,22 @@ export function getTableSchema(tableName: string): TableInfo | null {
     primaryKey: col.pk === 1,
   }));
 
-  // Get row count
-  const countStmt = getDb().prepare(
-    `SELECT COUNT(*) as count FROM "${tableName}"`,
-  );
-  const countResult = countStmt.get() as { count: number };
+  // Raw table counts can reveal the existence and volume of reserved
+  // artifacts even when the rows themselves are hidden. Keep schema
+  // discovery available to ordinary callers, but expose raw counts only in
+  // the explicit synthetic Reader scope.
+  const rowCount = reservedThinkingVisible()
+    ? (
+        getDb()
+          .prepare(`SELECT COUNT(*) as count FROM "${tableName}"`)
+          .get() as { count: number }
+      ).count
+    : 0;
 
   return {
     name: tableName,
     columns,
-    rowCount: countResult.count,
+    rowCount,
   };
 }
 
@@ -1260,6 +1410,10 @@ export function getTableRows(
   tableName: string,
   options: TableRowsOptions = {},
 ): TableRowsResult | null {
+  // This is an intentionally raw database-explorer API. Projection is not
+  // meaningful for arbitrary tables/columns, so fail closed outside the one
+  // mode that is permitted to inspect reserved synthesis artifacts.
+  if (!reservedThinkingVisible()) return null;
   // Validate table name exists (prevent SQL injection)
   const tables = getTableNames();
   if (!tables.includes(tableName)) {
@@ -1350,6 +1504,7 @@ export function getTableRow(
   tableName: string,
   pkValue: string | number,
 ): Record<string, unknown> | null {
+  if (!reservedThinkingVisible()) return null;
   // Validate table name exists
   const tables = getTableNames();
   if (!tables.includes(tableName)) {
@@ -1440,6 +1595,10 @@ export function logToolCall(input: LogToolCallInput): number {
 }
 
 export function getToolCallsBySession(sessionId: string): ToolCall[] {
+  // Arguments and results can contain arbitrary node content and IDs. They
+  // are therefore treated like conversation provenance rather than a graph
+  // structure that can be safely projected.
+  if (!reservedThinkingVisible()) return [];
   const stmt = getDb().prepare(`
     SELECT * FROM tool_calls
     WHERE session_id = ?
@@ -1469,6 +1628,7 @@ export function getToolCallsBySession(sessionId: string): ToolCall[] {
 }
 
 export function getRecentToolCalls(limit = 100): ToolCall[] {
+  if (!reservedThinkingVisible()) return [];
   const stmt = getDb().prepare(`
     SELECT * FROM tool_calls
     ORDER BY created_at DESC
@@ -1501,6 +1661,9 @@ export function getRecentToolCalls(limit = 100): ToolCall[] {
 export function getToolUsageFrequency(
   daysBack = 7,
 ): Array<{ tool_name: string; count: number }> {
+  // Synthetic tool activity cannot be attributed safely after logging, so it
+  // must not bias ordinary-mode exploration prompts.
+  if (!reservedThinkingVisible()) return [];
   const stmt = getDb().prepare(`
     SELECT tool_name, COUNT(*) as count
     FROM tool_calls
@@ -1574,15 +1737,18 @@ export function bulkReplace(options: BulkReplaceOptions): BulkReplaceResult {
   // Get all active nodes
   const nodes = database
     .prepare(
-      'SELECT id, title, understanding, content, summary FROM nodes WHERE active = 1',
+      'SELECT id, title, trigger, file_type, understanding, content, summary FROM nodes WHERE active = 1',
     )
     .all() as Array<{
     id: string;
     title: string | null;
+    trigger: string | null;
+    file_type: string | null;
     understanding: string | null;
     content: string | null;
     summary: string | null;
   }>;
+  const visibleNodes = nodes.filter(graphNodeVisible);
 
   // Track current values for applying multiple replacements
   const currentValues = new Map<
@@ -1594,7 +1760,7 @@ export function bulkReplace(options: BulkReplaceOptions): BulkReplaceResult {
       summary: string | null;
     }
   >();
-  for (const node of nodes) {
+  for (const node of visibleNodes) {
     currentValues.set(node.id, { ...node });
   }
 
@@ -1607,7 +1773,7 @@ export function bulkReplace(options: BulkReplaceOptions): BulkReplaceResult {
     );
     let matchesForThisReplacement = 0;
 
-    for (const node of nodes) {
+    for (const node of visibleNodes) {
       const current = currentValues.get(node.id);
       if (!current) continue;
 
@@ -1717,26 +1883,59 @@ export function purgeNodes(
 ): PurgeResult {
   const database = getDb();
 
+  if (!reservedThinkingVisible()) {
+    const inaccessibleNodes = nodeIds.filter(
+      (nodeId) => !nodeIdVisible(database, nodeId),
+    );
+    const inaccessibleEdges = edgeIds.filter(
+      (edgeId) => !edgeIdVisible(database, edgeId),
+    );
+    if (inaccessibleNodes.length > 0 || inaccessibleEdges.length > 0) {
+      throw new Error(
+        'One or more purge targets are not visible in the current graph mode.',
+      );
+    }
+
+    if (nodeIds.length > 0) {
+      const placeholders = nodeIds.map(() => '?').join(',');
+      const incidentEdges = database
+        .prepare(
+          `SELECT id
+           FROM edges
+           WHERE from_id IN (${placeholders}) OR to_id IN (${placeholders})`,
+        )
+        .all(...nodeIds, ...nodeIds) as Array<{ id: string }>;
+      if (incidentEdges.some(({ id }) => !edgeIdVisible(database, id))) {
+        throw new Error(
+          'Purge would cascade into an edge that is not visible in the current graph mode.',
+        );
+      }
+    }
+  }
+
   let deletedNodes = 0;
   let deletedEdges = 0;
   let cascadeEdges = 0;
 
-  // Log the purge action first for audit trail
-  const auditLogId = logEvent(
-    'purged',
-    'batch',
-    'purge_operation',
-    null,
-    `PURGE: ${reason}`,
-    {
-      nodeIds,
-      edgeIds,
-      reason,
-      timestamp: new Date().toISOString(),
-    },
-  );
+  let auditLogId = 0;
 
   const transaction = database.transaction(() => {
+    // Keep the audit claim and the destructive mutation in one transaction.
+    // A failed deletion must not leave a false "purged" event behind.
+    auditLogId = logEvent(
+      'purged',
+      'batch',
+      'purge_operation',
+      null,
+      `PURGE: ${reason}`,
+      {
+        nodeIds,
+        edgeIds,
+        reason,
+        timestamp: new Date().toISOString(),
+      },
+    );
+
     // 1. Delete edges connected to nodes being purged (cascade)
     if (nodeIds.length > 0) {
       const placeholders = nodeIds.map(() => '?').join(',');
@@ -1778,24 +1977,22 @@ export function purgeNodes(
         .run(...nodeIds);
       deletedNodes = result.changes;
     }
+    logEvent(
+      'purged',
+      'batch',
+      'purge_complete',
+      null,
+      `Purge completed: ${deletedNodes} nodes, ${deletedEdges + cascadeEdges} edges`,
+      {
+        deletedNodes,
+        deletedEdges,
+        cascadeEdges,
+        auditLogId,
+      },
+    );
   });
 
   transaction();
-
-  // Log completion
-  logEvent(
-    'purged',
-    'batch',
-    'purge_complete',
-    null,
-    `Purge completed: ${deletedNodes} nodes, ${deletedEdges + cascadeEdges} edges`,
-    {
-      deletedNodes,
-      deletedEdges,
-      cascadeEdges,
-      auditLogId,
-    },
-  );
 
   return {
     deletedNodes,
@@ -1973,7 +2170,7 @@ export function queryNodes(
   const { trigger, limit = 50, includeArchived = false } = options;
 
   let query = `
-    SELECT id, title, trigger, why, understanding, content, "references", created_at
+    SELECT id, title, trigger, file_type, why, understanding, content, "references", created_at
     FROM nodes
     WHERE active = 1
   `;
@@ -1981,6 +2178,10 @@ export function queryNodes(
 
   if (!includeArchived) {
     query += ' AND archived_at IS NULL';
+  }
+
+  if (!reservedThinkingVisible()) {
+    query += ` AND NOT ${RESERVED_THINKING_SQL}`;
   }
 
   if (trigger) {
@@ -2027,16 +2228,24 @@ export function queryEdges(
   const { fromId, toId, limit = 100 } = options;
 
   let query =
-    'SELECT id, from_id, to_id, type, why FROM edges WHERE active = 1';
+    'SELECT e.id, e.from_id, e.to_id, e.type, e.why FROM edges e WHERE e.active = 1';
   const params: unknown[] = [];
 
   if (fromId) {
-    query += ' AND from_id = ?';
+    query += ' AND e.from_id = ?';
     params.push(fromId);
   }
   if (toId) {
-    query += ' AND to_id = ?';
+    query += ' AND e.to_id = ?';
     params.push(toId);
+  }
+
+  if (!reservedThinkingVisible()) {
+    query += ` AND NOT EXISTS (
+      SELECT 1 FROM nodes endpoint
+      WHERE endpoint.id IN (e.from_id, e.to_id)
+        AND ${RESERVED_THINKING_SQL.replaceAll('trigger', 'endpoint.trigger').replaceAll('file_type', 'endpoint.file_type')}
+    )`;
   }
 
   query += ' LIMIT ?';
@@ -2062,14 +2271,15 @@ export function getDocumentRoots(projectId: string): ExternalNodeData[] {
   const db = databases.get(projectId);
   if (!db) return [];
 
-  const rows = db
-    .prepare(
-      `SELECT id, title, trigger, why, understanding, content, "references", created_at
+  let query = `SELECT id, title, trigger, file_type, why, understanding, content, "references", created_at
        FROM nodes
        WHERE is_doc_root = 1 AND active = 1 AND archived_at IS NULL
-       ORDER BY created_at DESC`,
-    )
-    .all() as Array<Record<string, unknown>>;
+  `;
+  if (!reservedThinkingVisible()) {
+    query += ` AND NOT ${RESERVED_THINKING_SQL}`;
+  }
+  query += ' ORDER BY created_at DESC';
+  const rows = db.prepare(query).all() as Array<Record<string, unknown>>;
 
   return rows.map((row) => ({
     id: row.id as string,
@@ -2093,18 +2303,28 @@ export function getProjectStats(
   const db = databases.get(projectId);
   if (!db) return null;
 
+  const visiblePredicate = reservedThinkingVisible()
+    ? ''
+    : ` AND NOT ${RESERVED_THINKING_SQL}`;
   const nodeCount = (
     db
       .prepare(
-        'SELECT COUNT(*) as count FROM nodes WHERE active = 1 AND archived_at IS NULL',
+        `SELECT COUNT(*) as count FROM nodes WHERE active = 1 AND archived_at IS NULL${visiblePredicate}`,
       )
       .get() as { count: number }
   ).count;
 
+  let edgeQuery = 'SELECT COUNT(*) as count FROM edges e WHERE e.active = 1';
+  if (!reservedThinkingVisible()) {
+    edgeQuery += ` AND NOT EXISTS (
+      SELECT 1 FROM nodes endpoint
+      WHERE endpoint.id IN (e.from_id, e.to_id)
+        AND (LOWER(TRIM(COALESCE(endpoint.trigger, ''))) = 'thinking'
+          OR LOWER(TRIM(COALESCE(endpoint.file_type, ''))) = 'thinking')
+    )`;
+  }
   const edgeCount = (
-    db
-      .prepare('SELECT COUNT(*) as count FROM edges WHERE active = 1')
-      .get() as {
+    db.prepare(edgeQuery).get() as {
       count: number;
     }
   ).count;
@@ -2112,7 +2332,7 @@ export function getProjectStats(
   const docCount = (
     db
       .prepare(
-        'SELECT COUNT(*) as count FROM nodes WHERE is_doc_root = 1 AND active = 1',
+        `SELECT COUNT(*) as count FROM nodes WHERE is_doc_root = 1 AND active = 1${visiblePredicate}`,
       )
       .get() as { count: number }
   ).count;
@@ -2416,67 +2636,101 @@ export interface DbStats {
  */
 export function getDatabaseStats(): DbStats {
   const db = getDb();
+  const includeReserved = reservedThinkingVisible();
+  const reservedFor = (alias: string): string =>
+    RESERVED_THINKING_SQL.replaceAll('trigger', `${alias}.trigger`).replaceAll(
+      'file_type',
+      `${alias}.file_type`,
+    );
+  const visibleNode = (alias: string): string =>
+    includeReserved ? '1 = 1' : `NOT ${reservedFor(alias)}`;
+  const visibleEdge = (alias: string): string =>
+    includeReserved
+      ? '1 = 1'
+      : `NOT EXISTS (
+          SELECT 1
+          FROM nodes endpoint
+          WHERE endpoint.id IN (${alias}.from_id, ${alias}.to_id)
+            AND ${reservedFor('endpoint')}
+        )`;
 
   // Node statistics
   const activeNodes = (
     db
-      .prepare('SELECT COUNT(*) as count FROM nodes WHERE archived_at IS NULL')
+      .prepare(
+        `SELECT COUNT(*) as count
+         FROM nodes n
+         WHERE n.archived_at IS NULL AND ${visibleNode('n')}`,
+      )
       .get() as { count: number }
   ).count;
 
   const archivedNodes = (
     db
       .prepare(
-        'SELECT COUNT(*) as count FROM nodes WHERE archived_at IS NOT NULL',
+        `SELECT COUNT(*) as count
+         FROM nodes n
+         WHERE n.archived_at IS NOT NULL AND ${visibleNode('n')}`,
       )
       .get() as { count: number }
   ).count;
 
   const nodesByTrigger = db
     .prepare(`
-      SELECT trigger, COUNT(*) as count
-      FROM nodes
-      WHERE archived_at IS NULL
-      GROUP BY trigger
+      SELECT n.trigger, COUNT(*) as count
+      FROM nodes n
+      WHERE n.archived_at IS NULL AND ${visibleNode('n')}
+      GROUP BY n.trigger
       ORDER BY count DESC
     `)
     .all() as Array<{ trigger: string | null; count: number }>;
 
   // Edge statistics
   const totalEdges = (
-    db.prepare('SELECT COUNT(*) as count FROM edges').get() as { count: number }
+    db
+      .prepare(
+        `SELECT COUNT(*) as count FROM edges e WHERE ${visibleEdge('e')}`,
+      )
+      .get() as { count: number }
   ).count;
 
   const edgesByType = db
     .prepare(`
-      SELECT type, COUNT(*) as count
-      FROM edges
-      GROUP BY type
+      SELECT e.type, COUNT(*) as count
+      FROM edges e
+      WHERE ${visibleEdge('e')}
+      GROUP BY e.type
       ORDER BY count DESC
     `)
     .all() as Array<{ type: string | null; count: number }>;
 
-  // Commit statistics
-  const totalCommits = (
-    db.prepare('SELECT COUNT(*) as count FROM commits').get() as {
-      count: number;
-    }
-  ).count;
-
-  const commitsByAgent = db
-    .prepare(`
-      SELECT agent_name as agent, COUNT(*) as count
-      FROM commits
-      WHERE agent_name IS NOT NULL
-      GROUP BY agent_name
-      ORDER BY count DESC
-    `)
-    .all() as Array<{ agent: string | null; count: number }>;
+  // Commit messages are free-form, so ordinary mode must apply the same
+  // fail-closed mixed-provenance rule as the public commit readers before it
+  // derives counts or agent distributions.
+  const visibleCommits = (
+    db.prepare('SELECT * FROM commits').all() as CommitRow[]
+  )
+    .map((row) => rowToVisibleCommit(db, row))
+    .filter((commit): commit is Commit => commit !== null);
+  const totalCommits = visibleCommits.length;
+  const commitsByAgent = Array.from(
+    visibleCommits.reduce((counts, commit) => {
+      if (commit.agentName !== null) {
+        counts.set(commit.agentName, (counts.get(commit.agentName) ?? 0) + 1);
+      }
+      return counts;
+    }, new Map<string, number>()),
+    ([agent, count]) => ({ agent, count }),
+  ).sort((left, right) => right.count - left.count);
 
   // Document statistics
   const docRoots = (
     db
-      .prepare('SELECT COUNT(*) as count FROM nodes WHERE is_doc_root = 1')
+      .prepare(
+        `SELECT COUNT(*) as count
+         FROM nodes n
+         WHERE n.is_doc_root = 1 AND ${visibleNode('n')}`,
+      )
       .get() as {
       count: number;
     }
@@ -2485,7 +2739,9 @@ export function getDatabaseStats(): DbStats {
   const docNodes = (
     db
       .prepare(
-        'SELECT COUNT(*) as count FROM nodes WHERE file_type IS NOT NULL',
+        `SELECT COUNT(*) as count
+         FROM nodes n
+         WHERE n.file_type IS NOT NULL AND ${visibleNode('n')}`,
       )
       .get() as {
       count: number;
@@ -2493,30 +2749,35 @@ export function getDatabaseStats(): DbStats {
   ).count;
 
   // Thinking/translated statistics
-  const thinkingNodes = (
-    db
-      .prepare("SELECT COUNT(*) as count FROM nodes WHERE trigger = 'thinking'")
-      .get() as {
-      count: number;
-    }
-  ).count;
+  const thinkingNodes = includeReserved
+    ? (
+        db
+          .prepare(
+            `SELECT COUNT(*) as count FROM nodes WHERE ${RESERVED_THINKING_SQL}`,
+          )
+          .get() as { count: number }
+      ).count
+    : 0;
 
-  const translatedNodes = (
-    db
-      .prepare(`
-      SELECT COUNT(*) as count
-      FROM nodes
-      WHERE json_extract(metadata, '$.translated') = 1
-    `)
-      .get() as { count: number }
-  ).count;
+  const translatedNodes = includeReserved
+    ? (
+        db
+          .prepare(`
+            SELECT COUNT(*) as count
+            FROM nodes
+            WHERE ${RESERVED_THINKING_SQL}
+              AND json_extract(metadata, '$.translated') = 1
+          `)
+          .get() as { count: number }
+      ).count
+    : 0;
 
   // Revision statistics
   const revisionStats = db
     .prepare(`
-      SELECT AVG(version) as avg_version, MAX(version) as max_version
-      FROM nodes
-      WHERE archived_at IS NULL
+      SELECT AVG(n.version) as avg_version, MAX(n.version) as max_version
+      FROM nodes n
+      WHERE n.archived_at IS NULL AND ${visibleNode('n')}
     `)
     .get() as { avg_version: number | null; max_version: number | null };
 
@@ -2525,8 +2786,12 @@ export function getDatabaseStats(): DbStats {
     .prepare(`
       SELECT n.id, n.title, COUNT(e.id) as edge_count
       FROM nodes n
-      LEFT JOIN edges e ON n.id = e.from_id OR n.id = e.to_id
-      WHERE n.archived_at IS NULL AND n.file_type IS NULL
+      LEFT JOIN edges e
+        ON (n.id = e.from_id OR n.id = e.to_id)
+        AND ${visibleEdge('e')}
+      WHERE n.archived_at IS NULL
+        AND n.file_type IS NULL
+        AND ${visibleNode('n')}
       GROUP BY n.id
       ORDER BY edge_count DESC
       LIMIT 5
@@ -2542,7 +2807,13 @@ export function getDatabaseStats(): DbStats {
       WHERE n.archived_at IS NULL
       AND n.file_type IS NULL
       AND n.is_doc_root IS NULL
-      AND NOT EXISTS (SELECT 1 FROM edges e WHERE e.from_id = n.id OR e.to_id = n.id)
+      AND ${visibleNode('n')}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM edges e
+        WHERE (e.from_id = n.id OR e.to_id = n.id)
+          AND ${visibleEdge('e')}
+      )
     `)
       .get() as { count: number }
   ).count;

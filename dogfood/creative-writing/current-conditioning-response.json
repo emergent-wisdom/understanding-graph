@@ -1,0 +1,38 @@
+{
+  "authoredAt": "2026-08-13T17:12:00.000Z",
+  "packet": "dogfood/creative-writing/current-conditioning-packet.json",
+  "buildProvenance": {
+    "source": "packages/mcp-server/src/tools/understand.ts",
+    "sourceSha256": "78df061b1dd6cb0ebdda665071c8237f256e7da2edc0377f96798d8721e659d8",
+    "dist": "packages/mcp-server/dist/tools/understand.js",
+    "distSha256": "1b46961011459fc80429f212ed3624ac495f47ce0833ac1daccf3d33c8a17b2f",
+    "assertedPromptText": "choose your own Thought Moments"
+  },
+  "processBoundary": "The current-prompt retrieval process ended before this response was authored. No downstream mutation was present in or executed by that process.",
+  "response": {
+    "accepted": "The graph-carried decision that Mara's choice becomes real when she stops consoling is still alive and specific: the silence around her 'No' is part of the choice, not decoration.",
+    "rejected": [
+      "Do not revise or explain the cracked-blue-cup ending. The packet carries both the earlier question and later evidence that the implicit ours-to-mine reversal works.",
+      "Do not add more mechanism exposition. The remembered-time hypothesis, ledger passage, and reordered human question already make the cost causal."
+    ],
+    "noticed": "Rereading the actual generated manuscript against the retrieved decision exposed a projection contradiction. The graph stores the pivotal beat as sentence-level units, but Markdown generation has reassembled the two consolations and 'No' into one paragraph. The manuscript therefore no longer gives 'No' the silence that the accumulated creative state explicitly values.",
+    "nextAction": "Change only the graph topology of the pivotal answer: replace the final sentence node with a paragraph-level document node containing '“No,” she said.', preserve its exact position after the two rejected consolations, regenerate, and reread. Do not change the words.",
+    "remainingUncertainty": "A separate one-sentence paragraph may feel mannered rather than morally bare. The generated before/after artifact, not the intention, should decide whether to keep it."
+  },
+  "provenanceUsed": {
+    "nodes": [
+      "n_b2aa82e4",
+      "n_29343888",
+      "n_c39509f8",
+      "n_906428d9",
+      "n_62405a23",
+      "n_6ac751c0"
+    ],
+    "edges": [
+      "e_3c5fad94",
+      "e_4c566fd7",
+      "e_4f91086a",
+      "e_5d890405"
+    ]
+  }
+}

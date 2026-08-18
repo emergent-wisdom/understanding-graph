@@ -42,6 +42,7 @@ responses.jsonl
 material/
 
 # LaTeX build artifacts
+paper/tmp/
 *.aux
 *.bbl
 *.blg
@@ -53,3 +54,7 @@ material/
 *.synctex.gz
 *.toc
 texput.log
+
+# Python caches from dogfood and verification helpers
+__pycache__/
+*.py[cod]

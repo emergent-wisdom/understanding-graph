@@ -12,20 +12,43 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 import { sqlite } from '@emergent-wisdom/understanding-graph-core';
 import cors from 'cors';
 import express from 'express';
+import { createApiSerializationMiddleware } from './api-serialization.js';
+import { createMcpGatewayRouter, MCP_JSON_BODY_LIMIT } from './mcp-gateway.js';
+import { createRestMutationFirewall } from './mutation-firewall.js';
 import { conversationRouter } from './routes/conversations.js';
 import { databaseRouter } from './routes/database.js';
 import { graphRouter } from './routes/graph.js';
 import { projectRouter } from './routes/projects.js';
+import { createWorkerAuthMiddleware } from './worker-auth.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-// Default to root projects folder (3 levels up from src/index.ts -> packages/web-server/src)
-const PROJECT_DIR =
-  process.env.PROJECT_DIR || path.resolve(__dirname, '../../../projects');
+const PORT = Number.parseInt(process.env.PORT || '3000', 10);
+const HOST = process.env.HOST || '127.0.0.1';
+// Match the CLI contract: a relative PROJECT_DIR (including the default) is
+// resolved from the directory where the process was launched. Never derive
+// writable graph storage from __dirname: in an npm install that points inside
+// node_modules and can make otherwise independent installs share package data.
+const PROJECT_DIR = path.resolve(
+  process.cwd(),
+  process.env.PROJECT_DIR || 'projects',
+);
+const workerAuth = createWorkerAuthMiddleware({
+  host: HOST,
+  token: process.env.UG_WORKER_TOKEN,
+});
 
 // Middleware
+// A non-loopback worker endpoint is an explicit, authenticated deployment
+// mode. Authenticate before parsing potentially large API request bodies.
+app.use(['/api', '/admin'], workerAuth);
 app.use(cors());
+app.use('/api/mcp', express.json({ limit: MCP_JSON_BODY_LIMIT }));
 app.use(express.json());
+
+// Static files never touch process-global graph state and stay outside the API
+// queue. Every /api request enters the queue before project selection below
+// and keeps its lease until the response finishes or the client disconnects.
+app.use('/api', createApiSerializationMiddleware());
 
 // Serve static files from client directory. By default, look in the
 // sibling packages/frontend/dist directory (works for local dev and
@@ -41,8 +64,10 @@ app.use(express.static(FRONTEND_DIR));
 app.locals.projectId = 'default';
 app.locals.projectDir = PROJECT_DIR;
 
-// Project middleware - extract project from request and switch database
-app.use((req, res, next) => {
+// Project middleware - extract project from an API request and switch database.
+// Keeping this under /api ensures SPA and discovery requests cannot mutate the
+// process-global active project outside the serialization lease above.
+app.use('/api', (req, res, next) => {
   // Allow project override via header or query param
   const projectId =
     (req.headers['x-project-id'] as string) ||
@@ -71,49 +96,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Block REST mutations - all writes should go through MCP
-// This prevents agents from bypassing the MCP API
-// Set ALLOW_REST_MUTATIONS=true for testing without MCP
-const ALLOW_REST_MUTATIONS = process.env.ALLOW_REST_MUTATIONS === 'true';
-const MUTATION_BLOCKED_PATHS = [
-  '/api/graph/nodes',
-  '/api/graph/edges',
-  '/api/graph/documents',
-  '/api/conversations',
-  '/api/quotes',
-];
-
-app.use((req, res, next) => {
-  const isMutation = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method);
-  const isBlockedPath = MUTATION_BLOCKED_PATHS.some(
-    (p) => req.path.startsWith(p) && !req.path.includes('/archive'),
-  );
-
-  // Allow embeddings backfill, temporal access, and document generation (they're operational, not content mutations)
-  const isAllowedMutation =
-    req.path.includes('/embeddings/backfill') ||
-    req.path.includes('/temporal/access') ||
-    (req.path.includes('/documents/') &&
-      (req.path.includes('/generate') || req.path.includes('/watch')));
-
-  if (
-    isMutation &&
-    isBlockedPath &&
-    !isAllowedMutation &&
-    !ALLOW_REST_MUTATIONS
-  ) {
-    return res.status(405).json({
-      error: 'REST mutations are disabled',
-      message:
-        'Use MCP tools (mcp__understanding-graph__*) to modify the graph. The REST API is read-only.',
-      hint: 'See CLAUDE.md for API usage guidelines',
-    });
-  }
-
-  next();
-});
+// Block REST mutations - all writes should go through MCP. Set
+// ALLOW_REST_MUTATIONS=true only for deliberate local testing without MCP.
+app.use(createRestMutationFirewall());
 
 // Routes
+app.use('/api/mcp', createMcpGatewayRouter({ projectDir: PROJECT_DIR }));
 app.use('/api/projects', projectRouter);
 app.use('/api', graphRouter);
 app.use('/api', databaseRouter);
@@ -174,9 +162,9 @@ function start() {
     console.log('Failed to load/bootstrap default project:', e);
   }
 
-  app.listen(PORT, () => {
+  app.listen(PORT, HOST, () => {
     console.log(
-      `Understanding Graph v2 Web Server running on http://localhost:${PORT}`,
+      `Understanding Graph v2 Web Server running on http://${HOST}:${PORT}`,
     );
     console.log(`Project directory: ${PROJECT_DIR}`);
     console.log(`Frontend directory: ${FRONTEND_DIR}`);
@@ -187,11 +175,14 @@ function start() {
 start();
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+function shutdown() {
   console.log('Shutting down...');
   sqlite.closeDatabase();
   process.exit(0);
-});
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 
 // Extend Express types
 declare global {

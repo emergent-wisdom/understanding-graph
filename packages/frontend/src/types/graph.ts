@@ -65,6 +65,7 @@ export interface GraphEdge {
     | 'contextualizes'
     | 'questions'
     | 'answers'
+    | 'inspired_by'
     | 'learned_from'
     | 'validates'
     | 'invalidates'

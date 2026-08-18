@@ -1,6 +1,9 @@
 import {
   createCommit,
+  type EdgeType,
+  EmbeddingService,
   getGraphStore,
+  TRIGGER_TYPES,
   type TriggerType,
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -12,6 +15,26 @@ const SIMILARITY_THRESHOLDS = {
   CAUTION: 0.6, // 0.6-0.8 = related, warn but allow
   SAFE: 0.4, // < 0.6 = different enough
 };
+
+const CONCEPT_TRIGGER_TYPES = TRIGGER_TYPES.filter(
+  (trigger) => trigger !== 'thinking',
+);
+
+// `graph_note` already creates its grounding `learned_from` edge.
+// This smaller vocabulary is only for genuine note-to-understanding links;
+// structural document edges and direction-sensitive lifecycle operations such
+// as `supersedes` remain owned by their dedicated tools.
+const GRAPH_NOTE_RELATION_TYPES = [
+  'refines',
+  'questions',
+  'answers',
+  'contradicts',
+  'validates',
+  'invalidates',
+  'contextualizes',
+  'diverse_from',
+] as const satisfies readonly EdgeType[];
+const graphNoteRelationTypes = new Set<string>(GRAPH_NOTE_RELATION_TYPES);
 
 export const conceptTools: Tool[] = [
   {
@@ -27,14 +50,26 @@ This tool automatically checks for similar existing concepts before creating:
 If blocked, you'll receive the existing concept ID and suggestions for how to extend it instead.
 
 WHEN TO USE:
-- You have a genuinely new insight not already captured
+- An encounter changes what is understood or what becomes salient:
+  a surprise, hesitation, attraction, alternative, question, hypothesis,
+  prediction, consequence, evaluation, decision, or changed direction
 - You've checked graph_semantic_search and found nothing similar
-- You want to record an important idea for future reference
+- A future instance would work differently by re-entering this state
+
+Write enough intentional, user-visible testimony to preserve the texture of the
+moment. The node may be provisional, personal, unresolved, and multi-paragraph;
+it does not need to pretend that a conclusion has stabilized. Do not create
+nodes by quota or retroactively rationalize finished work. Do not claim this is
+hidden chain-of-thought.
+
+The "thinking" trigger is intentionally unavailable here. It belongs only to
+the separate synthetic Reader/CMP synthesis mode, which reconstructs training
+blocks from these underlying typed nodes.
 
 PARAMETERS:
 - title: Title of the concept (REQUIRED)
 - trigger: Why adding (foundation/surprise/tension/consequence/question/etc)
-- understanding: Your synthesis of this concept
+- understanding: The user-visible understanding to preserve
 - why: Why this matters`,
     inputSchema: {
       type: 'object',
@@ -45,26 +80,9 @@ PARAMETERS:
         },
         trigger: {
           type: 'string',
-          enum: [
-            'foundation',
-            'surprise',
-            'tension',
-            'consequence',
-            'repetition',
-            'question',
-            'serendipity',
-            'reference',
-            'library',
-            'prediction',
-            'hypothesis',
-            'model',
-            'evaluation',
-            'decision',
-            'experiment',
-            'analysis',
-          ],
+          enum: [...CONCEPT_TRIGGER_TYPES],
           description:
-            'Why this concept is being added: foundation (core building block), surprise (unexpected), tension (creates conflict), consequence (has implications), repetition (frequently occurring), question (open question), serendipity (random synthesis), reference (pointer to another project/URL - REQUIRES references field), library (collection of references), prediction (forward-looking belief), hypothesis (explanatory theory), model (generalized pattern), evaluation (normative reflection), decision (a choice between alternatives with rationale), experiment (a test that will yield information), analysis (structured breakdown of an existing concept). Note: trigger "thinking" is reserved for the synthesizer agent and is intentionally omitted here.',
+            'Why this concept is being added: foundation (core building block), surprise (unexpected), tension (creates conflict), consequence (has implications), repetition (frequently occurring), question (open question), serendipity (unexpected connection), reference (pointer to another project/URL - REQUIRES references field), library (collection of references), prediction (forward-looking belief), hypothesis (provisional explanation), model (generalized pattern), evaluation (normative reflection), decision (a choice between alternatives with rationale), experiment (a test that will yield information), analysis (stabilized integration or structured examination). Note: trigger "thinking" is reserved for the separate synthetic Reader/CMP synthesizer and is intentionally omitted here.',
         },
         references: {
           type: 'array',
@@ -98,7 +116,8 @@ PARAMETERS:
         },
         understanding: {
           type: 'string',
-          description: 'Your synthesis/understanding of this concept',
+          description:
+            'Intentional user-visible cognitive testimony: preserve enough observation, live alternatives, significance, uncertainty, or changed understanding for a future agent to continue it. May be rich and provisional; do not claim hidden chain-of-thought.',
         },
         project: {
           type: 'string',
@@ -117,6 +136,94 @@ PARAMETERS:
         },
       },
       required: ['title', 'trigger', 'why', 'understanding'],
+    },
+  },
+  {
+    name: 'graph_note',
+    description: `Capture each substantive, user-visible change in understanding while working with an artifact, source, or prior graph material.
+
+This is the low-friction, batch-only path for new interpretations, questions,
+tensions, alternatives, predictions, surprises, evaluations, and corrections
+that change attention or action before they become polished conclusions. It
+creates an ordinary typed concept and a learned_from edge to the exact visible
+graph node that occasioned it. Use it inside the same graph_batch as nearby work
+so the note is prospective or contemporaneous, not a rationale filed after
+completion.
+
+The testimony may be multi-paragraph and unresolved. It can preserve a design
+fork, felt brittleness, unexpected behavior, a possible test, or a question a
+future instance should re-enter. Prefer the specific honest trigger when one
+fits; omission stores a neutral structured examination as analysis. This never creates reserved thinking
+blocks and does not claim hidden chain-of-thought. Routine execution with no
+change in understanding needs no note; this is completeness of meaningful
+cognitive testimony, not transcription or a node quota. The note is useful
+only when re-entering it can change later attention, reveal a relationship, or
+open another cycle of understanding.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        about: {
+          type: 'string',
+          description:
+            'Exact visible source, artifact, or cognitive node ID/title—or a $N.id batch reference—that occasioned this change in understanding.',
+        },
+        testimony: {
+          type: 'string',
+          description:
+            'Intentional user-visible account of the substantive change in understanding: what was noticed before, what encounter moved it, what is now different, and which alternatives or uncertainty remain.',
+        },
+        title: {
+          type: 'string',
+          description:
+            'Optional retrieval title. Defaults to "Understanding from <node>".',
+        },
+        trigger: {
+          type: 'string',
+          enum: [...CONCEPT_TRIGGER_TYPES],
+          description:
+            'Optional honest ordinary trigger. Omission uses analysis as a neutral structured examination; prefer a more specific trigger whenever it genuinely fits.',
+        },
+        why: {
+          type: 'string',
+          description:
+            'Optional explanation of why this moment may matter to future work.',
+        },
+        status: {
+          type: 'string',
+          enum: ['open', 'resolved'],
+          description:
+            'Optional lifecycle state. Defaults to open. Use resolved only when this same atomic commit fully responds to the attention; the note remains in history but will not be resurfaced as unfinished work.',
+        },
+        relations: {
+          type: 'array',
+          description:
+            'Optional genuine cognitive relationships from this note to existing understanding. Omit when no relationship helps future reasoning; never add links for diversity alone. Artifact grounding is created separately as learned_from.',
+          items: {
+            type: 'object',
+            properties: {
+              node: {
+                type: 'string',
+                description:
+                  'Existing cognitive node ID or exact title. A concept created earlier in this batch may be referenced by its exact title.',
+              },
+              type: {
+                type: 'string',
+                enum: [...GRAPH_NOTE_RELATION_TYPES],
+                description:
+                  'How this new note relates to the existing cognitive node.',
+              },
+              why: {
+                type: 'string',
+                description:
+                  'Why following this relationship will help future reasoning.',
+              },
+            },
+            required: ['node', 'type', 'why'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['about', 'testimony'],
     },
   },
   {
@@ -413,23 +520,7 @@ WARNING: use "node" (NOT "nodeId"). Updates "understanding" field - for prose us
         },
         trigger: {
           type: 'string',
-          enum: [
-            'foundation',
-            'surprise',
-            'tension',
-            'consequence',
-            'repetition',
-            'question',
-            'serendipity',
-            'decision',
-            'experiment',
-            'analysis',
-            'library',
-            'prediction',
-            'hypothesis',
-            'model',
-            'evaluation',
-          ],
+          enum: [...CONCEPT_TRIGGER_TYPES],
           description: 'New trigger type for the node',
         },
         project: {
@@ -446,6 +537,7 @@ export async function handleConceptTools(
   name: string,
   args: Record<string, unknown>,
   contextManager: ContextManager,
+  internal = false,
 ): Promise<unknown> {
   const projectId =
     (args.project as string) || contextManager.getCurrentProjectId();
@@ -533,26 +625,7 @@ export async function handleConceptTools(
       }
 
       // Validate trigger is a valid value
-      const validTriggers = [
-        'foundation',
-        'surprise',
-        'tension',
-        'consequence',
-        'repetition',
-        'question',
-        'serendipity',
-        'decision',
-        'experiment',
-        'analysis',
-        'randomness',
-        'reference',
-        'library',
-        'prediction',
-        'hypothesis',
-        'model',
-        'evaluation',
-        'thinking', // Reserved for synthesizer only
-      ];
+      const validTriggers: readonly string[] = TRIGGER_TYPES;
       if (!validTriggers.includes(trigger)) {
         return {
           success: false,
@@ -562,19 +635,20 @@ export async function handleConceptTools(
         };
       }
 
-      // THINKING NODE RESTRICTION: Only synthesizer can create thinking nodes
+      // THINKING NODE RESTRICTION: only the dedicated synthetic Reader/CMP
+      // synthesizer can create reconstructed inner-voice training blocks.
       const agentName = args.agent_name as string | undefined;
       if (trigger === 'thinking' && agentName !== 'synthesizer') {
         return {
           success: false,
           error: 'FORBIDDEN_TRIGGER',
-          message: `trigger "thinking" is reserved for the synthesizer agent only. Agent "${agentName || 'unknown'}" cannot create thinking nodes.`,
-          hint: 'Use a different trigger (e.g., analysis, question, tension, insight).',
+          message: `trigger "thinking" is reserved for the synthetic Reader/CMP synthesizer only. Agent "${agentName || 'unknown'}" cannot create thinking nodes.`,
+          hint: 'For ordinary cognitive testimony, use the non-thinking trigger that honestly fits (for example surprise, tension, question, hypothesis, prediction, evaluation, decision, or analysis).',
         };
       }
 
       // Duplicate detection (unless explicitly skipped)
-      if (!skipCheck) {
+      if (!skipCheck && EmbeddingService.isModelLoaded()) {
         try {
           // Search for similar concepts using the combined name + understanding
           const searchText = `${conceptName}: ${understanding}`;
@@ -664,6 +738,183 @@ export async function handleConceptTools(
         name: node.title,
         message: `Created concept "${node.title}" with ID: ${node.id}`,
         hint: 'You can now connect it to other concepts using graph_connect',
+      };
+    }
+
+    case 'graph_note': {
+      const about = String(args.about || '').trim();
+      const testimony = String(args.testimony || '').trim();
+      if (!about || !testimony) {
+        return {
+          success: false,
+          error: 'MISSING_REQUIRED_FIELDS',
+          message: 'graph_note requires non-empty about and testimony fields.',
+        };
+      }
+
+      const trigger = String(args.trigger || 'analysis') as TriggerType;
+      if (trigger === 'thinking' || !TRIGGER_TYPES.includes(trigger)) {
+        return {
+          success: false,
+          error: 'INVALID_TRIGGER',
+          message: `graph_note requires an ordinary trigger. Valid triggers: ${CONCEPT_TRIGGER_TYPES.join(', ')}`,
+        };
+      }
+
+      const status = String(args.status || 'open');
+      if (!['open', 'resolved'].includes(status)) {
+        return {
+          success: false,
+          error: 'INVALID_ATTENTION_STATUS',
+          message: 'graph_note status must be open or resolved.',
+        };
+      }
+
+      const resolvedSubject = contextManager.resolveNodeWithSuggestions(
+        about,
+        projectId,
+      );
+      const store = getGraphStore();
+      const subject = store.getNode(resolvedSubject.id);
+      if (!subject) {
+        return {
+          success: false,
+          error: 'ATTENTION_TARGET_NOT_FOUND',
+          message:
+            'The referenced node is not available in the current visible graph.',
+        };
+      }
+
+      const rawRelations = args.relations;
+      if (rawRelations !== undefined && !Array.isArray(rawRelations)) {
+        return {
+          success: false,
+          error: 'INVALID_ATTENTION_RELATIONS',
+          message: 'graph_note relations must be an array when provided.',
+        };
+      }
+
+      const resolvedRelations: Array<{
+        target: { id: string; title: string };
+        type: (typeof GRAPH_NOTE_RELATION_TYPES)[number];
+        why: string;
+      }> = [];
+      for (const [index, rawRelation] of (
+        (rawRelations as unknown[]) || []
+      ).entries()) {
+        if (
+          !rawRelation ||
+          typeof rawRelation !== 'object' ||
+          Array.isArray(rawRelation)
+        ) {
+          return {
+            success: false,
+            error: 'INVALID_ATTENTION_RELATION',
+            message: `graph_note relations[${index}] must be an object with node, type, and why.`,
+          };
+        }
+
+        const relation = rawRelation as Record<string, unknown>;
+        const targetRef = String(relation.node || '').trim();
+        const relationType = String(relation.type || '').trim();
+        const relationWhy = String(relation.why || '').trim();
+        if (!targetRef || !relationType || !relationWhy) {
+          return {
+            success: false,
+            error: 'INVALID_ATTENTION_RELATION',
+            message: `graph_note relations[${index}] requires non-empty node, type, and why fields.`,
+          };
+        }
+        if (!graphNoteRelationTypes.has(relationType)) {
+          return {
+            success: false,
+            error: 'INVALID_ATTENTION_RELATION_TYPE',
+            message: `graph_note relations[${index}] type must be one of: ${GRAPH_NOTE_RELATION_TYPES.join(', ')}. Artifact structural and lifecycle edge types require their dedicated tools.`,
+          };
+        }
+
+        // Resolve every endpoint before the note is written. Because targets
+        // must already exist at this point, the resulting edge cannot be a
+        // self-edge to the new note.
+        const target = contextManager.resolveNodeWithSuggestions(
+          targetRef,
+          projectId,
+        );
+        resolvedRelations.push({
+          target,
+          type: relationType as (typeof GRAPH_NOTE_RELATION_TYPES)[number],
+          why: relationWhy,
+        });
+      }
+
+      const why =
+        String(args.why || '').trim() ||
+        `Became salient while re-entering "${subject.title}".`;
+      const title =
+        String(args.title || '').trim() ||
+        `Understanding from ${subject.title}`;
+      const node = store.createNode({
+        title,
+        trigger,
+        why,
+        understanding: testimony,
+        conversationId,
+        toolCallId,
+        metadata: {
+          liveAttention: true,
+          attentionStatus: status,
+          aboutNodeId: subject.id,
+        },
+      });
+      const edge = store.createEdge({
+        fromId: node.id,
+        toId: subject.id,
+        type: 'learned_from',
+        explanation: 'Understanding occasioned by re-entered graph material',
+        why,
+        conversationId,
+        toolCallId,
+      });
+      const relationEdges = resolvedRelations.map((relation) => {
+        const relationEdge = store.createEdge({
+          fromId: node.id,
+          toId: relation.target.id,
+          type: relation.type,
+          explanation: `Live attention ${relation.type} existing understanding`,
+          why: relation.why,
+          conversationId,
+          toolCallId,
+        });
+        return {
+          id: relationEdge.id,
+          node: relation.target,
+          type: relation.type,
+          why: relation.why,
+        };
+      });
+
+      return {
+        success: true,
+        id: node.id,
+        edgeId: edge.id,
+        title: node.title,
+        trigger: node.trigger,
+        status,
+        about: { id: subject.id, title: subject.title },
+        relations: relationEdges,
+        testimony: node.understanding,
+        affectedNodeIds: [
+          ...new Set([
+            node.id,
+            subject.id,
+            ...resolvedRelations.map((relation) => relation.target.id),
+          ]),
+        ],
+        affectedEdgeIds: [
+          edge.id,
+          ...relationEdges.map((relation) => relation.id),
+        ],
+        message: `Captured changed understanding from "${subject.title}" for future re-entry.`,
       };
     }
 
@@ -810,7 +1061,7 @@ export async function handleConceptTools(
       });
 
       // Create supersession edge
-      store.createEdge({
+      const supersessionEdge = store.createEdge({
         fromId: newNode.id,
         toId: resolved.id,
         type: 'supersedes',
@@ -828,6 +1079,8 @@ export async function handleConceptTools(
         oldName: resolved.title,
         newId: newNode.id,
         newName: newNode.title,
+        affectedNodeIds: [newNode.id, resolved.id],
+        affectedEdgeIds: [supersessionEdge.id],
         message: `Created "${newNode.title}" superseding "${resolved.title}"`,
         hint: 'The old concept is now hidden from default context but preserved in history',
       };
@@ -894,20 +1147,15 @@ export async function handleConceptTools(
         projectId,
       );
 
-      const store = getGraphStore();
-      const metadata = args.metadata as Record<string, unknown>;
-      const node = store.setMetadata(resolved.id, metadata);
-
-      if (!node) {
-        throw new Error(`Failed to set metadata on node: ${resolved.title}`);
-      }
-
-      // Create commit - required
       const commitMessage = args.commit_message as string;
       const agentName = args.agent_name as string | undefined;
       const commitTimestamp = args.commit_timestamp as string | undefined;
 
-      if (!commitMessage) {
+      // A direct mutation owns its commit. Inside graph_batch, the outer batch
+      // owns the sole atomic commit and supplies authenticated attribution.
+      // Validate before mutating so a missing direct commit message can never
+      // leave uncommitted metadata behind.
+      if (!internal && !commitMessage) {
         return {
           success: false,
           error: 'MISSING_COMMIT_MESSAGE',
@@ -916,25 +1164,38 @@ export async function handleConceptTools(
         };
       }
 
-      const createdCommit = createCommit(
-        commitMessage,
-        [node.id], // affected node
-        [], // no edges
-        agentName,
-        commitTimestamp,
-      );
-      const commit = {
-        id: createdCommit.id,
-        message: createdCommit.message,
-        createdAt: createdCommit.createdAt,
-      };
+      const store = getGraphStore();
+      const metadata = args.metadata as Record<string, unknown>;
+      const node = store.setMetadata(resolved.id, metadata);
+
+      if (!node) {
+        throw new Error(`Failed to set metadata on node: ${resolved.title}`);
+      }
+
+      const commit = internal
+        ? undefined
+        : (() => {
+            const createdCommit = createCommit(
+              commitMessage,
+              [node.id],
+              [],
+              agentName,
+              commitTimestamp,
+              typeof args.author === 'string' ? args.author : undefined,
+            );
+            return {
+              id: createdCommit.id,
+              message: createdCommit.message,
+              createdAt: createdCommit.createdAt,
+            };
+          })();
 
       return {
         success: true,
         id: node.id,
         name: node.title,
         metadata: node.metadata,
-        commit,
+        ...(commit ? { commit } : {}),
         message: commit
           ? `Updated metadata on "${node.title}". Commit: "${commit.message}"`
           : `Updated metadata on "${node.title}"`,
@@ -1004,6 +1265,21 @@ export async function handleConceptTools(
 
       const store = getGraphStore();
       const reason = (args.reason as string) || 'Archived by user';
+      const node = store.getNode(resolved.id);
+      if (!node) {
+        throw new Error('Node not found in the current visible graph.');
+      }
+      if (
+        node.isDocRoot ||
+        node.content !== null ||
+        node.level !== null ||
+        node.fileType !== null ||
+        store.getDocumentPath(resolved.id)
+      ) {
+        throw new Error(
+          'DOCUMENT_STRUCTURE_CHANGE_NOT_ALLOWED: graph_archive cannot archive a document node. Use atomic document tools that preserve contains/next topology.',
+        );
+      }
 
       const success = store.archiveNode(resolved.id, reason, conversationId);
 
@@ -1030,7 +1306,18 @@ export async function handleConceptTools(
       const store = getGraphStore();
       const existingNode = store.getNode(resolved.id);
       const oldTrigger = existingNode?.trigger;
-      const newTrigger = args.trigger as TriggerType;
+      const requestedTrigger = args.trigger;
+      if (
+        typeof requestedTrigger !== 'string' ||
+        !TRIGGER_TYPES.includes(requestedTrigger as TriggerType)
+      ) {
+        return {
+          success: false,
+          error: 'INVALID_TRIGGER',
+          message: `Invalid trigger. Valid triggers: ${CONCEPT_TRIGGER_TYPES.join(', ')}`,
+        };
+      }
+      const newTrigger = requestedTrigger as TriggerType;
 
       const node = store.updateNode(resolved.id, {
         trigger: newTrigger,
