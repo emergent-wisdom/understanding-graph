@@ -612,14 +612,22 @@ export function initDatabase(projectPath: string): DatabaseType {
 export function getDb(projectId?: string): DatabaseType {
   const id = projectId ?? currentProjectId;
   if (!id) {
+    // The parameter is `project`, not `projectId`. This message is the only
+    // prompt an agent gets to choose where its work belongs, so a wrong
+    // parameter name here sends it into "Cannot read properties of
+    // undefined" instead of a decision.
+    const known = [...databases.keys()];
+    const available = known.length
+      ? ` Available projects: ${known.join(', ')}.`
+      : '';
     throw new Error(
-      'No active project. Call the project_switch tool with a projectId (e.g. project_switch({ projectId: "default" })) before mutating the graph. If the project does not exist yet, project_switch creates it on first use.',
+      `No active project. Choose where this work belongs: project_list() to see options, then project_switch({ project: "<id>" }).${available} project_switch creates the project if it does not exist yet.`,
     );
   }
   const db = databases.get(id);
   if (!db) {
     throw new Error(
-      `Project "${id}" exists but its database is not loaded yet. Call project_switch({ projectId: "${id}" }) to load it.`,
+      `Project "${id}" exists but its database is not loaded yet. Call project_switch({ project: "${id}" }) to load it.`,
     );
   }
   return db;
@@ -1627,6 +1635,41 @@ export function getToolCallsBySession(sessionId: string): ToolCall[] {
   }));
 }
 
+/**
+ * How many times each tool was called, and nothing else.
+ *
+ * getRecentToolCalls is gated behind reserved-thinking visibility because a
+ * tool call row can carry arguments and results — free-form provenance that
+ * cannot be reliably projected. The COUNTS carry none of that: a tool name and
+ * a number leak nothing about what was written or read.
+ *
+ * The distinction matters because the gate made the read/write ratio
+ * unreportable in ordinary mode. A diagnostic asking whether this graph is
+ * re-entered or only written to was answering "not recorded" while the rows
+ * existed, which is the exact failure it was built to detect, one level down.
+ */
+export function getToolCallCounts(): Record<
+  string,
+  { calls: number; refused: number }
+> {
+  const rows = getDb()
+    .prepare(
+      `SELECT tool_name,
+              COUNT(*) as calls,
+              SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) as refused
+       FROM tool_calls GROUP BY tool_name`,
+    )
+    .all() as Array<{ tool_name: string; calls: number; refused: number }>;
+  const counts: Record<string, { calls: number; refused: number }> = {};
+  for (const row of rows) {
+    counts[row.tool_name] = {
+      calls: Number(row.calls),
+      refused: Number(row.refused ?? 0),
+    };
+  }
+  return counts;
+}
+
 export function getRecentToolCalls(limit = 100): ToolCall[] {
   if (!reservedThinkingVisible()) return [];
   const stmt = getDb().prepare(`
@@ -2604,6 +2647,8 @@ export interface DbStats {
       count: number;
       percent: number;
     }>;
+    /** Prose/code units, counted apart: they are not kinds of thinking. */
+    artifacts: number;
   };
   edges: {
     total: number;
@@ -2675,15 +2720,36 @@ export function getDatabaseStats(): DbStats {
       .get() as { count: number }
   ).count;
 
+  // "Nodes by type" answers "what kinds of thinking are in here", so it counts
+  // cognitive testimony only. Document nodes are persisted with trigger
+  // 'foundation' because the column is required — not because a prose passage
+  // is a foundational concept — so counting them made a manuscript read as a
+  // pile of unstructured priors (36 prose + 16 cognitive reported as "36
+  // foundation"). Reserved `thinking` blocks stay counted: they are the
+  // synthetic Reader/CMP corpus and how many exist is exactly the question.
+  const ARTIFACT_PREDICATE = `(n.why = 'Document node' AND COALESCE(n.trigger,'') <> 'thinking')`;
+
   const nodesByTrigger = db
     .prepare(`
       SELECT n.trigger, COUNT(*) as count
       FROM nodes n
       WHERE n.archived_at IS NULL AND ${visibleNode('n')}
+        AND NOT ${ARTIFACT_PREDICATE}
       GROUP BY n.trigger
       ORDER BY count DESC
     `)
     .all() as Array<{ trigger: string | null; count: number }>;
+
+  const artifactNodes = (
+    db
+      .prepare(`
+        SELECT COUNT(*) as count
+        FROM nodes n
+        WHERE n.archived_at IS NULL AND ${visibleNode('n')}
+          AND ${ARTIFACT_PREDICATE}
+      `)
+      .get() as { count: number }
+  ).count;
 
   // Edge statistics
   const totalEdges = (
@@ -2831,6 +2897,7 @@ export function getDatabaseStats(): DbStats {
             ? Math.round((row.count / activeNodes) * 1000) / 10
             : 0,
       })),
+      artifacts: artifactNodes,
     },
     edges: {
       total: totalEdges,

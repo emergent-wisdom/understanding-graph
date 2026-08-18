@@ -16,8 +16,6 @@ allowed-tools: |
   mcp__ug__doc_get_tree
   mcp__ug__doc_flatten
   mcp__ug__doc_read
-  mcp__ug__doc_revise
-  mcp__ug__doc_merge
   mcp__ug__doc_generate
 ---
 

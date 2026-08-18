@@ -2,8 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SERVER_INSTRUCTIONS } from '../instructions.js';
+import {
+  UNDERSTANDING_PROTOCOL_ID,
+  UNDERSTANDING_PROTOCOL_LABEL,
+  UNDERSTANDING_PROTOCOL_MOVES,
+  UNDERSTANDING_STANCES,
+} from '../protocol.js';
 import { BATCH_OPERATION_TOOLS } from '../tools/batch.js';
 import { conceptTools } from '../tools/concept.js';
+import { documentTools } from '../tools/document.js';
 import {
   getToolDefinitions,
   SYNTHETIC_THINKING_TOOLS,
@@ -21,6 +28,71 @@ const UNDERSTANDING_WORKFLOWS = [
 ];
 
 describe('runtime instruction and tool contracts', () => {
+  it('uses one canonical fluid-understanding protocol', () => {
+    expect(UNDERSTANDING_PROTOCOL_MOVES).toEqual([
+      'orient',
+      'preserve',
+      'search',
+      'make',
+      'test',
+      'connect',
+      'disrupt',
+      'force-bisociation',
+      're-enter',
+      'reconsider',
+      'pause',
+    ]);
+    expect(SERVER_INSTRUCTIONS).toContain(UNDERSTANDING_PROTOCOL_LABEL);
+    expect(SERVER_INSTRUCTIONS).toContain(UNDERSTANDING_PROTOCOL_ID);
+    expect(SERVER_INSTRUCTIONS).toContain('There is no required state machine');
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /all\s+communicable task understanding/i,
+    );
+    expect(SERVER_INSTRUCTIONS).toContain('graph_suggest_next');
+    expect(UNDERSTANDING_STANCES).toEqual([
+      'balanced',
+      'deepen',
+      'resist',
+      'connect',
+      'disrupt',
+      'revisit',
+      'test',
+    ]);
+    expect(SERVER_INSTRUCTIONS).toContain('Medium-integrity invariant');
+    expect(SERVER_INSTRUCTIONS).toContain('only in chat');
+    expect(SERVER_INSTRUCTIONS).toContain(
+      '`workflow` says where the work lives',
+    );
+    expect(SERVER_INSTRUCTIONS).not.toMatch(/target:\s*70|2-3 concepts/i);
+
+    const bootContract = SERVER_INSTRUCTIONS.trim().slice(0, 512);
+    expect(bootContract).toContain('canonical persistent workspace');
+    expect(bootContract).toContain('graph_suggest_next');
+    expect(bootContract).toContain('graph_batch');
+    expect(bootContract).toContain('Chat may report');
+  });
+
+  it('keeps the installable workflow skill aligned with the runtime protocol', () => {
+    const repo = path.resolve(import.meta.dirname, '../../../..');
+    const skill = fs.readFileSync(
+      path.join(repo, 'skills/understanding-work/SKILL.md'),
+      'utf8',
+    );
+
+    expect(skill).toContain(
+      `Protocol compatibility: \`${UNDERSTANDING_PROTOCOL_ID}\``,
+    );
+    expect(skill).toContain('Do not wait for the user to name a tool');
+    expect(skill).toContain('graph_understand');
+    expect(skill).toContain('graph_batch');
+    expect(skill).toContain('graph_suggest_next');
+    expect(skill).toContain('not merely to write a novel');
+    expect(skill).toContain('all communicable, task-relevant understanding');
+    expect(skill).toContain('There is no mandatory loop or state machine');
+    expect(skill).toContain('Maintain medium integrity');
+    expect(skill).toContain('Workflow and stance are separate');
+  });
+
   it('only advertises graph_analyze include values supported by its schema', () => {
     const analyzeTool = getToolDefinitions('full').find(
       (tool) => tool.name === 'graph_analyze',
@@ -54,24 +126,21 @@ describe('runtime instruction and tool contracts', () => {
     expect(SERVER_INSTRUCTIONS).not.toContain('project_create');
   });
 
-  it('keeps the generated project guidance aligned with workflow routing', () => {
+  it('generates project guidance from the canonical workflow skill', () => {
     const cli = fs.readFileSync(
       path.resolve(import.meta.dirname, '../../../../bin/cli.js'),
       'utf8',
     );
 
-    expect(cli).toContain(
-      'right workflow: reading, research, coding, collaborative coding',
-    );
-    expect(cli).toContain('Use an agent team only when the work');
+    expect(cli).toContain("'skills',");
+    expect(cli).toContain("'understanding-work',");
+    expect(cli).toContain("'SKILL.md',");
+    expect(cli).toContain('understanding-graph:fluid-understanding-v1');
+    expect(cli).toContain('AGENTS.md');
+    expect(cli).toContain('CLAUDE.md');
     expect(cli).not.toContain(
       'ask Claude to create an agent team for your task',
     );
-    expect(cli).toContain('Direct concept and edge mutations go through');
-    expect(cli).toContain(
-      'workflow modes also expose document helpers at the top level',
-    );
-    expect(cli).toMatch(/source_read\\`\s+manage their own atomic updates/);
   });
 
   it('keeps release manifests and internal package ranges synchronized', () => {
@@ -98,6 +167,14 @@ describe('runtime instruction and tool contracts', () => {
       version: string;
       mcpServers: { ug: { args: string[] } };
     };
+    const codexPlugin = json('.codex-plugin/plugin.json') as {
+      version: string;
+      skills: string;
+      mcpServers: string;
+    };
+    const codexMcp = json('.mcp.json') as {
+      mcpServers: { ug: { args: string[] } };
+    };
     const registry = json('server.json') as {
       version: string;
       packages: Array<{ version: string }>;
@@ -105,6 +182,12 @@ describe('runtime instruction and tool contracts', () => {
 
     expect(plugin.version).toBe(root.version);
     expect(plugin.mcpServers.ug.args).toContain(
+      `understanding-graph@${root.version}`,
+    );
+    expect(codexPlugin.version).toBe(root.version);
+    expect(codexPlugin.skills).toBe('./skills/');
+    expect(codexPlugin.mcpServers).toBe('./.mcp.json');
+    expect(codexMcp.mcpServers.ug.args).toContain(
       `understanding-graph@${root.version}`,
     );
     expect(registry.version).toBe(root.version);
@@ -168,9 +251,13 @@ describe('runtime instruction and tool contracts', () => {
     );
 
     const writingTools = getToolDefinitions('writing');
-    const create = writingTools.find((tool) => tool.name === 'doc_create');
-    const revise = writingTools.find((tool) => tool.name === 'doc_revise');
-    const weave = writingTools.find((tool) => tool.name === 'doc_weave');
+    // doc_create, doc_revise and doc_weave are batch-only, so they are absent
+    // from every advertised surface. Their descriptions still instruct the
+    // agent composing a graph_batch operation, so they are read from the
+    // definitions themselves.
+    const create = documentTools.find((tool) => tool.name === 'doc_create');
+    const revise = documentTools.find((tool) => tool.name === 'doc_revise');
+    const weave = documentTools.find((tool) => tool.name === 'doc_weave');
     const batch = writingTools.find((tool) => tool.name === 'graph_batch');
     expect(create?.description).toContain(
       'move, replace, compare, or revise without rewriting neighbors',
@@ -196,22 +283,20 @@ describe('runtime instruction and tool contracts', () => {
 
   it('invites open cognitive testimony while reserving synthetic thinking', () => {
     expect(SERVER_INSTRUCTIONS).toContain(
-      'active medium for **recursive, emergent understanding**',
+      'active medium for **fluid, emergent understanding**',
     );
-    expect(SERVER_INSTRUCTIONS).toContain(
-      'every substantive change in understanding',
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /all\s+communicable task understanding/i,
     );
-    expect(SERVER_INSTRUCTIONS).toContain('Re-enter the graph repeatedly');
-    expect(SERVER_INSTRUCTIONS).toContain('Preserve enough texture');
-    expect(SERVER_INSTRUCTIONS).toContain(
-      'Do not transcribe every token-level',
-    );
+    expect(SERVER_INSTRUCTIONS).toContain('There is no required state machine');
+    expect(SERVER_INSTRUCTIONS).toMatch(/preserve enough texture/i);
+    expect(SERVER_INSTRUCTIONS).toContain('Do not transcribe token-level');
     expect(SERVER_INSTRUCTIONS).toContain('non-`thinking`');
     expect(SERVER_INSTRUCTIONS).toMatch(
       /synthetic\s+Reader\/CMP synthesis mode/,
     );
-    expect(SERVER_INSTRUCTIONS).toContain(
-      'not a claim to reveal hidden chain-of-thought',
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /not a claim to reveal\s+hidden chain-of-thought/,
     );
   });
 
@@ -220,9 +305,9 @@ describe('runtime instruction and tool contracts', () => {
     expect(SERVER_INSTRUCTIONS).toContain(
       'Do not privately pre-author an entire',
     );
-    expect(SERVER_INSTRUCTIONS).toContain('batch-only `graph_note');
+    expect(SERVER_INSTRUCTIONS).toMatch(/batch-only\s+`graph_note/);
     expect(SERVER_INSTRUCTIONS).toContain(
-      'When routine work produces no change in understanding, no note is honest',
+      'do not manufacture understanding to prove activity',
     );
 
     expect(BATCH_OPERATION_TOOLS).toContain('graph_note');
@@ -231,6 +316,23 @@ describe('runtime instruction and tool contracts', () => {
         getToolDefinitions(mode).some((tool) => tool.name === 'graph_note'),
       ).toBe(false);
     }
+  });
+
+  it('keeps grounded serendipity optional and honestly inconclusive', () => {
+    const skill = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../../../../skills/serendipity/SKILL.md',
+      ),
+      'utf8',
+    );
+
+    expect(skill).toContain('mcp__ug__graph_discover_grounded');
+    expect(skill).toContain('A defensible\nno-connection result needs no node');
+    expect(skill).not.toContain('next batch must write');
+    expect(skill).toContain(
+      'Never create a note merely to prove that\nthe exploratory call was useful',
+    );
   });
 
   it('treats synthesis as an operation and types only its actual result', () => {
@@ -266,6 +368,8 @@ describe('runtime instruction and tool contracts', () => {
       );
 
       expect(understandTool).toBeDefined();
+      expect(understandTool?.description).toContain('CONTEXTUAL RE-ENTRY TOOL');
+      expect(understandTool?.description).toContain('only in transient chat');
       expect(
         (
           understandTool?.inputSchema.properties?.workflow as {
@@ -286,30 +390,49 @@ describe('runtime instruction and tool contracts', () => {
 
     const coding = names('coding');
     expect(coding.has('source_load')).toBe(false);
-    expect(coding.has('doc_create')).toBe(true);
+    // Mutating document tools are batch-only, so the coding surface reaches
+    // them through graph_batch rather than directly. doc_generate stays: it
+    // projects a document to a file and mutates no graph state.
+    expect(coding.has('doc_create')).toBe(false);
+    expect(coding.has('doc_merge')).toBe(false);
+    expect(coding.has('graph_batch')).toBe(true);
     expect(coding.has('doc_generate')).toBe(true);
-    expect(coding.has('doc_merge')).toBe(true);
     expect(coding.has('solver_delegate')).toBe(false);
     expect(coding.has('graph_discover_grounded')).toBe(true);
 
     const collaborative = names('collaborative_coding');
     expect(collaborative.has('source_load')).toBe(false);
-    expect(collaborative.has('doc_create')).toBe(true);
+    expect(collaborative.has('doc_create')).toBe(false);
+    expect(collaborative.has('graph_batch')).toBe(true);
     expect(collaborative.has('doc_generate_all')).toBe(true);
     expect(collaborative.has('solver_delegate')).toBe(true);
     expect(collaborative.has('solver_lock')).toBe(true);
     expect(collaborative.has('graph_discover_grounded')).toBe(true);
 
     const writing = names('writing');
-    expect(writing.has('doc_create')).toBe(true);
-    expect(writing.has('doc_revise')).toBe(true);
+    expect(writing.has('doc_create')).toBe(false);
+    expect(writing.has('doc_revise')).toBe(false);
+    expect(writing.has('graph_batch')).toBe(true);
     expect(writing.has('source_read')).toBe(false);
     expect(writing.has('doc_append_thinking')).toBe(false);
     expect(writing.has('graph_discover_grounded')).toBe(true);
 
     const syntheticReader = names('synthetic_reader');
     expect(syntheticReader.has('graph_thermostat')).toBe(false);
+    expect(syntheticReader.has('graph_suggest_next')).toBe(false);
+    expect(syntheticReader.has('graph_understand')).toBe(true);
     expect(syntheticReader.has('graph_discover_grounded')).toBe(false);
+
+    for (const mode of [
+      'reading',
+      'research',
+      'coding',
+      'collaborative_coding',
+      'writing',
+      'full',
+    ] as const) {
+      expect(names(mode).has('graph_suggest_next')).toBe(true);
+    }
 
     // Structural rewrites are first-class nested graph_batch operations,
     // never top-level mutations on an advertised workflow surface.

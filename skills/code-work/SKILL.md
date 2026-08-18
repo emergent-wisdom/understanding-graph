@@ -19,8 +19,6 @@ allowed-tools: |
   mcp__ug__doc_read
   mcp__ug__doc_generate
   mcp__ug__doc_generate_all
-  mcp__ug__doc_revise
-  mcp__ug__doc_merge
   Read
   Bash
 ---

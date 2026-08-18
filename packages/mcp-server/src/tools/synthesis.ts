@@ -229,7 +229,7 @@ WHY BLIND AGENTS: If you process the prompt yourself, you'll map seeds back to k
   {
     name: 'graph_random',
     description:
-      'Get random elements from the graph for serendipitous discovery. Use force:true for axiomatic forcing (Physics What-If) which treats connections as mandatory rather than optional - significantly increases synthesis quality.',
+      'Sample concrete graph elements for divergent exploration. Use the returned nodes as provocations: judge how, or whether, they matter to the live task. No defensible connection is valid. force:true enables the stronger local Physics What-If experiment; ordinary work should normally keep force:false.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -243,6 +243,14 @@ WHY BLIND AGENTS: If you process the prompt yourself, you'll map seeds back to k
           description:
             'Number of random nodes to get (default: 2 when force:true, 3 otherwise)',
         },
+        nodeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 2,
+          maxItems: 6,
+          description:
+            'Optional exact node IDs or titles supplied by graph_suggest_next. When present, inspect these nodes instead of drawing another random sample.',
+        },
         edges: {
           type: 'number',
           description: 'Number of random edges to get',
@@ -250,7 +258,7 @@ WHY BLIND AGENTS: If you process the prompt yourself, you'll map seeds back to k
         force: {
           type: 'boolean',
           description:
-            'Use axiomatic forcing (Physics What-If). Instead of asking IF concepts connect, asserts they ARE connected and asks HOW. Bypasses internal editor for higher novelty.',
+            'Optional Physics What-If experiment that temporarily assumes sampled concepts connect and asks how. Default false; reject the result unless later scrutiny grounds it.',
         },
         cold: {
           type: 'boolean',
@@ -753,6 +761,21 @@ If the chaos didn't reveal anything useful, that's fine — the original bridge 
       const store = getGraphStore();
       const forceMode = args.force === true;
       const coldMode = args.cold === true;
+      const requestedNodeRefs = Array.isArray(args.nodeIds)
+        ? [
+            ...new Set(
+              args.nodeIds.filter(
+                (ref): ref is string =>
+                  typeof ref === 'string' && ref.trim().length > 0,
+              ),
+            ),
+          ].slice(0, 6)
+        : [];
+      if (Array.isArray(args.nodeIds) && requestedNodeRefs.length < 2) {
+        throw new Error(
+          'nodeIds must contain at least two distinct node references',
+        );
+      }
 
       // Default to 2 nodes for forcing (pairs work best), 3 otherwise
       const nodeCount =
@@ -760,9 +783,20 @@ If the chaos didn't reveal anything useful, that's fine — the original bridge 
       const edgeCount = (args.edges as number) || 0;
 
       // Get nodes - cold mode prioritizes rarely accessed nodes for max semantic distance
-      const nodes = coldMode
-        ? store.getColdNodes(nodeCount).map((c) => c.node)
-        : store.getRandomNodes(nodeCount);
+      const nodes =
+        requestedNodeRefs.length > 0
+          ? requestedNodeRefs.map((ref) => {
+              const resolved = contextManager.resolveNodeWithSuggestions(
+                ref,
+                projectId,
+              );
+              const node = store.getNode(resolved.id);
+              if (!node) throw new Error(`Node not found: ${ref}`);
+              return node;
+            })
+          : coldMode
+            ? store.getColdNodes(nodeCount).map((c) => c.node)
+            : store.getRandomNodes(nodeCount);
       const edges = store.getRandomEdges(edgeCount);
 
       const baseResult = {
@@ -785,7 +819,7 @@ If the chaos didn't reveal anything useful, that's fine — the original bridge 
         const conceptB = nodes[1];
         const additionalConcepts = nodes.slice(2);
 
-        let forcingPrompt = `AXIOMATIC CONNECTION PROTOCOL
+        let forcingPrompt = `PHYSICS WHAT-IF — FORCED GENERATIVE PASS
 
 You are given concepts from an understanding graph:
 
@@ -806,16 +840,16 @@ ${conceptB.understanding || '(No understanding recorded)'}`;
 
 ---
 
-THESE CONCEPTS ARE AXIOMATICALLY CONNECTED. The connection exists - your task is to articulate it.
+For this generative pass only, assume these concepts are axiomatically connected.
+Do not evaluate the connection yet; articulate the strongest version of how it could work.
 
 **Physics What-If:** If Concept A was a fundamental law governing Concept B, how would the relationship function? If B was a law governing A, how would it differ?
 
-Describe the connection that EXISTS between these concepts. Do not evaluate whether they should be connected - they ARE connected. Explain HOW.
+Describe the connection under that temporary axiom. Explain HOW rather than deciding whether it is true.
 
-After articulating the connection, use graph_batch with a graph_serendipity operation to record it with:
-- name: A concise name for the synthesis
-- synthesis: Your articulation of the axiomatic connection
-- source_elements: [${nodes.map((n) => `"${n.id}"`).join(', ')}]`;
+Then release the axiom and scrutinize the candidate against the task, evidence,
+and source concepts. Preserve it only if a defensible relation remains; "no
+connection" is a valid result. A forced candidate is not itself graph evidence.`;
 
         return {
           ...baseResult,
@@ -828,7 +862,7 @@ After articulating the connection, use graph_batch with a graph_serendipity oper
       return {
         ...baseResult,
         mode: 'permission',
-        hint: 'Create a silly, strange, or unintuitive synthesis from these elements, then record it atomically with graph_batch using a graph_serendipity operation',
+        hint: 'Treat these concrete elements as a divergent provocation. Ask what they make newly visible, then preserve only a connection that survives scrutiny; no connection is valid.',
       };
     }
 

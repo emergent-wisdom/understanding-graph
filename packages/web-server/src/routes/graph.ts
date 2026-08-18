@@ -31,9 +31,21 @@ graphRouter.get('/graph', (req, res, next) => {
         supersededNodeIds: Array.from(supersededNodeIds),
       });
     } else {
-      // Default: only active nodes, no supersedes edges
+      // Default: only active nodes. Drop edges whose endpoints are not both
+      // visible rather than dropping supersedes wholesale.
+      //
+      // Filtering every supersedes edge made the display contradict the write
+      // path. Orphan prevention counts supersedes as grounding, so a node whose
+      // only relation is "this replaces that" is legitimately connected — and
+      // then rendered here with no edges at all, which reads as a broken graph
+      // and costs trust the graph has not actually lost. The real hazard was
+      // only ever the dangling case, where a supersedes edge points at a node
+      // that is superseded and therefore absent from this response.
       const { nodes, edges } = store.getAll();
-      const filteredEdges = edges.filter((e) => e.type !== 'supersedes');
+      const visibleNodeIds = new Set(nodes.map((n) => n.id));
+      const filteredEdges = edges.filter(
+        (e) => visibleNodeIds.has(e.fromId) && visibleNodeIds.has(e.toId),
+      );
       res.json({
         graphId: req.projectId,
         nodes,

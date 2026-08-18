@@ -14,6 +14,7 @@ allowed-tools: |
   mcp__ug__source_list
   mcp__ug__source_export
   mcp__ug__graph_batch
+  mcp__ug__graph_suggest_next
   mcp__ug__graph_understand
   mcp__ug__graph_skeleton
   mcp__ug__graph_semantic_search
@@ -128,8 +129,9 @@ reader re-enter:
 - Which faint attraction, discomfort, or association should remain open rather
   than be collapsed into the current synthesis?
 
-Use `graph_score()` and `graph_thermostat()` when structural health is actually
-in question, not as a ritual at arbitrary percentages.
+Use `graph_suggest_next()` when the next reading move is genuinely open. Use
+`graph_score()` and the legacy `graph_thermostat()` only when structural health
+is actually in question, not as a ritual at arbitrary percentages.
 
 ## Fresh reading discipline
 

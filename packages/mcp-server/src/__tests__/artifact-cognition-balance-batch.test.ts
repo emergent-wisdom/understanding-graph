@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ArtifactCognitionBalanceAssessment } from '../artifact-cognition-balance.js';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
+import { docOp } from './support/doc-batch.js';
 
 let temporaryDirectory: string;
 let contextManager: ContextManager;
@@ -79,6 +80,7 @@ describe('graph_batch artifact/cognition advisory', () => {
       'graph_batch',
       {
         operations,
+        agent_name: 'test-agent',
         commit_message: 'Create addressable code responsibilities',
         ignoreWarnings: true,
       },
@@ -87,7 +89,7 @@ describe('graph_batch artifact/cognition advisory', () => {
     )) as {
       success: boolean;
       artifactCognitionBalance?: ArtifactCognitionBalanceAssessment;
-      reentry?: {
+      navigation?: {
         focusNodeIds: string[];
         suggestedCall: {
           tool: string;
@@ -110,29 +112,30 @@ describe('graph_batch artifact/cognition advisory', () => {
     expect(result.artifactCognitionBalance?.advisories[0]?.message).toMatch(
       /not a target or quota/i,
     );
-    expect(result.reentry?.focusNodeIds).toHaveLength(8);
-    expect(result.reentry?.suggestedCall).toMatchObject({
-      tool: 'graph_understand',
+    expect(result.navigation?.focusNodeIds).toHaveLength(8);
+    expect(result.navigation?.suggestedCall).toMatchObject({
+      tool: 'graph_suggest_next',
       arguments: {
         workflow: 'coding',
-        focusNodeIds: result.reentry?.focusNodeIds,
+        focusNodeIds: result.navigation?.focusNodeIds,
       },
     });
   });
 
-  it('also surfaces through direct document growth outside graph_batch', async () => {
-    const root = (await handleToolCall(
+  it('also surfaces when a document grows one unit at a time', async () => {
+    const root = await docOp<{ id: string }>(
+      contextManager,
+      'writing',
       'doc_create',
       {
-        title: 'Directly built report',
+        title: 'Incrementally built report',
         content: 'Report root',
         fileType: 'md',
         isDocRoot: true,
         level: 'document',
       },
-      contextManager,
-      'writing',
-    )) as { id: string };
+      'Create the report root',
+    );
     let afterId: string | undefined;
     let finalResult:
       | {
@@ -140,7 +143,12 @@ describe('graph_batch artifact/cognition advisory', () => {
         }
       | undefined;
     for (let index = 1; index < 8; index++) {
-      finalResult = (await handleToolCall(
+      finalResult = await docOp<{
+        id: string;
+        artifactCognitionBalance?: ArtifactCognitionBalanceAssessment;
+      }>(
+        contextManager,
+        'writing',
         'doc_create',
         {
           title: `Evidence passage ${index}`,
@@ -149,12 +157,8 @@ describe('graph_batch artifact/cognition advisory', () => {
           afterId,
           level: 'paragraph',
         },
-        contextManager,
-        'writing',
-      )) as {
-        id: string;
-        artifactCognitionBalance?: ArtifactCognitionBalanceAssessment;
-      };
+        `Add evidence passage ${index}`,
+      );
       afterId = (finalResult as { id: string }).id;
     }
 

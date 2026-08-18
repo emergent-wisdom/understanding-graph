@@ -11,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
+import { docBatch, docOp } from './support/doc-batch.js';
 
 const PROJECT_ID = 'document-merge-test';
 let tmpDir: string;
@@ -119,23 +120,24 @@ describe('doc_merge structural integrity', () => {
       why: 'Gamma refines the immediately preceding section.',
     });
 
-    const result = (await handleToolCall(
-      'doc_merge',
-      {
-        nodeIds: [beta.id, gamma.id],
-        separator: '\n\n',
-        newTitle: 'Beta and Gamma',
-      },
-      contextManager,
-      'coding',
-    )) as {
+    const result = await docOp<{
       success: boolean;
       id: string;
       archivedNodes: string[];
       finalChildren: Array<{ id: string; title: string }>;
       deduplicatedRelationshipCount: number;
       collapsedInternalRelationshipCount: number;
-    };
+    }>(
+      contextManager,
+      'coding',
+      'doc_merge',
+      {
+        nodeIds: [beta.id, gamma.id],
+        separator: '\n\n',
+        newTitle: 'Beta and Gamma',
+      },
+      'Merge two adjacent units into one',
+    );
 
     expect(result).toMatchObject({
       success: true,
@@ -293,14 +295,16 @@ describe('doc_merge structural integrity', () => {
       END
     `);
 
-    await expect(
-      handleToolCall(
-        'doc_merge',
-        { nodeIds: [first.id, second.id] },
-        contextManager,
-        'coding',
-      ),
-    ).rejects.toThrow('forced merge rebuild failure');
+    const rebuildFailure = await docBatch(
+      contextManager,
+      'coding',
+      [{ tool: 'doc_merge', params: { nodeIds: [first.id, second.id] } }],
+      'Attempt a merge whose rebuild fails',
+    );
+    expect(rebuildFailure.success).toBe(false);
+    expect(String(rebuildFailure.message ?? rebuildFailure.error)).toContain(
+      'forced merge rebuild failure',
+    );
 
     expect(store.getNode(first.id)).toMatchObject({
       title: firstBefore?.title,
@@ -440,14 +444,16 @@ describe('doc_merge structural integrity', () => {
         .get() as { count: number }
     ).count;
 
-    await expect(
-      handleToolCall(
-        'doc_merge',
-        { nodeIds: [concept.id, document.id] },
-        contextManager,
-        'coding',
-      ),
-    ).rejects.toThrow('INVALID_DOCUMENT_NODE');
+    const mixedClasses = await docBatch(
+      contextManager,
+      'coding',
+      [{ tool: 'doc_merge', params: { nodeIds: [concept.id, document.id] } }],
+      'Attempt to merge a concept into a document unit',
+    );
+    expect(mixedClasses.success).toBe(false);
+    expect(String(mixedClasses.message ?? mixedClasses.error)).toContain(
+      'INVALID_DOCUMENT_NODE',
+    );
 
     expect(store.getNode(concept.id)).toMatchObject({
       content: conceptBefore?.content,

@@ -9,6 +9,7 @@ import {
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
 import type { ContextManager } from '../context-manager.js';
+import { understandingMode } from '../protocol.js';
 import { handleToolCall, type ToolMode } from './index.js';
 
 // Sentinel error class used by handleBatchTools to bubble an
@@ -232,7 +233,7 @@ Use for:
 - Any multi-step modification that should land all-or-nothing
 
 PARAMETER NAMES (these are strict — wrong names fail silently):
-  graph_add_concept: { title, trigger, understanding, why }  — NOT name/body/text
+  graph_add_concept: { title, trigger, understanding, why, attend? } — NOT name/body/text; why is one line naming what this node does to the understanding around it (corrects/reframes/opens/settles); attend is an optional pointer to what a later instance should attend to DIFFERENTLY, and marks the node live attention
   graph_note:        { about, testimony, title?, trigger?, why?, status?: "open"|"resolved", relations? } — preserve a substantive change caused by an exact source, artifact, or prior cognitive node; prefer the specific honest trigger (omission = neutral analysis); routine execution needs no note
   graph_connect:     { from, to, type, why }                 — NOT source/target/edgeType
   graph_revise:      { node, understanding, before, after, pivot, why }
@@ -242,7 +243,7 @@ PARAMETER NAMES (these are strict — wrong names fail silently):
   doc_create:        { title, content, fileType, isDocRoot, parentId, afterId, level, expressesIds }
   doc_revise:        { nodeId, content?, summary?, why } — why preserves the local edit; when a discovered insight/question/tension should influence other passages or future work, pair with graph_note about the exact passage in this batch; purely local revisions need no note
   doc_weave:         { parentId, title, targetNodeIds, content, connections, level?, afterId? } — each connection becomes an inspired_by edge whose why preserves the causal influence
-  doc_create_passages: { parentId, title, narrativeRole?, containerLevel?, afterId?, passages: [{ title, content, level: "paragraph"|"sentence", inspirations?: [{ nodeId, why }] }] } — atomically preserve a coherent scene/chapter and the passages a future writer may move, replace, compare, annotate, or revise independently; inspiration is optional, never forced
+  doc_create_passages: { parentId, title, narrativeRole?, containerLevel?: "section"|"subsection"|"scene"|"chapter"|"movement", afterId?, passages: [{ title, content, level: "paragraph"|"sentence", inspirations?: [{ nodeId, why }] }] } — atomically append a coherent scene/chapter/movement and the passages a future writer may move, replace, compare, annotate, or revise independently; scene/chapter/movement render as sections, optional afterId guards the current tail, and inspiration is optional, never forced
   doc_move:          { nodeId, parentId?, afterId? } — omit afterId to place first
   doc_split:         { nodeId, mode: "headers"|"lines", lineNumbers?, childLevel? } — rooted ordinary leaf only; "lines" uses unique zero-based indexes 1..lineCount-1; split when one leaf has independently revisable responsibilities or creative centers, never to meet a quota; original becomes an empty container; do not pass keepParent/asFiles/project
 
@@ -308,7 +309,12 @@ RESERVED SYNTHETIC OUTPUT: trigger="thinking", fileType="thinking", and the dedi
         agent_name: {
           type: 'string',
           description:
-            'Name of the agent making this commit (e.g., Alice, Bob, Charlie). Used for tracking who made changes.',
+            'REQUIRED. Who is committing (e.g. Alice, claude-opus-5, reader-3). ' +
+            'A commit without it is anonymous forever: the graph cannot say ' +
+            'whose understanding a node represents, which agent to disagree ' +
+            'with, or who to ask. Unlike most required fields this one can ' +
+            'never be filler — the correct value is always available to you ' +
+            'and costs nothing to give.',
         },
         workflow: {
           type: 'string',
@@ -322,7 +328,7 @@ RESERVED SYNTHETIC OUTPUT: trigger="thinking", fileType="thinking", and the dedi
             'Optional human-facing identity responsible for the commit. Hosted gateways should set this from the authenticated account rather than trusting an agent-supplied value.',
         },
       },
-      required: ['operations', 'commit_message'],
+      required: ['operations', 'commit_message', 'agent_name'],
     },
   },
 ];
@@ -879,6 +885,29 @@ export async function handleBatchTools(
     };
   }
 
+  // Enforce agent attribution.
+  //
+  // It was optional, and across 77 consecutive commits in a real project it
+  // was never once supplied — by an agent writing at length about provenance
+  // at the time. Meanwhile another agent in the same installation supplied it
+  // 5 times in 6. Partial compliance is the worst outcome for attribution:
+  // an empty field is then ambiguous between anonymous-by-design and
+  // could-not-be-bothered, and nothing can tell them apart afterwards.
+  //
+  // A required field is dangerous exactly when the honest answer might be
+  // nothing, which is why gating on a shared-vocabulary handle was rejected —
+  // it would manufacture filler. This one cannot: an agent always knows its
+  // own name.
+  if (!agentName || String(agentName).trim() === '') {
+    throw new Error(
+      'agent_name is REQUIRED. Give the name of the agent making this commit ' +
+        '(e.g. "claude-opus-5", "reader-3", "Alice"). Every node and edge in ' +
+        'this batch inherits it as provenance, and a commit without it is ' +
+        'anonymous permanently — the graph cannot later say whose ' +
+        'understanding it holds, or which agent to disagree with.',
+    );
+  }
+
   // Enforce commit_message requirement
   if (!commitMessage || commitMessage.trim() === '') {
     throw new Error(
@@ -1418,7 +1447,7 @@ export async function handleBatchTools(
       artifactCognitionBalance && artifactCognitionBalance.advisories.length > 0
         ? artifactCognitionBalance
         : undefined,
-    reentry:
+    navigation:
       affectedNodeOrder.length > 0 || affectedEdgeIds.length > 0
         ? {
             focusNodeIds: reentryFocusNodeIds,
@@ -1427,18 +1456,26 @@ export async function handleBatchTools(
               reentryNodes.length - reentryFocusNodeIds.length,
             ),
             suggestedCall: {
-              tool: 'graph_understand',
+              tool: 'graph_suggest_next',
               arguments: {
-                query:
-                  'Continue the current task after this encounter. What changed, conflicts, connects, or becomes newly possible?',
+                task: 'Continue the current task after this encounter. What changed, conflicts, connects, or becomes newly possible?',
                 workflow: reentryWorkflow,
                 focusNodeIds: reentryFocusNodeIds,
               },
             },
             guidance:
-              'Use after a meaningful encounter so the changed nodes and their incident relations become input to the next understanding pass. Routine mutations do not require a note or forced novelty.',
+              'Roll several weighted routes, judge them against the user task, then choose, combine, modify, reject, or replace them. The endpoint proposes; the agent chooses.',
           }
         : undefined,
+    understandingMode: commit
+      ? understandingMode('committed', {
+          commitId: commit.id,
+          affectedNodeIds: affectedNodeOrder,
+          affectedEdgeIds: [...new Set(affectedEdgeIds)],
+          reentryFocusNodeIds,
+          workflow: reentryWorkflow,
+        })
+      : undefined,
     message: hasErrors
       ? `Batch completed with ${errors.length} error(s)`
       : commit

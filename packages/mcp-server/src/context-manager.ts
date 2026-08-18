@@ -95,10 +95,17 @@ export class ContextManager {
     // This prevents agents from accidentally creating projects by passing wrong project IDs
     if (isNewProject && !allowCreate) {
       const existingProjects = this.listProjects();
+      // This is the first thing an agent hits when several projects exist and
+      // none was chosen, so it has to name the decision AND the exact call —
+      // the parameter is `project`, not `projectId`. Choosing an existing
+      // project is the common case; creating one is the deliberate exception.
       throw new Error(
         `Project "${actualProjectId}" does not exist. ` +
           `Available projects: [${existingProjects.join(', ')}]. ` +
-          `Use project_switch to create a new project.`,
+          `Choose where this work belongs: ` +
+          `project_switch({ project: "<one of the above>" }). ` +
+          `Passing an id that is not listed creates that project instead, ` +
+          `so use an exact id unless you intend a new one.`,
       );
     }
 

@@ -6,7 +6,10 @@ description: |
   or you want to break creative blocks.
 user-invocable: true
 allowed-tools: |
+  mcp__ug__graph_discover_grounded
+  mcp__ug__graph_discover_grounded_chaos
   mcp__ug__graph_discover
+  mcp__ug__graph_random
   mcp__ug__graph_chaos
   mcp__ug__graph_batch
   mcp__ug__graph_skeleton
@@ -19,17 +22,22 @@ allowed-tools: |
 
 ## Grounded serendipity
 
-`graph_discover_grounded({ nodes: 3, intensity: 0.2 })` — random nodes with a real bridge.
+`graph_discover_grounded({ nodes: 3, intensity: 0.2 })` samples distant graph
+material and asks whether a real bridge exists.
 
-Two-phase protocol:
-1. System provides random nodes → you find the **real bridge** (shared substrate or functional analogy)
-2. System injects noise into your bridge → you rationalize the corruption into new territory
+Protocol:
+1. Inspect the sampled nodes and edges.
+2. Articulate a defensible bridge: shared mechanism, constraint, structure, or
+   functional analogy. If none exists, report that and stop.
+3. Let the bridge change the current question or artifact only if it survives
+   scrutiny.
+4. Optionally call `graph_discover_grounded_chaos` when stronger divergence is
+   explicitly useful. Perturbation is not part of every grounded discovery.
 
-**Phase 1: Sense-Making** — find the real bridge before inventing. Look for structural analogies, shared mechanisms, or conceptual overlaps between the random nodes.
-
-**Phase 2: Chaos Perturbation** — the system corrupts your bridge statement. Your job is to treat the corruption as an axiom and invent new theory from it.
-
-Use grounded serendipity for lasting theory. The result should be a `serendipity` or `surprise` node connected to the source nodes.
+Use grounded serendipity for durable understanding. Preserve a `serendipity`,
+`surprise`, `hypothesis`, or other honest update only when the encounter changes
+later attention or work, connecting it to the sampled sources. A defensible
+no-connection result needs no node.
 
 ## Pure serendipity
 
@@ -40,7 +48,18 @@ The serendipity engine forces unexpected connections through enforced blindness:
 - The blind agent treats corrupted seeds as axioms and invents physics
 - Cold nodes (rarely accessed) are prioritized for unexpected combinations
 
-Use pure serendipity for breaking blocks.
+Use pure serendipity only when the user explicitly wants high-divergence,
+speculative exploration. It is available on the local `full` tool surface, not
+the focused hosted surface.
+
+## Physics What-If
+
+`graph_random({ force: true, cold: true })` temporarily treats two sampled
+concepts as connected so the model has to articulate a mechanism that ordinary
+relevance retrieval would not propose. This is a generative lens, not evidence.
+Release the forced assumption after the pass, test the candidate against the
+task and sources, and preserve it only if a defensible relation remains. “No
+connection” is a successful result.
 
 When an insight survives scrutiny, preserve it atomically with `graph_batch`:
 add a nested `graph_serendipity` operation whose `source_elements` name every
@@ -49,11 +68,14 @@ source node. The operation creates the typed `serendipity` node and its
 
 ## When to use
 
-- Thermostat says DIVERGE
+- The non-binding thermostat suggests disruption
 - Graph density is high (tight mental model needs disruption)
 - You're stuck in a rut
 - The same triggers keep appearing (too much `foundation` and `decision`)
 
 ## Follow through
 
-**Divergence is not decoration.** If `graph_discover_grounded` returns a genuine bridge, the next batch must write a `serendipity` or `surprise` node about it. A divergent tool call with no follow-up commit is looking at shiny objects.
+**Divergence is not decoration.** If a bridge materially changes understanding
+or the artifact, preserve that change with exact provenance in the next atomic
+batch. If it does not, write nothing. Never create a note merely to prove that
+the exploratory call was useful.

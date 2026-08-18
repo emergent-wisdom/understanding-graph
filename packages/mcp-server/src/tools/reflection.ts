@@ -3,6 +3,7 @@ import {
   ContextService,
   EmbeddingService,
   type GraphStore,
+  assessPractice,
   getGraphStore,
   isProjectLoaded,
   isReservedThinkingNode,
@@ -15,6 +16,86 @@ import {
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
+import { rollNextMoves } from '../next-move.js';
+import { UNDERSTANDING_PROTOCOL_ID } from '../protocol.js';
+import { rememberSuggestedStances } from '../suggestion-state.js';
+
+const nextMoveHistory = new Map<string, string[]>();
+
+function rememberSuggestedMoves(projectId: string, actions: string[]) {
+  const recent = [...actions, ...(nextMoveHistory.get(projectId) ?? [])].slice(
+    0,
+    12,
+  );
+  nextMoveHistory.delete(projectId);
+  nextMoveHistory.set(projectId, recent);
+  if (nextMoveHistory.size > 1024) {
+    const oldest = nextMoveHistory.keys().next().value;
+    if (oldest) nextMoveHistory.delete(oldest);
+  }
+}
+
+function rankNodesForTask<
+  Node extends {
+    id: string;
+    title: string;
+    understanding?: string | null;
+    content?: string | null;
+  },
+>(nodes: Node[], task: string): Node[] {
+  const tokens = [
+    ...new Set(
+      task
+        .toLowerCase()
+        .match(/[\p{L}\p{N}_-]{3,}/gu)
+        ?.filter((token) => !TASK_STOPWORDS.has(token)) ?? [],
+    ),
+  ];
+  if (tokens.length === 0) return [...nodes];
+
+  return nodes
+    .map((node, index) => {
+      const title = node.title.toLowerCase();
+      const body =
+        `${node.understanding ?? ''} ${node.content ?? ''}`.toLowerCase();
+      const score = tokens.reduce(
+        (sum, token) =>
+          sum +
+          (title.includes(token) ? 4 : 0) +
+          (body.includes(token) ? 1 : 0),
+        0,
+      );
+      return { node, score, index };
+    })
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(({ node }) => node);
+}
+
+const TASK_STOPWORDS = new Set([
+  'about',
+  'after',
+  'again',
+  'could',
+  'from',
+  'have',
+  'into',
+  'should',
+  'that',
+  'their',
+  'there',
+  'these',
+  'they',
+  'this',
+  'through',
+  'understand',
+  'what',
+  'when',
+  'where',
+  'which',
+  'with',
+  'would',
+]);
 
 function escapeHistoryXml(value: unknown): string {
   return String(value ?? '')
@@ -677,9 +758,54 @@ export const reflectionTools: Tool[] = [
     },
   },
   {
+    name: 'graph_suggest_next',
+    description:
+      'PRIMARY UNDERSTANDING-MODE ENTRY. Call at the start of a substantive graph-backed task and at natural choice points. It rolls several graph-state-, task-, and workflow-weighted concrete possibilities. Every option carries an epistemic stance—balanced, deepen, resist, connect, disrupt, revisit, or test—that can shape the next graph_understand packet independently of the work domain. Each may contain multiple steps and may deepen, search, connect, force a temporary bisociation, disrupt, make, test, preserve, or pause. Higher weights deserve stronger consideration, but the agent judges fit to the user task and may combine, modify, reject, or replace every suggestion. Medium integrity still applies: commit new artifact work and communicable understanding before presenting it as the completed result.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description:
+            'The live user task, local question, or uncertainty that the next move must serve.',
+        },
+        workflow: {
+          type: 'string',
+          enum: [
+            'reading',
+            'research',
+            'coding',
+            'collaborative_coding',
+            'writing',
+            'general',
+          ],
+          description: 'Task workflow (default: general).',
+        },
+        focusNodeIds: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: 12,
+          description:
+            'Optional current graph focus. Unknown or hidden IDs are omitted from suggestions.',
+        },
+        count: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 6,
+          description: 'Number of sampled options to return (default: 4).',
+        },
+        project: {
+          type: 'string',
+          description: 'Project ID (optional)',
+        },
+      },
+      required: ['task'],
+    },
+  },
+  {
     name: 'graph_thermostat',
     description:
-      'Optional descriptive pulse when the next move is genuinely unclear. Summarizes unresolved and disconnected structure, then offers a non-binding deepen/connect/disrupt direction. It is not a score, quota, or governor; the current evidence and task remain authoritative.',
+      'Legacy graph-state pulse retained for compatibility. Prefer graph_suggest_next for the ordinary weighted chooser loop.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -747,6 +873,20 @@ export const reflectionTools: Tool[] = [
     name: 'graph_score',
     description:
       'Calculate a structural diagnostic for ordinary graph state: chronological references, supersession, question resolution, edge specificity, connectivity, and explanations. Reserved Reader/CMP artifacts are excluded. This score is a proxy, not evidence of semantic quality.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: {
+          type: 'string',
+          description: 'Project ID (optional)',
+        },
+      },
+    },
+  },
+  {
+    name: 'graph_practice',
+    description:
+      'Report how this graph has been WORKED, as distinct from how it is shaped: whether it is re-entered or only written to, whether prose carries the thinking that produced it, whether practices present early have since decayed, whether predictions were ever scored, and whether anything has been overturned. graph_analyze and graph_score answer whether a graph is well formed and cannot answer whether it is doing anything — a graph nobody re-enters scores exactly like one that changes someone\'s mind. Each figure arrives with what it is computed from and what it might indicate. Every one is a proxy for conduct, not a measure of quality, and there is deliberately no total, because a single score becomes a target.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1352,6 +1492,13 @@ export async function handleReflectionTools(
 
       if (includeAll || include.includes('gaps')) {
         result.isolatedNodes = analysis.isolatedNodes;
+        // The count alone cannot be acted on. Told "5 document nodes have no
+        // thinking attached", an agent knows only that something is wrong;
+        // told which five, it can ground them. The repair on two real projects
+        // took two minutes, and only because the list was to hand — from a
+        // direct SQL query, because this tool returned the number and kept the
+        // names.
+        result.ungroundedProse = analysis.ungroundedProse;
       }
       if (includeAll || include.includes('cycles')) {
         result.cycles = {
@@ -1999,6 +2146,170 @@ export async function handleReflectionTools(
       };
     }
 
+    case 'graph_suggest_next': {
+      const projectId =
+        (args.project as string) || contextManager.getCurrentProjectId();
+      await contextManager.getContext(projectId);
+
+      const task = typeof args.task === 'string' ? args.task.trim() : '';
+      if (!task) throw new Error('task is required and must not be empty');
+
+      const workflow = String(args.workflow || 'general');
+      const allowedWorkflows = new Set([
+        'reading',
+        'research',
+        'coding',
+        'collaborative_coding',
+        'writing',
+        'general',
+      ]);
+      if (!allowedWorkflows.has(workflow)) {
+        throw new Error(
+          `workflow must be one of: ${[...allowedWorkflows].join(', ')}`,
+        );
+      }
+
+      const requestedFocusNodeIds = Array.isArray(args.focusNodeIds)
+        ? [
+            ...new Set(
+              args.focusNodeIds.filter(
+                (id): id is string => typeof id === 'string',
+              ),
+            ),
+          ].slice(0, 12)
+        : [];
+      const count = args.count == null ? undefined : Number(args.count);
+      if (
+        count != null &&
+        (!Number.isInteger(count) || count < 1 || count > 6)
+      ) {
+        throw new Error('count must be an integer from 1 to 6');
+      }
+
+      const store = getGraphStore();
+      const { nodes, edges } = store.getAll();
+      const analysis = AnalysisService.analyzeGraph(projectId);
+      const visibleNodeIds = new Set(nodes.map((node) => node.id));
+      const nodeById = new Map(nodes.map((node) => [node.id, node]));
+      const taskRelevantRaw = rankNodesForTask(nodes, task).slice(0, 8);
+      const taskRelevantRank = new Map(
+        taskRelevantRaw.map((node, index) => [node.id, index]),
+      );
+      const byTaskRelevance = <Node extends { id: string }>(a: Node, b: Node) =>
+        (taskRelevantRank.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (taskRelevantRank.get(b.id) ?? Number.MAX_SAFE_INTEGER);
+      const focusNodeIds = requestedFocusNodeIds.filter((id) =>
+        visibleNodeIds.has(id),
+      );
+      const describeNode = (node: (typeof nodes)[number]) => ({
+        id: node.id,
+        title: node.title,
+        trigger: node.trigger,
+        excerpt: String(node.understanding || node.content || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 240),
+      });
+      const focusNodes = focusNodeIds
+        .map((id) => nodeById.get(id))
+        .filter((node): node is (typeof nodes)[number] => node != null)
+        .map(describeNode);
+      const randomNodes = store
+        .getRandomNodes(Math.min(6, nodes.length))
+        .filter((node) => visibleNodeIds.has(node.id))
+        .map(describeNode);
+      const contradictionEdges = edges.filter((edge) =>
+        ['contradicts', 'invalidates', 'diverse_from'].includes(edge.type),
+      );
+      const recentActions = nextMoveHistory.get(projectId) ?? [];
+      const options = rollNextMoves({
+        task,
+        workflow,
+        focusNodeIds,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        unresolvedCount: nodes.filter(
+          (node) => node.trigger === 'question' || node.trigger === 'tension',
+        ).length,
+        documentCount: nodes.filter((node) => node.isDocRoot || node.level)
+          .length,
+        isolatedCount: analysis.stats.isolatedCount,
+        contradictionCount: contradictionEdges.length,
+        cycleCount:
+          analysis.tightCycles.length + analysis.structuralCycles.length,
+        recentActions,
+        taskRelevantNodes: taskRelevantRaw.map(describeNode),
+        focusNodes,
+        openQuestions: analysis.openQuestions
+          .map((question) => nodeById.get(question.id))
+          .filter((node): node is (typeof nodes)[number] => node != null)
+          .sort(byTaskRelevance)
+          .map(describeNode),
+        isolatedNodes: analysis.isolatedNodes
+          .map((isolated) => nodeById.get(isolated.id))
+          .filter((node): node is (typeof nodes)[number] => node != null)
+          .map(describeNode),
+        documentNodes: nodes
+          .filter((node) => node.isDocRoot || node.level)
+          .sort(byTaskRelevance)
+          .map(describeNode),
+        centralNodes: analysis.centrality
+          .slice(0, 6)
+          .map((central) => nodeById.get(central.id))
+          .filter((node): node is (typeof nodes)[number] => node != null)
+          .map(describeNode),
+        randomNodes,
+        contradictions: contradictionEdges.flatMap((edge) => {
+          const from = nodeById.get(edge.fromId);
+          const to = nodeById.get(edge.toId);
+          return from && to
+            ? [
+                {
+                  type: edge.type,
+                  from: describeNode(from),
+                  to: describeNode(to),
+                  why: edge.why || edge.explanation || undefined,
+                },
+              ]
+            : [];
+        }),
+        count,
+      });
+      rememberSuggestedMoves(
+        projectId,
+        options.map((option) => option.action),
+      );
+      rememberSuggestedStances(projectId, options);
+
+      return {
+        protocol: UNDERSTANDING_PROTOCOL_ID,
+        mediumIntegrity: {
+          canonicalState: 'graph',
+          finalResponse: 'mirror-or-summarize-committed-graph-state',
+          invariant:
+            'Do not leave new substantive artifact text or communicable understanding only in chat. Commit it to the graph before presenting it as the result.',
+        },
+        task,
+        workflow,
+        focusNodeIds,
+        roll: {
+          distribution:
+            'state- and workflow-weighted server-side sampling without replacement',
+          hiddenActionSpace: true,
+          shuffleBag: {
+            recentActionsDownWeighted: recentActions.slice(0, 3),
+            purpose:
+              'Vary kinds of provocation without eliminating moves that have not recently paid off.',
+          },
+          interpretation:
+            'Weights summarize graph/task pressure among the sampled options. Higher weights deserve stronger consideration; task fit remains decisive.',
+        },
+        options,
+        choice:
+          'Choose an option, combine or modify options, invent a better move, or reject all. Carry it out in the graph. Before completing the turn, commit new artifact work and communicable understanding; chat may mirror the committed result. Roll again at the next real choice point.',
+      };
+    }
+
     case 'graph_thermostat': {
       const projectId =
         (args.project as string) || contextManager.getCurrentProjectId();
@@ -2169,6 +2480,16 @@ export async function handleReflectionTools(
       };
     }
 
+    case 'graph_practice': {
+      const projectId =
+        (args.project as string) || contextManager.getCurrentProjectId();
+      if (!isProjectLoaded(projectId)) {
+        throw new Error(`Project not loaded: ${projectId}`);
+      }
+      sqlite.setCurrentProject(projectId);
+      return { project: projectId, ...assessPractice() };
+    }
+
     case 'graph_score': {
       const projectId =
         (args.project as string) || contextManager.getCurrentProjectId();
@@ -2190,6 +2511,22 @@ export async function handleReflectionTools(
           .filter(isReservedThinkingNode)
           .map((node) => node.id),
       );
+      // NOT applied here yet: excluding superseded nodes and edges from these
+      // live statistics, which is the stated intent but cannot be done from
+      // the current data model.
+      //
+      // "Superseded edges" are not the `supersedes` edges themselves — those
+      // are the mechanism, not a superseded thing. They are the ordinary edges
+      // that pointed at a node which has since been replaced, and the model
+      // has no mark for them: nothing distinguishes an edge onto a replaced
+      // node from any other edge, so they cannot be excluded without also
+      // excluding the record of the replacement.
+      //
+      // Dropping `supersedes` edges as a stand-in was tried and is wrong. It
+      // leaves every superseding node holding no edges at all, so the nodes
+      // that did the replacing are reported isolated — the same phantom-orphan
+      // defect just fixed in graph_analyze, reintroduced one tool over. The
+      // marking and automatic redraw has to exist first.
       const nodes = allNodes.filter((node) => !reservedNodeIds.has(node.id));
       const edges = allEdges.filter(
         (edge) =>

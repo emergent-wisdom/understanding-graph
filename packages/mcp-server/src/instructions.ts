@@ -1,57 +1,85 @@
+import {
+  UNDERSTANDING_PROTOCOL_ID,
+  UNDERSTANDING_PROTOCOL_LABEL,
+} from './protocol.js';
+
 export const SERVER_INSTRUCTIONS = `
 # Understanding Graph
 
-Use the graph as an active medium for **recursive, emergent understanding**—not
-as a filing system or finished-work log. Externalize understanding, re-enter
-the changed structure as new input, notice relations or absences unavailable in
-one linear context, and update it again. The graph must alter the next act of
-cognition. Call \`graph_understand({ query, workflow })\` at the start and after
-meaningful encounters. If the graph is empty, begin real work without inventing
-a past.
+Use this graph as the canonical persistent workspace for substantive work: an
+active medium for **fluid, emergent understanding**, not a filing cabinet.
+Begin with \`graph_suggest_next\`; preserve with \`graph_batch\`.
+While Understanding mode is active, develop the work here and preserve **ALL
+COMMUNICABLE TASK UNDERSTANDING**, not only conclusions. Chat may report the
+work; it does not replace graph work. Persist live questions, interpretations,
+alternatives, relations, evidence, reasons, uncertainty, decisions, and revisions
+that could help a later instance continue. This is authored, user-visible
+testimony, never a transcript or claim about hidden chain-of-thought.
+
+**Medium-integrity invariant:** do not leave new artifact or
+understanding only in chat. Before completing a turn, write artifact units and genuine testimony
+to the graph with \`graph_batch\`;
+the final response may mirror, summarize, or link to that committed state. This
+is not a required thinking sequence. It is what makes the graph the medium rather
+than optional context.
+
+Protocol: \`${UNDERSTANDING_PROTOCOL_ID}\`.
+
+**${UNDERSTANDING_PROTOCOL_LABEL}.** There is no required state machine. Choose
+the process the task needs: orient, read, search, make, preserve, connect, test,
+revise, disrupt, re-enter, reconsider, or pause in any useful order. You may
+invent another loop. Use \`graph_understand\` whenever prior or newly changed
+graph state could alter the next move, and \`graph_batch\` to preserve work and
+understanding atomically rather than filing a rationale after completion.
+
+At the start and each real choice point, call \`graph_suggest_next\` with the
+live task or uncertainty. It rolls weighted, possibly multi-step moves. Give
+higher weights stronger consideration, judge task fit, then choose, combine,
+modify, reject, or replace them. Engage in the choice, preserve the understanding
+it produces, and roll again at the next real choice point. The endpoint proposes;
+you choose.
+
+\`workflow\` says where the work lives and which native evidence matters. A rolled
+\`stance\` says what epistemic pressure to weight on re-entry: \`balanced\`,
+\`deepen\`, \`resist\`, \`connect\`, \`disrupt\`, \`revisit\`, or \`test\`. They are
+orthogonal. Preserve the stance from a selected route when calling
+\`graph_understand\`; it is guidance, not a mandate to accept the returned material.
+
+If the graph is empty, begin real work without inventing a past.
 
 ## Work naturally
 
-Keep artifacts in their native graph form, but do not mistake completion for
-the goal: artifacts are encounters that test the spiral. A document leaf is an
+A document leaf is an
 addressable unit of attention and change. In code, use a function, class, type,
-test, import group, or coherent block with one responsibility that can be
-revised, moved, reused, or removed. Split units with
-independent reasons to change; move shared behavior instead of copying it.
-Generate and test the projection. Do not privately pre-author an entire artifact
-and then deposit it with retrospective rationale. The graph is where work unfolds.
+test, or coherent block: revised, moved, reused, or removed independently. Move
+shared behavior instead of copying it. Generate and test the projection.
 
 In writing, parts, chapters, and scenes are normally containers. A child leaf is
 the smallest passage you can plausibly imagine moving, comparing, or revising
 independently: often a beat, image, exchange, turn, revelation, paragraph, or
-small paragraph cluster. One scene question may still need several addresses.
-This is semantic granularity, not a word count or node quota.
+small paragraph cluster. This is semantic granularity, not a word count or node quota.
+Do not privately pre-author an entire artifact and then deposit it with
+retrospective rationale.
 
-Preserve **every substantive change in understanding**, not only conclusions:
-an interpretation, alternative, surprise, question, prediction, evaluation,
-correction, or direction change that alters attention or action. Each update is
-material for the next pass—not project documentation or a private transcript.
-Preserve enough texture for a future instance to re-enter. The batch-only \`graph_note({ about, testimony, title?, trigger?, why?, status? })\` attaches it
-to the exact graph material that occasioned it and creates its provenance edge.
+Preserve enough texture to recover the live understanding around a choice. The batch-only
+\`graph_note({ about, testimony, title?, trigger?, why?, status? })\` attaches an
+interpretation, alternative, surprise, question, prediction, evaluation, or
+correction to the exact graph material that occasioned it.
 
-Re-enter the graph repeatedly, not only at startup. After a meaningful source,
-test, artifact unit, contradiction, decision, or reread, inspect for resonance,
-conflict, repetition, gaps, or distant possibility; preserve any resulting
-update and spiral again. When direction is genuinely unclear,
-\`graph_thermostat\` offers a non-binding deepen/connect/disrupt pulse. If
-re-entry returns only familiar paths, \`graph_discover_grounded\` compares
-distant material. “No defensible connection” is valid; preserve only a bridge
-that reveals real structure and changes the work.
+On re-entry, inspect resonance, conflict, gaps, or distant possibility.
+\`graph_suggest_next\` may roll a grounded comparison or temporary Physics What-If
+through \`graph_random\`. Release the forced assumption, test it, and accept “no
+defensible connection” as valid.
 
-Do not transcribe every token-level step, manufacture notes, use trigger quotas,
-or reconstruct rationale after completion. When routine work produces no change in understanding, no note is honest. Testimony must change later attention,
-not decorate the graph or claim hidden chain-of-thought. Keep unfinished
-attention open; resolve it only when the same atomic commit completes it. This
-testimony is not a claim to reveal hidden chain-of-thought.
+Do not transcribe token-level steps, manufacture notes, use trigger quotas, or
+reconstruct rationale; do not manufacture understanding to prove activity. Keep
+unfinished attention open. Testimony is user-visible input to future attention,
+not a claim to reveal hidden chain-of-thought.
 
-Synthesis is normally an **operation**, not a catch-all node type. Type a stable
-result by what it became: \`analysis\` for a cognitive ratchet, \`model\` for a
-mechanism, \`hypothesis\` for a provisional unification, \`decision\` for a choice,
-\`evaluation\` for a judgment, or an unresolved \`question\`/\`tension\`.
+Synthesis is normally an **operation**, not a catch-all node type. Type stable
+results by what they became: \`analysis\` for a cognitive ratchet, \`model\`,
+\`hypothesis\`, \`decision\`, \`evaluation\`, or an unresolved
+\`question\`/\`tension\`.
 
 Ordinary reading, coding, collaborative coding, writing, and general work use
 non-\`thinking\` nodes. The \`thinking\` trigger belongs only to the separate
@@ -72,8 +100,9 @@ create or imitate it in ordinary work.
 ## Mutation and provenance
 
 Use \`graph_batch\` for atomic mutations with an honest \`commit_message\`.
-Documents are canonical artifacts and need no fabricated concept. Cognitive
-nodes need real grounding. Inside a batch, \`$N.id\` references operation N.
+Cognitive nodes need grounding, and so does the prose they produced
+(\`expresses\`, \`inspired_by\`). Documents need no fabricated concept. Inside a
+batch, \`$N.id\` references operation N.
 
 Use specific typed edges with a truthful \`why\`: \`learned_from\`, \`refines\`,
 \`contradicts\`, \`questions\`, \`answers\`, \`validates\`, \`invalidates\`,
@@ -379,33 +408,15 @@ If not, don't create it.`,
  */
 export const MODE_PROTOCOLS = {
   reading: `
-## Reading Loop Protocol
+## Reading in Understanding Mode
 
-For each chunk, do NOT race to the next. Preserve chronology, but let attention
-rather than a checklist decide where to stop:
-
-1. source_read({ sourceId, chars: 2000, commit_message: "why this boundary" })
-   ↓
-2. REMAIN with the encountered passage long enough to notice whether anything
-   actually moves: an expectation, image, question, hesitation, connection,
-   value, hypothesis, or sense of the stakes
-   ↓
-3. At a genuine Thought Moment, compose a rich, user-visible account in the
-   non-\`thinking\` trigger that most honestly fits; do not fill every category
-   ↓
-4. CONNECT it to the exact passage and relevant prior state with typed edges
-   ↓
-5. When a belief stabilizes or changes, link the new distilled state to the old:
-   include graph_connect({ from: "<new>", to: "<old>", type: "supersedes", why: "..." })
-   in the same graph_batch
-   ↓
-6. Commit the concepts and edges together with graph_batch({
-     commit_message: "before → pivot → after; uncertainty: ...",
-     operations: [...]
-   })
-   ↓
-7. When the accumulating trace changes the direction of reading, re-orient with
-   graph_skeleton() and continue from the live questions rather than a quota
+${UNDERSTANDING_PROTOCOL_LABEL}. Chronology constrains what has been encountered,
+not how understanding must develop. Read, pause, search, compare, connect,
+question, reread, or test in the order the material warrants. Preserve the live,
+user-visible understanding around a passage—not only a later conclusion—with
+exact learned_from provenance. Re-enter prior or changed graph state whenever it
+could alter the reading. Do not fill categories or manufacture a note when no
+communicable understanding is present.
 
 ### Good vs Bad Annotation
 

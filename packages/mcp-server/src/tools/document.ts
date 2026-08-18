@@ -252,10 +252,35 @@ function inferCodeSectionTitle(
 
 // These are first-class nested graph_batch operations, not standalone MCP
 // mutations. graph_batch supplies their transaction and origin commit.
+/**
+ * Document tools that mutate, and are therefore reachable only inside
+ * graph_batch.
+ *
+ * graph_batch is where the invariants live: orphan prevention and its
+ * post-execution sweep, duplicate detection, cross-mode checks, atomic
+ * rollback, and the commit that gives every node and edge its provenance. A
+ * mutation reachable outside it skips all of that. Measured on doc_create
+ * called standalone: the node is written, no commit row exists, and the node's
+ * commit_id is empty — the work is in the graph with no record of why it
+ * arrived or what it belonged to.
+ *
+ * The live call allow-list is DERIVED from this filtering, so a name here is
+ * unreachable directly as well as unadvertised. That is why closing the gap
+ * cost a test port rather than a one-line edit: the document tests wrote by
+ * calling these handlers directly, which is the idiom this forbids, and the
+ * suite guarding the feature was therefore certifying the unchecked path. They
+ * now write through graph_batch and assert on its verdict.
+ */
 export const BATCH_ONLY_DOCUMENT_TOOLS = [
   'doc_move',
   'doc_split',
   'doc_create_passages',
+  'doc_create',
+  'doc_link_concept',
+  'doc_revise',
+  'doc_merge',
+  'doc_to_concept',
+  'doc_weave',
 ] as const;
 
 export const documentTools: Tool[] = [
@@ -766,13 +791,14 @@ This narrow operation rejects document roots, nodes with child subtrees, differe
         },
         containerLevel: {
           type: 'string',
-          enum: ['section', 'subsection'],
-          description: 'Container hierarchy level. Default: "section".',
+          enum: ['section', 'subsection', 'scene', 'chapter', 'movement'],
+          description:
+            'Container hierarchy level. Scene, chapter, and movement are semantic aliases rendered as a section. Default: "section".',
         },
         afterId: {
           type: 'string',
           description:
-            'Current tail child of parentId. Required when the parent already has children.',
+            'Optional current tail child of parentId, used as an optimistic ordering guard. When omitted, the new container appends to the current tail.',
         },
         passages: {
           type: 'array',
@@ -2092,7 +2118,7 @@ export async function handleDocumentTools(
       const parentId = args.parentId;
       const title = args.title;
       const narrativeRole = args.narrativeRole;
-      const containerLevel = args.containerLevel ?? 'section';
+      const requestedContainerLevel = args.containerLevel ?? 'section';
       const afterId = args.afterId;
       const passageInputs = args.passages;
 
@@ -2121,15 +2147,23 @@ export async function handleDocumentTools(
         };
       }
       if (
-        typeof containerLevel !== 'string' ||
-        !['section', 'subsection'].includes(containerLevel)
+        typeof requestedContainerLevel !== 'string' ||
+        !['section', 'subsection', 'scene', 'chapter', 'movement'].includes(
+          requestedContainerLevel,
+        )
       ) {
         return {
           success: false,
           error: 'INVALID_PASSAGE_CONTAINER_LEVEL',
-          message: 'containerLevel must be either section or subsection.',
+          message:
+            'containerLevel must be section, subsection, scene, chapter, or movement.',
         };
       }
+      const containerLevel = ['scene', 'chapter', 'movement'].includes(
+        requestedContainerLevel,
+      )
+        ? 'section'
+        : requestedContainerLevel;
       if (
         afterId !== undefined &&
         (typeof afterId !== 'string' || afterId.trim().length === 0)
@@ -2297,18 +2331,8 @@ export async function handleDocumentTools(
       // Give an early, readable ordering error. createDocumentNode performs
       // the strict sibling-topology validation again before its first write.
       const existingChildren = store.getChildren(parentId);
-      if (existingChildren.length > 0 && afterId === undefined) {
-        return {
-          success: false,
-          error: 'PASSAGE_CONTAINER_AFTER_ID_REQUIRED',
-          message: `afterId is required because parent ${parentId} already has children.`,
-          hint: `Append after the current tail: ${existingChildren[existingChildren.length - 1]?.id}`,
-        };
-      }
-      if (
-        afterId !== undefined &&
-        existingChildren[existingChildren.length - 1]?.id !== afterId
-      ) {
+      const tailId = existingChildren[existingChildren.length - 1]?.id;
+      if (afterId !== undefined && tailId !== afterId) {
         return {
           success: false,
           error: 'INVALID_PASSAGE_CONTAINER_AFTER_ID',
@@ -2348,7 +2372,7 @@ export async function handleDocumentTools(
         content: title,
         level: containerLevel,
         parentId,
-        afterId: afterId as string | undefined,
+        afterId: (afterId ?? tailId) as string | undefined,
         conversationId,
         toolCallId,
       });
@@ -2444,6 +2468,7 @@ export async function handleDocumentTools(
         createdPassages.map((passage) => passage.id),
         mode,
       );
+      const firstGranularityReview = granularityReviews[0];
 
       return {
         success: true,
@@ -2459,7 +2484,19 @@ export async function handleDocumentTools(
             'Each child is addressable because a future writer may move, replace, compare, annotate, or revise it while preserving neighboring passages.',
           boundarySource: 'writer-supplied semantic boundaries',
           childCount: createdPassages.length,
-          reviews: granularityReviews,
+          reviewCount: granularityReviews.length,
+          reviews: granularityReviews.map((review) => ({
+            nodeId: review.nodeId,
+            title: review.title,
+            structuralBlockCount: review.structuralBlockCount,
+            candidateSplitLines: review.observed.candidateSplitLines,
+          })),
+          ...(firstGranularityReview
+            ? {
+                reviewMessage: firstGranularityReview.message,
+                reviewNextAction: firstGranularityReview.nextAction,
+              }
+            : {}),
         },
         affectedNodeIds: createdNodeIds,
         affectedEdgeIds: [

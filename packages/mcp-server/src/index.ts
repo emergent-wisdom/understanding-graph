@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { ContextManager } from './context-manager.js';
 import { SERVER_INSTRUCTIONS } from './instructions.js';
+import { isEphemeralPath } from '@emergent-wisdom/understanding-graph-core';
 import { SerialTaskQueue } from './serial-task-queue.js';
 import {
   getToolDefinitions,
@@ -42,6 +43,34 @@ async function handleToolCallWithLogging(
 ): Promise<unknown> {
   // Simple pass-through - commits are tracked via graph_batch commit_message
   return handleToolCall(name, args, contextManager, TOOL_MODE);
+}
+
+/**
+ * Say so, loudly, when the graph is being written somewhere the OS will delete.
+ *
+ * This tool's entire claim is that it is a persistent medium rather than a
+ * scratch buffer, and it will run happily for days against a temp directory
+ * without mentioning it. That happened: two projects and roughly two hundred
+ * nodes were written under /private/tmp across two days, and a routine cleanup
+ * removed them between sessions. The next call re-initialised an empty
+ * database at the same path, so the directory looked intact and held nothing.
+ *
+ * The default is cwd/projects and is fine. The hazard is an explicit
+ * PROJECT_DIR set to somewhere convenient at the start of what was expected to
+ * be a short piece of work — which is precisely when nobody is thinking about
+ * durability. One line at startup is the whole fix, and there was nothing.
+ */
+
+export { isEphemeralPath };
+
+function warnIfEphemeral(projectDir: string): void {
+  if (!isEphemeralPath(projectDir)) return;
+  console.error(
+    `WARNING: the graph is being stored under a temporary directory (${projectDir}). ` +
+      'The operating system deletes these without notice, and a later run will ' +
+      'silently recreate an empty database at the same path. Set PROJECT_DIR to ' +
+      'a durable location before doing work you intend to keep.',
+  );
 }
 
 class UnderstandingGraphServer {
@@ -148,6 +177,7 @@ class UnderstandingGraphServer {
     // Initialize context manager with project directory
     const projectDir = process.env.PROJECT_DIR || `${process.cwd()}/projects`;
     this.contextManager.setProjectDir(projectDir);
+    warnIfEphemeral(projectDir);
 
     // Load all project databases into memory for cross-project queries.
     // initAllDatabases only loads dirs that already contain store.db, so a
@@ -155,12 +185,35 @@ class UnderstandingGraphServer {
     sqlite.initAllDatabases(projectDir);
     let loadedProjects = sqlite.getLoadedProjectIds();
 
-    // Bootstrap a default project so the very first user call doesn't crash
-    // with "no active project". This mirrors the web-server's behavior.
-    // Without this, calling project_switch was a hidden prerequisite for any
-    // mutation, even immediately after `understanding-graph init`.
+    // Project activation is deliberately conditional.
+    //
+    // Auto-activating a project unconditionally removed the only forcing
+    // function that made an agent CHOOSE where its work belongs: with a
+    // project already live, `graph_understand` succeeds immediately and
+    // everything lands in `default`, so unrelated work accumulates in one
+    // store and retrieval gets noisier over time. The guidance to call
+    // project_list() sits ~350 lines into the contract and does not survive
+    // that convenience.
+    //
+    // But we must not reintroduce the original bug either: on a fresh
+    // install the first call crashed with "no active project", making
+    // project_switch a hidden prerequisite.
+    //
+    // So: activate when there is no real choice to make (explicit
+    // DEFAULT_PROJECT, or zero/one project on disk), and stay unset when
+    // several projects exist — there the "No active project" error is the
+    // correct behavior, because it names the decision and how to make it.
+    const explicitDefault = Boolean(process.env.DEFAULT_PROJECT);
     const defaultProject = process.env.DEFAULT_PROJECT || 'default';
-    if (!loadedProjects.includes(defaultProject)) {
+    const shouldAutoActivate = explicitDefault || loadedProjects.length <= 1;
+
+    if (!shouldAutoActivate) {
+      console.error(
+        `Multiple projects present (${loadedProjects.join(', ')}). ` +
+          'Not auto-activating one — call project_switch to choose where ' +
+          'this work belongs.',
+      );
+    } else if (!loadedProjects.includes(defaultProject)) {
       const defaultPath = `${projectDir}/${defaultProject}`;
       try {
         sqlite.initDatabase(defaultPath);
@@ -195,13 +248,15 @@ class UnderstandingGraphServer {
     // in 'default' even when the agent set DEFAULT_PROJECT=foo or when
     // initAllDatabases loaded a non-default project as the only one
     // present.
-    try {
-      await this.contextManager.switchProject(defaultProject);
-    } catch (e) {
-      console.error(
-        `Failed to set ContextManager active project to ${defaultProject}:`,
-        e,
-      );
+    if (shouldAutoActivate) {
+      try {
+        await this.contextManager.switchProject(defaultProject);
+      } catch (e) {
+        console.error(
+          `Failed to set ContextManager active project to ${defaultProject}:`,
+          e,
+        );
+      }
     }
 
     // List available projects on startup

@@ -169,11 +169,17 @@ describe('graph_batch provenance footprint', () => {
         affectedNodeIds: string[];
         affectedEdgeIds: string[];
       }>;
-      reentry?: {
+      navigation?: {
         focusNodeIds: string[];
         suggestedCall: {
           arguments: { workflow: string; focusNodeIds: string[] };
         };
+      };
+      understandingMode?: {
+        protocol: string;
+        mode: string;
+        moment: string;
+        evidence: Record<string, unknown>;
       };
     };
 
@@ -240,7 +246,7 @@ describe('graph_batch provenance footprint', () => {
       ]),
     );
 
-    expect(result.reentry?.focusNodeIds).toEqual(
+    expect(result.navigation?.focusNodeIds).toEqual(
       expect.arrayContaining([
         connectFrom.id,
         connectTo.id,
@@ -252,10 +258,20 @@ describe('graph_batch provenance footprint', () => {
         result.results[3]?.answerId,
       ]),
     );
-    expect(result.reentry?.suggestedCall).toMatchObject({
+    expect(result.navigation?.suggestedCall).toMatchObject({
+      tool: 'graph_suggest_next',
       arguments: {
         workflow: 'writing',
-        focusNodeIds: result.reentry?.focusNodeIds,
+        focusNodeIds: result.navigation?.focusNodeIds,
+      },
+    });
+    expect(result.understandingMode).toMatchObject({
+      protocol: 'fluid-understanding-v1',
+      mode: 'understanding',
+      moment: 'committed',
+      evidence: {
+        workflow: 'writing',
+        reentryFocusNodeIds: result.navigation?.focusNodeIds,
       },
     });
     expect(store.getNode(concept.id)?.metadata).toEqual({

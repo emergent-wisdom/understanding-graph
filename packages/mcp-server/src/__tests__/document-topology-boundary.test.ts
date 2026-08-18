@@ -77,6 +77,7 @@ async function batch(operation: {
   return handleToolCall(
     'graph_batch',
     {
+      agent_name: 'test-agent',
       commit_message: 'Generic graph mutations must not rewrite documents',
       ignoreWarnings: true,
       operations: [operation],

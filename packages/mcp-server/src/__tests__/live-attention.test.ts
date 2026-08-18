@@ -43,6 +43,7 @@ describe('artifact-linked live attention', () => {
     const result = (await handleToolCall(
       'graph_batch',
       {
+        agent_name: 'test-agent',
         commit_message:
           'Start the resolver and preserve the unresolved shadowing choice beside it',
         operations: [
@@ -73,7 +74,7 @@ describe('artifact-linked live attention', () => {
     )) as {
       success: boolean;
       results: Array<{ id: string; edgeId?: string }>;
-      reentry?: {
+      navigation?: {
         focusNodeIds: string[];
         suggestedCall: {
           arguments: Record<string, unknown>;
@@ -87,7 +88,10 @@ describe('artifact-linked live attention', () => {
     const noteEdgeId = result.results[1]?.edgeId;
     expect(rootId).toBeTruthy();
     expect(noteId).toBeTruthy();
-    expect(result.reentry?.focusNodeIds.slice(0, 2)).toEqual([noteId, rootId]);
+    expect(result.navigation?.focusNodeIds.slice(0, 2)).toEqual([
+      noteId,
+      rootId,
+    ]);
 
     const store = getGraphStore();
     expect(store.getNode(noteId)?.metadata).toEqual(
@@ -135,7 +139,11 @@ describe('artifact-linked live attention', () => {
 
     const reentered = (await handleToolCall(
       'graph_understand',
-      result.reentry?.suggestedCall.arguments || {},
+      {
+        query: 'Re-enter the newly recorded provenance concern',
+        workflow: 'coding',
+        focusNodeIds: result.navigation?.focusNodeIds || [],
+      },
       contextManager,
       'coding',
     )) as {
@@ -171,6 +179,7 @@ describe('artifact-linked live attention', () => {
     const result = (await handleToolCall(
       'graph_batch',
       {
+        agent_name: 'test-agent',
         commit_message:
           'Preserve the new question that emerged while re-entering the prior model',
         operations: [
@@ -224,6 +233,7 @@ describe('artifact-linked live attention', () => {
     const result = (await handleToolCall(
       'graph_batch',
       {
+        agent_name: 'test-agent',
         commit_message:
           'Draft the resolver and preserve how the later question challenges its first assumption',
         ignoreWarnings: true,
@@ -315,6 +325,7 @@ describe('artifact-linked live attention', () => {
     const result = (await handleToolCall(
       'graph_batch',
       {
+        agent_name: 'test-agent',
         commit_message:
           'Attempt to capture attention with a relationship whose target is unavailable',
         operations: [
@@ -371,6 +382,7 @@ describe('artifact-linked live attention', () => {
     const result = (await handleToolCall(
       'graph_batch',
       {
+        agent_name: 'test-agent',
         commit_message:
           'Record the compatibility finding and complete its correction atomically',
         operations: [

@@ -11,6 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { getToolDefinitions, handleToolCall } from '../tools/index.js';
+import { docOp } from './support/doc-batch.js';
 
 const PROJECT_ID = 'document-split-test';
 
@@ -38,17 +39,13 @@ afterEach(() => {
 });
 
 async function createRoot(title: string, content: string, fileType: string) {
-  return (await handleToolCall(
-    'doc_create',
-    {
-      title,
-      content,
-      level: 'document',
-      isDocRoot: true,
-      fileType,
-    },
-    contextManager,
-  )) as { id: string };
+  return await docOp<{ id: string }>(contextManager, 'full', 'doc_create', {
+    title,
+    content,
+    level: 'document',
+    isDocRoot: true,
+    fileType,
+  });
 }
 
 async function split(params: Record<string, unknown>): Promise<{
@@ -127,6 +124,7 @@ describe('batch-only doc_split', () => {
       '    total: int',
     ].join('\n');
     const root = await createRoot('models.py', source, 'py');
+    const commitsBefore = sqlite.getRecentCommits().length;
 
     const result = await split({
       nodeId: root.id,
@@ -158,8 +156,12 @@ describe('batch-only doc_split', () => {
       'WindowSummary',
     ]);
 
-    expect(sqlite.getRecentCommits()).toHaveLength(1);
-    expect(sqlite.getCommitForNode(root.id)?.message).toBe(
+    expect(sqlite.getRecentCommits().length - commitsBefore).toBe(1);
+    // The root carries its own creation commit now that creating it goes
+    // through graph_batch, so the split's commit is read from a node the
+    // split actually produced.
+    const [firstUnit] = store.getChildren(root.id);
+    expect(sqlite.getCommitForNode(firstUnit.id)?.message).toBe(
       'Split one coherent document unit into ordered children',
     );
     for (const section of splitResult?.sections ?? []) {
@@ -410,6 +412,7 @@ describe('batch-only doc_split', () => {
 
   it('rejects occupied nodes and obsolete split modes without changing topology', async () => {
     const root = await createRoot('occupied.py', 'ROOT = 1', 'py');
+    const commitsBefore = sqlite.getRecentCommits().length;
     const child = getGraphStore().createDocumentNode({
       title: 'Existing unit',
       content: 'EXISTING = 1',
@@ -455,7 +458,7 @@ describe('batch-only doc_split', () => {
         .edges.map((edge) => edge.id)
         .sort(),
     ).toEqual(edgesBefore);
-    expect(sqlite.getRecentCommits()).toHaveLength(0);
+    expect(sqlite.getRecentCommits().length - commitsBefore).toBe(0);
   });
 
   it('rejects invalid modes, boundaries, one-section results, and reserved blocks without mutation', async () => {
@@ -469,6 +472,7 @@ describe('batch-only doc_split', () => {
       '# Only\nbody',
       'md',
     );
+    const commitsBefore = sqlite.getRecentCommits().length;
     const nodesBefore = getGraphStore()
       .getAll()
       .nodes.map((node) => node.id)
@@ -528,6 +532,6 @@ describe('batch-only doc_split', () => {
       active: true,
       content: 'private block line one\nprivate block line two',
     });
-    expect(sqlite.getRecentCommits()).toHaveLength(0);
+    expect(sqlite.getRecentCommits().length - commitsBefore).toBe(0);
   });
 });

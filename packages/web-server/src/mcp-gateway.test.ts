@@ -71,6 +71,7 @@ describe('graph-scoped cloud MCP gateway', () => {
     const response = await fetch(`${baseUrl}/api/mcp/tools`);
     expect(response.status).toBe(200);
     const catalog = (await response.json()) as {
+      protocol: string;
       instructions: string;
       tools: Array<{
         name: string;
@@ -82,8 +83,9 @@ describe('graph-scoped cloud MCP gateway', () => {
     };
     const names = new Set(catalog.tools.map((tool) => tool.name));
 
+    expect(catalog.protocol).toBe('fluid-understanding-v1');
     expect(catalog.instructions).toContain(
-      'active medium for **recursive, emergent understanding**',
+      'canonical persistent workspace for substantive work',
     );
     expect(catalog.instructions).toContain(
       'already bound to one authorized graph',
@@ -91,6 +93,8 @@ describe('graph-scoped cloud MCP gateway', () => {
     expect(catalog.instructions).not.toContain('project_switch');
     expect(catalog.instructions).not.toContain('project_list');
     expect(names.has('graph_understand')).toBe(true);
+    expect(names.has('graph_suggest_next')).toBe(true);
+    expect(names.has('graph_random')).toBe(true);
     expect(names.has('doc_create')).toBe(false);
     expect(names.has('doc_get_tree')).toBe(true);
     expect(names.has('graph_batch')).toBe(true);

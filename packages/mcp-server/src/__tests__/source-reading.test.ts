@@ -118,15 +118,27 @@ describe('source reading bootstrap', () => {
     expect(read.hint).toContain('graph_note');
     expect(read.hint).toContain(`learned_from`);
     expect(read.hint).toContain(read.contentNodeId as string);
-    expect(read.hint).toContain('RE-ENTER THIS ENCOUNTER');
-    expect(read.reentry).toMatchObject({
+    expect(read.hint).toContain('PRESERVE THE COMMUNICABLE UNDERSTANDING');
+    expect(read.hint).toContain('ROLL POSSIBLE MOVES');
+    expect(read.navigation).toMatchObject({
       focusNodeIds: [read.contentNodeId],
       suggestedCall: {
-        tool: 'graph_understand',
+        tool: 'graph_suggest_next',
         arguments: {
           workflow: 'reading',
           focusNodeIds: [read.contentNodeId],
         },
+      },
+    });
+    expect(read.understandingMode).toMatchObject({
+      protocol: 'fluid-understanding-v1',
+      mode: 'understanding',
+      moment: 'encountered',
+      evidence: {
+        sourceId,
+        contentNodeId: read.contentNodeId,
+        done: true,
+        workflow: 'reading',
       },
     });
     expect(read.hint).not.toContain('doc_append_thinking');

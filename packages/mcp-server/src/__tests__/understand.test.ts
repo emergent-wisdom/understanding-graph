@@ -10,6 +10,7 @@ import {
 } from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextManager } from '../context-manager.js';
+import { UNDERSTANDING_PROTOCOL_MOVES } from '../protocol.js';
 import { getToolDefinitions, handleToolCall } from '../tools/index.js';
 import { UNDERSTANDING_PROMPT_CONTRACT_VERSION } from '../tools/understand.js';
 
@@ -42,10 +43,20 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-async function understand(query: string, workflow = 'general') {
+async function understand(
+  query: string,
+  workflow = 'general',
+  focusNodeIds?: string[],
+  stance?: string,
+) {
   return (await handleToolCall(
     'graph_understand',
-    { query, workflow },
+    {
+      query,
+      workflow,
+      ...(focusNodeIds ? { focusNodeIds } : {}),
+      ...(stance ? { stance } : {}),
+    },
     contextManager,
   )) as Record<string, unknown>;
 }
@@ -77,7 +88,87 @@ describe('graph_understand contract', () => {
         'writing',
         'general',
       ]);
+      const stance = tool?.inputSchema.properties?.stance as {
+        enum?: string[];
+      };
+      expect(stance.enum).toEqual([
+        'balanced',
+        'deepen',
+        'resist',
+        'connect',
+        'disrupt',
+        'revisit',
+        'test',
+      ]);
     }
+  });
+
+  it('keeps work domain separate from epistemic stance and changes the packet', async () => {
+    const store = getGraphStore();
+    const availableAccount = store.createNode({
+      title: 'Fixed retry collapse',
+      trigger: 'model',
+      why: 'Current account of the failure.',
+      understanding:
+        'Fixed retry timing synchronizes clients and creates a collapse under burst load.',
+    });
+    const counterPressure = store.createNode({
+      title: 'Capacity saturation precedes synchronization',
+      trigger: 'tension',
+      why: 'A competing causal account must stay live.',
+      understanding:
+        'The service was already beyond sustainable capacity before client timing aligned.',
+    });
+    const distantProvocation = store.createNode({
+      title: 'Forest firebreak mosaic',
+      trigger: 'serendipity',
+      why: 'A distant pattern may or may not transfer.',
+      understanding:
+        'Heterogeneous gaps can prevent a locally useful response from propagating globally.',
+    });
+    store.createEdge({
+      fromId: counterPressure.id,
+      toId: availableAccount.id,
+      type: 'contradicts',
+      why: 'The accounts disagree about which condition is causally prior.',
+    });
+
+    const resisted = await understand(
+      'Diagnose the fixed retry collapse',
+      'coding',
+      undefined,
+      'resist',
+    );
+    const disrupted = await understand(
+      'Diagnose the fixed retry collapse',
+      'coding',
+      undefined,
+      'disrupt',
+    );
+    const resistedFrame = resisted.frame as {
+      stanceMaterial?: { nodes: Array<{ id: string }> };
+    };
+    const disruptedFrame = disrupted.frame as {
+      stanceMaterial?: { nodes: Array<{ id: string }> };
+    };
+
+    expect(resisted.workflow).toMatchObject({ resolved: 'coding' });
+    expect(resisted.stance).toBe('resist');
+    expect(
+      resistedFrame.stanceMaterial?.nodes.map((node) => node.id),
+    ).toContain(counterPressure.id);
+    expect(disrupted.workflow).toMatchObject({ resolved: 'coding' });
+    expect(disrupted.stance).toBe('disrupt');
+    expect(disrupted.stanceSource).toBe('explicit');
+    expect(
+      disruptedFrame.stanceMaterial?.nodes.map((node) => node.id),
+    ).toContain(distantProvocation.id);
+    expect(disrupted.prompt).toContain('STANCE: disrupt');
+    expect(disrupted.prompt).toContain(
+      'reject it if it does not survive scrutiny',
+    );
+    expect(disrupted.prompt).toContain('MEDIUM INTEGRITY');
+    expect(disrupted.prompt).toContain('must not become the only copy');
   });
 
   it('surfaces artifact/cognition imbalance during repeated graph re-entry', async () => {
@@ -289,18 +380,67 @@ describe('graph_understand contract', () => {
         }),
       ]),
     );
-    expect(first.prompt).toContain('no_shift and no new');
+    expect(first.prompt).toContain('No shift and no new node are honest');
+    expect(first.prompt).toContain('not a required phase');
     expect(first.prompt).toContain(
-      'preserve every substantive change in understanding',
+      'Preserve all communicable task understanding',
     );
-    expect(first.prompt).toContain('Re-enter the graph repeatedly');
     expect(first.prompt).toContain('Do not transcribe token-level steps');
-    expect(first.prompt).toContain(
-      'Do not claim access to hidden internal reasoning',
+    expect(first.prompt).toContain('never claim access to hidden');
+    expect(first.prompt).toMatch(/never reserved\s+`thinking`/);
+    expect(first.prompt).toContain('top-level `frame` field');
+    expect(first.prompt).not.toContain('<graph_material>');
+    expect(String(first.prompt).split(/\s+/).length).toBeLessThan(850);
+  });
+
+  it('reports machine-readable evidence for a focused re-entry', async () => {
+    const store = getGraphStore();
+    const changed = store.createNode({
+      title: 'Changed retry model',
+      trigger: 'hypothesis',
+      why: 'A runtime result changed the model.',
+      understanding: 'Retries can synchronize under common-mode stress.',
+    });
+    const prior = store.createNode({
+      title: 'Prior resilience assumption',
+      trigger: 'foundation',
+      why: 'This was the earlier operating assumption.',
+      understanding: 'Replica count alone determines resilience.',
+    });
+    const relation = store.createEdge({
+      fromId: changed.id,
+      toId: prior.id,
+      type: 'contradicts',
+      why: 'Common-mode behavior defeats identical replicas together.',
+      explanation: 'Runtime evidence changed the resilience model.',
+    });
+
+    const result = await understand(
+      'Continue after the retry experiment',
+      'coding',
+      [changed.id],
     );
-    expect(first.prompt).toContain(
-      'reserved for a separate synthetic Reader/CMP synthesis mode',
-    );
+
+    expect(result.understandingMode).toEqual({
+      protocol: 'fluid-understanding-v1',
+      mode: 'understanding',
+      medium: 'graph',
+      mediumIntegrity: {
+        artifact: 'graph-canonical',
+        understanding: 'graph-canonical',
+        chat: 'mirror-status-or-question',
+      },
+      moment: 'entered',
+      availableMoves: [...UNDERSTANDING_PROTOCOL_MOVES],
+      process: 'agent-chosen',
+      evidence: expect.objectContaining({
+        workflow: 'coding',
+        status: 'grounded',
+        requestedFocusNodeIds: [changed.id],
+        includedFocusNodeIds: [changed.id],
+        includedFocusRelationIds: [relation.id],
+      }),
+    });
   });
 
   it('keeps contradictory concept nodes on opposite sides of the frame', async () => {

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Understanding Work"
+  short_description: "Develop persistent, fluid understanding"
+  default_prompt: "Use $understanding-work to work on this task through the Understanding Graph."

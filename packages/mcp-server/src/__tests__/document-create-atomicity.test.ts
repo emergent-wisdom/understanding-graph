@@ -91,11 +91,50 @@ function createFixture() {
   return { store, root, first, second, foreignChild };
 }
 
-async function directDocCreate(args: Record<string, unknown>) {
-  return handleToolCall('doc_create', args, contextManager, 'writing');
+interface BatchResult {
+  success: boolean;
+  message?: string;
+  error?: string;
 }
 
-describe('direct MCP doc_create atomicity', () => {
+/**
+ * Run one document operation through graph_batch, the only path that will
+ * remain once the mutating doc_ tools stop being separately advertised.
+ *
+ * The properties under test are unchanged — the operation is refused and
+ * nothing partial is written — but a batch reports refusal by returning
+ * success:false and rolling back, where a direct call threw. Asserting on the
+ * rolled-back snapshot matters more here than before, not less: the rollback
+ * is now doing the work the handler's own validation used to do alone.
+ */
+async function docOp(
+  tool: string,
+  params: Record<string, unknown>,
+): Promise<BatchResult> {
+  return (await handleToolCall(
+    'graph_batch',
+    {
+      agent_name: 'test-agent',
+      commit_message: `Attempt ${tool} against document ordering rules`,
+      operations: [{ tool, params }],
+    },
+    contextManager,
+    'writing',
+  )) as BatchResult;
+}
+
+/** Assert a document operation was refused, optionally for a stated reason. */
+function expectRefused(result: BatchResult, reason?: string) {
+  expect(
+    result.success,
+    'The operation was accepted. It must be refused, and refused atomically.',
+  ).toBe(false);
+  if (reason) {
+    expect(String(result.message ?? result.error)).toContain(reason);
+  }
+}
+
+describe('doc_create atomicity through the checked write path', () => {
   it.each([
     ['a missing sibling', 'missing'],
     ['a sibling under another parent', 'wrong-parent'],
@@ -110,15 +149,15 @@ describe('direct MCP doc_create atomicity', () => {
           : first.id;
     const before = snapshot(root.id);
 
-    await expect(
-      directDocCreate({
+    expectRefused(
+      await docOp('doc_create', {
         title: 'Rejected section',
         content: 'Must not persist.',
         level: 'section',
         parentId: root.id,
         afterId,
       }),
-    ).rejects.toThrow();
+    );
 
     expect(snapshot(root.id)).toEqual(before);
   });
@@ -133,8 +172,8 @@ describe('direct MCP doc_create atomicity', () => {
     });
     const before = snapshot(root.id);
 
-    await expect(
-      directDocCreate({
+    expectRefused(
+      await docOp('doc_create', {
         title: 'Rejected section',
         content: 'Must not persist.',
         level: 'section',
@@ -142,7 +181,8 @@ describe('direct MCP doc_create atomicity', () => {
         afterId: second.id,
         expressesIds: [validConcept.id, 'n_missing_later_concept'],
       }),
-    ).rejects.toThrow('Expressed concept not found or inactive');
+      'Expressed concept not found or inactive',
+    );
 
     expect(snapshot(root.id)).toEqual(before);
   });
@@ -157,36 +197,33 @@ describe('direct MCP doc_create atomicity', () => {
     });
     const before = snapshot(root.id);
 
-    await expect(
-      directDocCreate({
+    expectRefused(
+      await docOp('doc_create', {
         title: 'Unordered direct section',
         content: 'Must not persist.',
         level: 'section',
         parentId: root.id,
       }),
-    ).rejects.toThrow('afterId is required');
+      'afterId',
+    );
     expect(snapshot(root.id)).toEqual(before);
 
-    await expect(
-      handleToolCall(
-        'doc_weave',
-        {
-          title: 'Unordered woven section',
-          content: 'Must not persist either.',
-          level: 'section',
-          parentId: root.id,
-          targetNodeIds: [concept.id],
-          connections: [
-            {
-              nodeId: concept.id,
-              why: 'Would connect the manuscript section to its grounding note.',
-            },
-          ],
-        },
-        contextManager,
-        'writing',
-      ),
-    ).rejects.toThrow('afterId is required');
+    expectRefused(
+      await docOp('doc_weave', {
+        title: 'Unordered woven section',
+        content: 'Must not persist either.',
+        level: 'section',
+        parentId: root.id,
+        targetNodeIds: [concept.id],
+        connections: [
+          {
+            nodeId: concept.id,
+            why: 'Would connect the manuscript section to its grounding note.',
+          },
+        ],
+      }),
+      'afterId',
+    );
     expect(snapshot(root.id)).toEqual(before);
   });
 });

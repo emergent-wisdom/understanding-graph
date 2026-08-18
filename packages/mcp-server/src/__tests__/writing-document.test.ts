@@ -10,6 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
+import { docCall } from './support/doc-batch.js';
 
 let tmpDir: string;
 let contextManager: ContextManager;
@@ -40,7 +41,7 @@ afterEach(() => {
 });
 
 async function createRoot(content: string, summary?: string) {
-  return (await handleToolCall(
+  return (await docCall(
     'doc_create',
     {
       title: 'The Map That Looked Back',
@@ -69,7 +70,7 @@ describe('writing document revisions', () => {
     const causalWhy =
       'The abandoned-promise image became rain repeating the unsent farewell.';
 
-    const woven = (await handleToolCall(
+    const woven = (await docCall(
       'doc_weave',
       {
         parentId: root.id,
@@ -132,7 +133,7 @@ describe('writing document revisions', () => {
   });
 
   it('surfaces a neutral creative-center review on multi-block prose leaves', async () => {
-    const created = (await handleToolCall(
+    const created = (await docCall(
       'doc_create',
       {
         title: 'Two Rooms',
@@ -168,7 +169,7 @@ describe('writing document revisions', () => {
       'If independent passage-level work is plausible',
     );
 
-    const revised = (await handleToolCall(
+    const revised = (await docCall(
       'doc_revise',
       {
         nodeId: created.id,
@@ -212,6 +213,7 @@ describe('writing document revisions', () => {
     const batched = (await handleToolCall(
       'graph_batch',
       {
+        agent_name: 'test-agent',
         commit_message: 'Let the two rooms answer each other',
         ignoreWarnings: true,
         operations: [
@@ -236,7 +238,7 @@ describe('writing document revisions', () => {
   });
 
   it('does not review a single-block leaf, a container, or code', async () => {
-    const root = (await handleToolCall(
+    const root = (await docCall(
       'doc_create',
       {
         title: 'One Center',
@@ -250,7 +252,7 @@ describe('writing document revisions', () => {
     )) as { id: string; granularityReview?: unknown };
     expect(root).not.toHaveProperty('granularityReview');
 
-    const nonWritingRevision = (await handleToolCall(
+    const nonWritingRevision = (await docCall(
       'doc_revise',
       {
         nodeId: root.id,
@@ -262,7 +264,7 @@ describe('writing document revisions', () => {
     )) as { granularityReview?: unknown };
     expect(nonWritingRevision).not.toHaveProperty('granularityReview');
 
-    await handleToolCall(
+    await docCall(
       'doc_create',
       {
         title: 'A held image',
@@ -281,7 +283,7 @@ describe('writing document revisions', () => {
     )) as { granularityReviews: unknown[] };
     expect(read.granularityReviews).toEqual([]);
 
-    const codeRoot = (await handleToolCall(
+    const codeRoot = (await docCall(
       'doc_create',
       {
         title: 'story_helper.py',
@@ -303,7 +305,7 @@ describe('writing document revisions', () => {
       'The map organizes the city.',
     );
 
-    await handleToolCall(
+    await docCall(
       'doc_revise',
       {
         nodeId: root.id,

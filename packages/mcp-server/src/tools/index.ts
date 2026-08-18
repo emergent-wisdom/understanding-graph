@@ -1,4 +1,7 @@
-import { withReservedThinkingVisibility } from '@emergent-wisdom/understanding-graph-core';
+import {
+  sqlite,
+  withReservedThinkingVisibility,
+} from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
 // Import tool handlers
@@ -137,15 +140,16 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
       'graph_discover',
       'graph_discover_grounded',
       'graph_discover_grounded_chaos',
+      'graph_random',
       'graph_chaos',
       'graph_evaluate_variations',
     ].includes(t.name),
   );
-  // Grounded distant-node comparison is the one emergence affordance useful
-  // across ordinary workflows. Keep the more disruptive chaos pipeline in
-  // reading/research/full, where it is deliberately opted into.
+  // Ordinary workflows can compare a grounded random sample or inspect a raw
+  // random sample. Keep the more disruptive chaos pipeline on local full mode.
   const groundedDiscoveryTools = explorationTools.filter(
-    (tool) => tool.name === 'graph_discover_grounded',
+    (tool) =>
+      tool.name === 'graph_discover_grounded' || tool.name === 'graph_random',
   );
 
   // Small reflection surface shared by focused workflows.
@@ -155,6 +159,7 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
       'graph_analyze',
       'graph_semantic_gaps',
       'graph_score',
+      'graph_practice',
       'graph_semantic_search',
       'graph_similar',
       'graph_find_by_trigger',
@@ -165,6 +170,7 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
       'project_switch',
       'project_list',
       'graph_centrality',
+      'graph_suggest_next',
       'graph_thermostat',
     ].includes(t.name),
   );
@@ -180,9 +186,12 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
   );
 
   // Ordinary reading may revise reading artifacts, but synthetic Reader/CMP
-  // block creation, signing, and translation live in their own mode.
-  const readingDocumentTools = documentTools.filter((t) =>
-    ['doc_revise'].includes(t.name),
+  // block creation, signing, and translation live in their own mode. The
+  // batch-only check applies here too: this list names what reading may reach,
+  // not an exemption from how it must be reached.
+  const readingDocumentTools = documentTools.filter(
+    (t) =>
+      ['doc_revise'].includes(t.name) && !batchOnlyDocumentToolNames.has(t.name),
   );
 
   // Concept tools needed for reading (read-only metadata access)
@@ -309,7 +318,11 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
   if (mode === 'synthetic_reader') {
     return [
       ...understandingTools,
-      ...coreReflection.filter((tool) => tool.name !== 'graph_thermostat'),
+      ...coreReflection.filter(
+        (tool) =>
+          tool.name !== 'graph_thermostat' &&
+          tool.name !== 'graph_suggest_next',
+      ),
       ...batchTools,
       ...coreSourceTools,
       ...syntheticReaderDocumentTools,
@@ -342,10 +355,103 @@ export async function handleToolCall(
   mode: ToolMode = 'full',
   internal = false,
 ): Promise<unknown> {
-  return withReservedThinkingVisibility(mode === 'synthetic_reader', () =>
-    handleToolCallInVisibility(name, args, contextManager, mode, internal),
-  );
+  const startedAt = Date.now();
+  try {
+    const result = await withReservedThinkingVisibility(
+      mode === 'synthetic_reader',
+      () =>
+        handleToolCallInVisibility(name, args, contextManager, mode, internal),
+    );
+    recordToolCall(name, internal, startedAt, refusalIn(result));
+    return result;
+  } catch (error) {
+    recordToolCall(
+      name,
+      internal,
+      startedAt,
+      error instanceof Error ? error.message : String(error),
+    );
+    throw error;
+  }
 }
+
+/**
+ * A refusal that is returned rather than thrown is still a refusal.
+ *
+ * graph_batch reports a rejected write by returning success:false and rolling
+ * back, so it never throws and the recorder logged it as a completed call.
+ * Measured: a refused batch and a successful one were indistinguishable in
+ * tool_calls, which made the write count wrong and hid the single most
+ * informative thing an agent does — the tool saying no. A guard that never
+ * fires is dead weight; one that fires constantly means the tool is fighting
+ * its users, and neither could be seen.
+ */
+function refusalIn(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const payload = result as { success?: unknown; message?: unknown; error?: unknown };
+  if (payload.success !== false) return null;
+  const reason = payload.message ?? payload.error;
+  return typeof reason === 'string' && reason.trim() ? reason : 'refused';
+}
+
+/**
+ * The graph recorded what was written and nothing about what was read.
+ *
+ * Measured on a real project: 122 writes against 6 re-entries and 2 rolled
+ * suggestions — a ratio that had to be reconstructed from files outside the
+ * tool, because tool_calls held zero rows. An ordinary agent has no such
+ * files, so it could not answer "what have I been doing" from its own graph,
+ * and the one axis this distinction turns on — whether the thing is being
+ * re-entered or merely written to — was the invisible one.
+ *
+ * The recording machinery already existed in core, complete with indexes on
+ * session and tool name, and was called only from tests. This wires it.
+ *
+ * Arguments are deliberately NOT stored: they carry the full text of every
+ * node written, which would double the database to answer a question about
+ * counts. Nested batch operations are skipped so a batch reads as one write
+ * rather than as its twenty parts, and recording never throws — a failure to
+ * log must not fail the call it is logging.
+ */
+function recordToolCall(
+  name: string,
+  internal: boolean,
+  startedAt: number,
+  error: string | null,
+): void {
+  if (internal) return;
+  const entry = {
+    sessionId: MCP_SESSION_ID,
+    toolName: name,
+    arguments: {},
+    durationMs: Date.now() - startedAt,
+    error,
+  };
+  try {
+    sqlite.logToolCall(entry);
+  } catch {
+    // tool_calls.session_id is a foreign key onto conversations, so the very
+    // first call against a given database has nothing to point at. Seed the
+    // session row and retry rather than caching which projects were seeded:
+    // a cache keyed by project id goes stale the moment a project's database
+    // is re-created under a running server, and because this path must
+    // swallow its own failures, stale would mean recording stops silently and
+    // permanently.
+    try {
+      sqlite.saveConversation(MCP_SESSION_ID, `MCP session ${MCP_SESSION_ID}`);
+      sqlite.logToolCall(entry);
+    } catch {
+      // Never let bookkeeping break the operation it is bookkeeping.
+    }
+  }
+}
+
+/**
+ * One session is one server process, which is what makes getToolCallsBySession
+ * answer a question worth asking: what did THIS working period do, rather than
+ * what has this project accumulated over its lifetime.
+ */
+const MCP_SESSION_ID = `c_mcp_${process.pid.toString(36)}`;
 
 async function handleToolCallInVisibility(
   name: string,
@@ -419,6 +525,7 @@ async function handleToolCallInVisibility(
     name === 'graph_semantic_search' ||
     name === 'graph_backfill_embeddings' ||
     name === 'graph_embedding_stats' ||
+    name === 'graph_suggest_next' ||
     name === 'graph_thermostat' ||
     name === 'graph_bulk_replace' ||
     // New revision/query tools
@@ -430,7 +537,8 @@ async function handleToolCallInVisibility(
     name === 'graph_purge' ||
     name === 'graph_resolve_references' ||
     name === 'graph_global_lookup' ||
-    name === 'graph_score'
+    name === 'graph_score' ||
+    name === 'graph_practice'
   ) {
     return handleReflectionTools(name, args, contextManager);
   }

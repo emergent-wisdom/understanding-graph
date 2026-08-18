@@ -13,6 +13,7 @@ import { sqlite } from '@emergent-wisdom/understanding-graph-core';
 import cors from 'cors';
 import express from 'express';
 import { createApiSerializationMiddleware } from './api-serialization.js';
+import { MESSAGES_WIDGET, createMessagesRouter } from './routes/messages.js';
 import { createMcpGatewayRouter, MCP_JSON_BODY_LIMIT } from './mcp-gateway.js';
 import { createRestMutationFirewall } from './mutation-firewall.js';
 import { conversationRouter } from './routes/conversations.js';
@@ -58,7 +59,10 @@ app.use('/api', createApiSerializationMiddleware());
 // package.
 const FRONTEND_DIR =
   process.env.UG_FRONTEND_DIR || path.join(__dirname, '../../frontend/dist');
-app.use(express.static(FRONTEND_DIR));
+// index:false so directory requests fall through to the SPA catch-all below,
+// which injects the message panel. Without this, express.static answers "/"
+// directly and the panel never reaches the page.
+app.use(express.static(FRONTEND_DIR, { index: false }));
 
 // Store current project in app.locals
 app.locals.projectId = 'default';
@@ -96,6 +100,13 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// The human write path, mounted BEFORE the firewall. It is the one
+// deliberate exception: narrow by construction (it can only create a
+// message), so a person can speak to an agent working asynchronously
+// without reopening arbitrary REST mutation.
+app.use('/api', createMessagesRouter(PROJECT_DIR));
+app.get('/messages', (_req, res) => res.redirect('/api/messages-ui'));
+
 // Block REST mutations - all writes should go through MCP. Set
 // ALLOW_REST_MUTATIONS=true only for deliberate local testing without MCP.
 app.use(createRestMutationFirewall());
@@ -121,9 +132,23 @@ app.get('/.well-known/mcp/server.json', (_req, res) => {
   res.status(404).json({ error: 'server.json not found' });
 });
 
-// Catch-all for SPA
+// Catch-all for SPA. The message panel is injected here rather than built
+// into the React app so the frontend bundle needs no rebuild to gain it, and
+// so it stays available even when serving a prebuilt frontend from npm.
 app.get('*', (_req, res) => {
-  res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
+  const indexPath = path.join(FRONTEND_DIR, 'index.html');
+  try {
+    const html = fs.readFileSync(indexPath, 'utf8');
+    return res
+      .type('html')
+      .send(
+        html.includes('</body>')
+          ? html.replace('</body>', `${MESSAGES_WIDGET}</body>`)
+          : html + MESSAGES_WIDGET,
+      );
+  } catch {
+    return res.sendFile(indexPath);
+  }
 });
 
 // Error handler
@@ -146,25 +171,54 @@ function start() {
   const projectPath = path.join(PROJECT_DIR, defaultProject);
 
   try {
-    // Ensure default project exists (bootstrap if wiped)
-    if (!fs.existsSync(projectPath)) {
-      console.log(
-        `Default project not found. Bootstrapping at: ${projectPath}`,
-      );
-      fs.mkdirSync(projectPath, { recursive: true });
+    // The viewer always opens on something. Unlike the MCP server — which
+    // deliberately declines to pick when an agent must choose where its work
+    // belongs — a human here is reading, not writing (REST mutations are
+    // firewalled), so an empty screen is only ever a failure.
+    //
+    // The trap is bootstrapping an empty `default` while real projects sit
+    // next to it: the UI then shows a blank canvas over a populated store,
+    // which reads as "the tool is broken". Prefer a project with data.
+    let activeProject = defaultProject;
+    let activePath = projectPath;
+
+    if (!fs.existsSync(path.join(projectPath, 'store.db'))) {
+      const populated = fs
+        .readdirSync(PROJECT_DIR, { withFileTypes: true })
+        .filter(
+          (d) =>
+            d.isDirectory() &&
+            fs.existsSync(path.join(PROJECT_DIR, d.name, 'store.db')),
+        )
+        .map((d) => d.name)
+        .sort();
+
+      if (populated.length > 0) {
+        activeProject = populated[0];
+        activePath = path.join(PROJECT_DIR, activeProject);
+        console.log(
+          `No "${defaultProject}" store found; opening "${activeProject}" ` +
+            `(${populated.length} project(s) with data).`,
+        );
+      } else if (!fs.existsSync(projectPath)) {
+        console.log(
+          `Default project not found. Bootstrapping at: ${projectPath}`,
+        );
+        fs.mkdirSync(projectPath, { recursive: true });
+      }
     }
 
-    sqlite.initDatabase(projectPath);
-    sqlite.setCurrentProject(defaultProject);
-    app.locals.projectId = defaultProject;
-    console.log(`Loaded default project: ${defaultProject}`);
+    sqlite.initDatabase(activePath);
+    sqlite.setCurrentProject(activeProject);
+    app.locals.projectId = activeProject;
+    console.log(`Loaded project: ${activeProject}`);
   } catch (e) {
-    console.log('Failed to load/bootstrap default project:', e);
+    console.log('Failed to load/bootstrap project:', e);
   }
 
   app.listen(PORT, HOST, () => {
     console.log(
-      `Understanding Graph v2 Web Server running on http://${HOST}:${PORT}`,
+      `Understanding Graph running on http://${HOST}:${PORT}`,
     );
     console.log(`Project directory: ${PROJECT_DIR}`);
     console.log(`Frontend directory: ${FRONTEND_DIR}`);

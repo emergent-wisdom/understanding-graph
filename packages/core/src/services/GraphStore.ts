@@ -537,7 +537,9 @@ export class GraphStore {
         );
       }
     } else {
-      // Concept node validation
+      // Concept node validation. `why` is required here on purpose: it was
+      // relaxed briefly and every node authored while it was optional skipped
+      // it, so optionality is a slow leak rather than a neutral default.
       const missing = [];
       if (!input.title) missing.push('title');
       if (!input.trigger) missing.push('trigger');

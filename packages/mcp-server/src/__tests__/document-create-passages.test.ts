@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
+import { docBatch, docOp } from './support/doc-batch.js';
 
 const PROJECT_ID = 'document-create-passages-test';
 
@@ -36,18 +37,13 @@ afterEach(() => {
 });
 
 async function createStoryRoot() {
-  return (await handleToolCall(
-    'doc_create',
-    {
-      title: 'story.md',
-      content: '# The Borrowed Horizon',
-      level: 'document',
-      isDocRoot: true,
-      fileType: 'md',
-    },
-    contextManager,
-    'writing',
-  )) as { id: string };
+  return await docOp<{ id: string }>(contextManager, 'writing', 'doc_create', {
+    title: 'story.md',
+    content: '# The Borrowed Horizon',
+    level: 'document',
+    isDocRoot: true,
+    fileType: 'md',
+  });
 }
 
 async function createPassages(params: Record<string, unknown>): Promise<{
@@ -181,6 +177,7 @@ describe('batch-only doc_create_passages', () => {
     expect(created?.granularityContext).toMatchObject({
       boundarySource: 'writer-supplied semantic boundaries',
       childCount: 3,
+      reviewCount: 0,
     });
     expect(created?.granularityContext.criterion).toContain(
       'move, replace, compare, annotate, or revise',
@@ -241,6 +238,7 @@ describe('batch-only doc_create_passages', () => {
   it('validates every inspiration endpoint before creating any passage structure', async () => {
     const root = await createStoryRoot();
     const before = getGraphStore().getAll();
+    const commitsBefore = sqlite.getRecentCommits().map((c) => c.id);
 
     const result = await createPassages({
       parentId: root.id,
@@ -276,7 +274,7 @@ describe('batch-only doc_create_passages', () => {
     expect(after.edges.map((edge) => edge.id)).toEqual(
       before.edges.map((edge) => edge.id),
     );
-    expect(sqlite.getRecentCommits()).toEqual([]);
+    expect(sqlite.getRecentCommits().map((c) => c.id)).toEqual(commitsBefore);
   });
 
   it('renders consecutive sentence leaves as prose without their semantic graph titles', async () => {
@@ -321,9 +319,51 @@ describe('batch-only doc_create_passages', () => {
     expect(manuscript).not.toContain('Recognition turns to dread');
   });
 
+  it('accepts a semantic scene alias and appends to the current tail by default', async () => {
+    const root = await createStoryRoot();
+    const first = await createPassages({
+      parentId: root.id,
+      title: 'First Scene',
+      containerLevel: 'scene',
+      passages: [
+        {
+          title: 'First scene passage',
+          content: 'Mara entered the chamber.',
+          level: 'paragraph',
+        },
+      ],
+    });
+    expect(first.success, JSON.stringify(first, null, 2)).toBe(true);
+
+    const second = await createPassages({
+      parentId: root.id,
+      title: 'Second Scene',
+      containerLevel: 'scene',
+      passages: [
+        {
+          title: 'Second scene passage',
+          content: 'The chamber answered.',
+          level: 'paragraph',
+        },
+      ],
+    });
+    expect(second.success, JSON.stringify(second, null, 2)).toBe(true);
+
+    const containers = getGraphStore().getChildren(root.id);
+    expect(containers.map((node) => node.title)).toEqual([
+      'First Scene',
+      'Second Scene',
+    ]);
+    expect(containers.map((node) => node.level)).toEqual([
+      'section',
+      'section',
+    ]);
+  });
+
   it('rolls the entire passage structure back when a later batch operation fails', async () => {
     const root = await createStoryRoot();
     const before = getGraphStore().getAll();
+    const commitsBefore = sqlite.getRecentCommits().map((c) => c.id);
 
     const result = (await handleToolCall(
       'graph_batch',
@@ -376,6 +416,6 @@ describe('batch-only doc_create_passages', () => {
     expect(after.edges.map((edge) => edge.id)).toEqual(
       before.edges.map((edge) => edge.id),
     );
-    expect(sqlite.getRecentCommits()).toEqual([]);
+    expect(sqlite.getRecentCommits().map((c) => c.id)).toEqual(commitsBefore);
   });
 });

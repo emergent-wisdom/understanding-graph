@@ -112,7 +112,13 @@ PARAMETERS:
         },
         why: {
           type: 'string',
-          description: 'Why this concept matters or why you are adding it',
+          description:
+            'REQUIRED. One line naming what this node DOES to the understanding around it — what it corrects, reframes, opens, settles, or contradicts. Not a restatement of the title and not a precis of the understanding: state the role. From practice: "Corrects my own earlier recommendation with a sharper mechanism", "Self-observation that contradicts the flattering reading of my own metrics", "Reframes my own diagnosis from a missing action to a degraded operation". If no honest role can be named, that is a signal the node may not be worth creating on its own.',
+        },
+        attend: {
+          type: 'string',
+          description:
+            'Optional forward-looking pointer: what a later instance should attend to DIFFERENTLY because of this — an assumption now worth testing, a place the next reader should look, a question this opens. Not a summary of the understanding above; it is addressed to a future instance, not to the record. Supplying it marks this node as open live attention. Note the current limit: automatic resurfacing only happens for a node with a learned_from edge to a visible document, so on a concept with no artifact link this is recorded and readable but will not resurface on its own. Leave empty when nothing downstream should change.',
         },
         understanding: {
           type: 'string',
@@ -565,6 +571,14 @@ export async function handleConceptTools(
       const skipCheck = args.skipDuplicateCheck === true;
       const trigger = args.trigger as TriggerType;
       const why = args.why as string;
+      const attend = String(args.attend || '').trim();
+      // Live attention is opt-in via `attend`: it is what makes the pointer
+      // re-readable rather than write-only. Open attention is only ever
+      // filtered out once resolved, so this adds a resurfacing hook without
+      // reweighting ordinary retrieval.
+      const conceptMetadata = attend
+        ? { attend, liveAttention: true, attentionStatus: 'open' }
+        : undefined;
       const references = args.references as
         | Array<{
             project?: string;
@@ -574,7 +588,16 @@ export async function handleConceptTools(
           }>
         | undefined;
 
-      // Validate required fields with clear error messages
+      // `why` is required, and the measurement that settled it is worth
+      // keeping: it was made optional for roughly forty minutes, and every
+      // node authored in that window skipped it — by an agent who had just
+      // designed the field and was watching for this exact effect. The
+      // premise for relaxing it (that it merely restates the title) did not
+      // survive the data either: the whys already in the graph name what a
+      // node does to the understanding around it, which nothing else records.
+      // A required field is a forcing function, and an optional one is a slow
+      // leak. `attend` is the optional forward-looking companion, not a
+      // replacement.
       const missing: string[] = [];
       if (!conceptName) missing.push('title');
       if (!trigger) missing.push('trigger');
@@ -592,7 +615,7 @@ export async function handleConceptTools(
             why: why || '(missing)',
             understanding: understanding ? '(provided)' : '(missing)',
           },
-          hint: 'All concept nodes must have title, trigger, why, and understanding.',
+          hint: 'Every concept node needs title, trigger, why, and understanding. why is one line naming what this node does to the understanding around it. attend is optional and points forward.',
         };
       }
 
@@ -695,6 +718,7 @@ export async function handleConceptTools(
                 conversationId,
                 toolCallId,
                 references,
+                metadata: conceptMetadata,
               });
 
               return {
@@ -730,6 +754,7 @@ export async function handleConceptTools(
         conversationId,
         toolCallId,
         references,
+        metadata: conceptMetadata,
       });
 
       return {

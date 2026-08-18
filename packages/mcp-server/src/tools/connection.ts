@@ -204,6 +204,46 @@ export async function handleConnectionTools(
 
   switch (name) {
     case 'graph_connect': {
+      // `relation` is the free-text explanation; `type` is the edge category.
+      // Passing an edge type as `relation` used to succeed silently: the edge
+      // became a generic `relates` and the intended semantics ended up buried
+      // in a text field. That is worse than an error — the value of the graph
+      // is in typed relations, and nothing surfaced that they had been lost.
+      if (
+        !args.type &&
+        typeof args.relation === 'string' &&
+        (EDGE_TYPES as readonly string[]).includes(args.relation)
+      ) {
+        return {
+          success: false,
+          error: 'INVALID_PARAMETER',
+          message:
+            `You passed "${args.relation}" as "relation", but "relation" is ` +
+            'the free-text explanation. The edge category goes in "type" — ' +
+            'without it this edge would silently have become "relates".',
+          hint: `Please retry with type: "${args.relation}"`,
+        };
+      }
+
+      // `why` is listed in this tool's required schema, but nothing enforced
+      // it: graph_batch — the only write path — calls handlers directly, so a
+      // schema `required` never runs. An edge is exactly where the question is
+      // worth answering, because the answer is not a restatement of either
+      // endpoint: it says what following the link buys a later instance. That
+      // is why `why` became optional on nodes and stays mandatory here.
+      if (!String(args.why || '').trim()) {
+        return {
+          success: false,
+          error: 'MISSING_REQUIRED_FIELDS',
+          message:
+            'graph_connect requires "why": what does following this edge tell ' +
+            'a later instance that reading either node alone would not?',
+          hint:
+            'An edge without why is a line on a picture. If no answer exists, ' +
+            'the relationship probably should not be recorded.',
+        };
+      }
+
       // Check for common parameter mistakes
       if (!args.type && args.edgeType) {
         return {
@@ -238,6 +278,41 @@ export async function handleConnectionTools(
       );
 
       const store = getGraphStore();
+
+      // An edge landing on a prediction is a verdict, and a verdict has a
+      // sign. Typed `answers`, it records that the question was settled but
+      // not how it came out, so refutation and confirmation become
+      // indistinguishable in the structure and the outcome survives only in
+      // prose — where nothing can count it.
+      //
+      // The tool description already says this, under its own PREDICTIVE
+      // heading, naming both validates and invalidates. It was read and
+      // ignored six times in a row by an agent who had just written about
+      // typed edges making influence inspectable. That is the whole argument
+      // for making it a refusal instead of a sentence: advice this specific
+      // did not move behaviour, and the failing batch does.
+      const targetNode = store.getNode(toResolved.id);
+      const VERDICT_TYPES = ['validates', 'invalidates', 'contradicts'];
+      const requestedType = (args.type as string) || 'relates';
+      if (
+        targetNode?.trigger === 'prediction' &&
+        !VERDICT_TYPES.includes(requestedType)
+      ) {
+        return {
+          success: false,
+          error: 'UNSIGNED_VERDICT',
+          message:
+            `This edge points at a prediction ("${targetNode.title}") but is ` +
+            `typed "${requestedType}", which does not say how the prediction ` +
+            'turned out. A verdict must carry its sign in the type, not only ' +
+            'in the why.',
+          hint:
+            'Use "validates" if the evidence upheld the prediction, ' +
+            '"invalidates" or "contradicts" if it overturned it. Where a ' +
+            'prediction split by clause, record one edge per sign.',
+        };
+      }
+
       rejectGenericDocumentStructureMutation({
         requestedType: args.type as string | undefined,
         authorized: hasAtomicDocumentRewireCapability(args),

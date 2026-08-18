@@ -33,15 +33,25 @@ async function getEmbeddingPipeline(): Promise<any> {
       const transformers = await import('@xenova/transformers');
       pipeline = transformers.pipeline;
     } catch (err) {
+      // Lead with the real error, not with a guess about its cause. This
+      // message used to assert the peer dependency "is not installed" for
+      // every failure. It was installed; a broken native dependency of its
+      // own (sharp, for the wrong platform) was the actual fault, and the
+      // truth was appended at the tail where it went unread. A confident
+      // wrong headline costs more than no diagnosis: it sends the reader to
+      // reinstall a package that is already there.
       const reason = err instanceof Error ? err.message : String(err);
       throw new Error(
         'Embedding features (graph_semantic_search, graph_similar, ' +
-          'graph_semantic_gaps, graph_backfill_embeddings) require the optional ' +
-          '@xenova/transformers peer dependency, which is not installed. ' +
-          'Install it with:  npm install @xenova/transformers  (or  npm install -g @xenova/transformers  ' +
-          'if you launched understanding-graph via npx). For keyword-only search without embeddings, ' +
-          'use graph_search_metadata or graph_find_by_trigger instead. ' +
-          `Original import error: ${reason}`,
+          'graph_semantic_gaps, graph_backfill_embeddings) could not load the ' +
+          `optional @xenova/transformers peer dependency. Load error: ${reason}. ` +
+          'If the package is genuinely missing, install it with:  npm install ' +
+          '@xenova/transformers  (or  npm install -g @xenova/transformers  if you ' +
+          'launched understanding-graph via npx). If it is already installed, the ' +
+          'fault is usually one of ITS native dependencies built for another ' +
+          'platform — check the load error above before reinstalling anything. ' +
+          'For keyword-only search meanwhile, use graph_search_metadata or ' +
+          'graph_find_by_trigger.',
       );
     }
   }

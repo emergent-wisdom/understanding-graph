@@ -8,6 +8,7 @@ import {
   handleToolCall,
   SERVER_INSTRUCTIONS,
   SerialTaskQueue,
+  UNDERSTANDING_PROTOCOL_ID,
 } from '@emergent-wisdom/understanding-graph-mcp-server';
 import { Router } from 'express';
 
@@ -56,9 +57,11 @@ export const CLOUD_SAFE_TOOL_NAMES = [
   'graph_history',
   'graph_similar',
   'graph_semantic_search',
+  'graph_suggest_next',
   'graph_thermostat',
   'graph_batch',
   'graph_discover_grounded',
+  'graph_random',
   'source_load',
   'source_read',
   'source_position',
@@ -189,7 +192,11 @@ export function createMcpGatewayRouter({ projectDir }: McpGatewayOptions) {
   contextManager.setProjectDir(projectDir);
 
   router.get('/tools', (_req, res) => {
-    res.json({ instructions: CLOUD_INSTRUCTIONS, tools });
+    res.json({
+      protocol: UNDERSTANDING_PROTOCOL_ID,
+      instructions: CLOUD_INSTRUCTIONS,
+      tools,
+    });
   });
 
   router.post('/call', async (req, res) => {

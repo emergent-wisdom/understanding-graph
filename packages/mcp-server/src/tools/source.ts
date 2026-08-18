@@ -15,6 +15,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
 import type { ContextManager } from '../context-manager.js';
 import { MODE_PROTOCOLS } from '../instructions.js';
+import { understandingMode } from '../protocol.js';
 import { handleBatchTools } from './batch.js';
 import type { ToolMode } from './index.js';
 
@@ -555,13 +556,14 @@ export async function handleSourceTools(
         // pretraining-production mode.
         const hint = `Content node created: ${contentNodeId}
 
-RE-ENTER THIS ENCOUNTER BEFORE CONTINUING WHEN IT COULD CHANGE THE INQUIRY:
-  graph_understand({ query: ${JSON.stringify(`Continue understanding ${sourceBeforeRead.title} after this passage`)}, workflow: "${understandingWorkflow}", focusNodeIds: ["${contentNodeId}"] })
-
-TO PRESERVE THIS ENCOUNTER WHEN IT WILL HELP CONTINUATION:
+PRESERVE THE COMMUNICABLE UNDERSTANDING THIS PASSAGE PRODUCED:
   In one graph_batch, use graph_note({ about: "${contentNodeId}", testimony, trigger, relations? }).
-  It creates learned_from automatically. Preserve attention, evidence, uncertainty,
-  and what later reading could test; do not manufacture a belief shift or quota note.
+  It creates learned_from automatically. Preserve questions, interpretations,
+  alternatives, evidence, uncertainty, and what later reading could test. Do not
+  manufacture content merely to demonstrate activity.
+
+AT THE NEXT REAL CHOICE POINT, ROLL POSSIBLE MOVES:
+  graph_suggest_next({ task: ${JSON.stringify(`Continue understanding ${sourceBeforeRead.title} after this passage`)}, workflow: "${understandingWorkflow}", focusNodeIds: ["${contentNodeId}"] })
 
 ${
   result.done
@@ -593,17 +595,24 @@ ${sourceVisibilityHint()}`;
           ...(artifactCognitionBalance.advisories.length > 0
             ? { artifactCognitionBalance }
             : {}),
-          reentry: {
+          navigation: {
             focusNodeIds: [contentNodeId],
             suggestedCall: {
-              tool: 'graph_understand',
+              tool: 'graph_suggest_next',
               arguments: {
-                query: `Continue understanding ${sourceBeforeRead.title} after this passage`,
+                task: `Continue understanding ${sourceBeforeRead.title} after this passage`,
                 workflow: understandingWorkflow,
                 focusNodeIds: [contentNodeId],
               },
             },
           },
+          understandingMode: understandingMode('encountered', {
+            sourceId,
+            contentNodeId,
+            position: result.position,
+            done: result.done,
+            workflow: understandingWorkflow,
+          }),
           hint,
         };
       } catch (error) {

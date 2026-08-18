@@ -45,21 +45,32 @@ synthetic Reader/CMP pretraining blocks and is available only in
 hidden from and immutable to ordinary modes; ordinary reading, writing, and
 coding use the other typed cognitive nodes.
 
-## Working loop
+## Understanding mode
 
-1. Call `project_list`, then `project_switch` when a different graph is needed.
-2. Call `graph_understand({ query, workflow })` to retrieve relevant priors,
-   resistance, evidence, and exact typed relations. Treat the returned prompt
-   as provisional orientation, never authority.
-3. Work in the workflow's native evidence surface: chronological source
-   passages for reading; graph document nodes plus generated tests for code;
-   the actual manuscript and rereading for writing.
-4. When something genuinely becomes worth carrying forward, commit the
-   cognitive state and its evidence through one atomic `graph_batch`.
-5. Use `graph_revise` or `graph_supersede` inside later batches when the state
-   changes. Preserve the path rather than silently overwriting it.
+The graph is the working medium, not a log. Preserve all communicable task
+understanding a later instance could use: questions, interpretations,
+alternatives, relations, evidence, reasons, uncertainty, decisions, revisions,
+and artifact intent—not only conclusions. This is authored, user-visible
+testimony, never hidden token-level chain-of-thought.
 
-`graph_understand.workflow` supports `reading`, `coding`,
+At the start and each real choice point, call
+`graph_suggest_next({ task, workflow, focusNodeIds? })`. The server computes
+state- and workflow-dependent pressure, down-weights recently suggested action
+kinds, samples a small set without replacement, and returns only those concrete
+routes with weights and reasons. The model gives higher weights stronger
+consideration, judges fit to the user task, then chooses, combines, modifies,
+rejects, or replaces them. After acting, preserve the resulting understanding
+with exact provenance and ask again only at the next real choice point.
+
+There is no required cognitive state machine. The model may read, search, make,
+test, connect, disrupt, re-enter, revise, preserve, or pause in whatever order
+the work warrants.
+
+Local clients may call `project_list` and `project_switch` before orientation
+when a different graph is needed. Hosted graph connections are already bound
+to one authorized graph and do not expose project switching.
+
+`graph_understand.workflow` supports `reading`, `research`, `coding`,
 `collaborative_coding`, `writing`, and `general` (plus explicit `auto`
 inference).
 
@@ -124,10 +135,14 @@ reserved `thinking` block.
 
 | Tool | Purpose |
 |---|---|
+| `graph_suggest_next` | Sample state-dependent concrete provocations for the model to judge |
 | `graph_understand` | Build a deterministic task-conditioned re-entry packet |
 | `graph_batch` | Apply a committed, atomic set of graph mutations |
 | `graph_skeleton` / `graph_context` | Inspect graph structure and local state |
 | `graph_semantic_search` | Find relevant prior state; lexical fallback works without embeddings |
+| `graph_discover_grounded` | Compare distant graph material; an honest no-connection result is valid |
+| `graph_random` | Sample concrete provocations or run a temporary Physics What-If; preserve only what survives scrutiny |
+| `graph_thermostat` | Legacy graph-state pulse; prefer `graph_suggest_next` |
 | `graph_history` | Inspect commits, agents, and mutation events |
 | `source_load` / `source_read` | Encounter a source chronologically and persist exact passages |
 | `doc_read` / `doc_get_tree` | Navigate graph-native artifacts |
