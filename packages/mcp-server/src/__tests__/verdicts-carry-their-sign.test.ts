@@ -122,7 +122,9 @@ describe('a verdict on a prediction must carry its sign', () => {
         'that the question closed but not how, which makes refutation and ' +
         'confirmation identical in the structure.',
     ).toBe(false);
-    expect(String(result.message ?? result.error)).toContain('UNSIGNED_VERDICT');
+    expect(String(result.message ?? result.error)).toContain(
+      'UNSIGNED_VERDICT',
+    );
   });
 
   it('accepts invalidates when the prediction was overturned', async () => {

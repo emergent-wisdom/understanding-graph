@@ -1631,7 +1631,7 @@ function NodeTab() {
             <>
               <DetailSection
                 label={
-                  node.trigger === 'thinking' && !!node.metadata?.thought_fluid
+                  node.trigger === 'thinking' && node.metadata?.thought_fluid
                     ? 'Graph Mode'
                     : effectiveFileType
                       ? `Content (${effectiveFileType})`

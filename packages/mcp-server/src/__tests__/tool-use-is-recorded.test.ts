@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resetGraphStore, sqlite } from '@emergent-wisdom/understanding-graph-core';
+import {
+  resetGraphStore,
+  sqlite,
+} from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
@@ -111,15 +114,17 @@ async function seed() {
     'graph_batch',
     {
       agent_name: 'test-agent',
-      commit_message: 'Seed two grounded concepts so the recorder has work to log',
+      commit_message:
+        'Seed two grounded concepts so the recorder has work to log',
       operations: SEED,
     },
     contextManager,
     'research',
   )) as BatchResult;
-  expect(result.success, `setup batch failed: ${result.message ?? result.error}`).toBe(
-    true,
-  );
+  expect(
+    result.success,
+    `setup batch failed: ${result.message ?? result.error}`,
+  ).toBe(true);
 }
 
 describe('the graph records that it was read, not only that it was written', () => {
@@ -127,7 +132,10 @@ describe('the graph records that it was read, not only that it was written', () 
     await seed();
     await handleToolCall(
       'graph_understand',
-      { query: 'What does the graph record about its own use?', retrieval: 'lexical' },
+      {
+        query: 'What does the graph record about its own use?',
+        retrieval: 'lexical',
+      },
       contextManager,
       'research',
     );
@@ -195,12 +203,7 @@ describe('the graph records that it was read, not only that it was written', () 
       contextManager,
       'research',
     );
-    await handleToolCall(
-      'graph_analyze',
-      {},
-      contextManager,
-      'research',
-    );
+    await handleToolCall('graph_analyze', {}, contextManager, 'research');
 
     // The whole point: this arithmetic was impossible before, and answering it
     // required files that live outside the tool.

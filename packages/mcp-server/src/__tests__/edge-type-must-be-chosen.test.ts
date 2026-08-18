@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resetGraphStore, sqlite } from '@emergent-wisdom/understanding-graph-core';
+import {
+  resetGraphStore,
+  sqlite,
+} from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
@@ -83,7 +86,8 @@ function pair(edge: Record<string, unknown>) {
         title: FROM,
         trigger: 'analysis',
         why: 'Completes the pair the edge connects',
-        understanding: 'Something that stands in a relation to the claim above.',
+        understanding:
+          'Something that stands in a relation to the claim above.',
       },
     },
     { tool: 'graph_connect', params: { from: FROM, to: TO, ...edge } },

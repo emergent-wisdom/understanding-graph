@@ -52,7 +52,9 @@ describe('only graph_batch may write', () => {
     // Guard against "fixing" the above by removing the batch too.
     for (const mode of ['writing', 'coding', 'full']) {
       const advertised = getToolDefinitions(mode).map((t) => t.name);
-      expect(advertised, `${mode} cannot write at all`).toContain('graph_batch');
+      expect(advertised, `${mode} cannot write at all`).toContain(
+        'graph_batch',
+      );
     }
   });
 

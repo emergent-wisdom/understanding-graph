@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resetGraphStore, sqlite } from '@emergent-wisdom/understanding-graph-core';
+import {
+  resetGraphStore,
+  sqlite,
+} from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
@@ -154,7 +157,10 @@ describe('a retired claim arrives dated', () => {
     // overturned would settle by fiat an argument the graph is holding open.
     await seed('contradicts');
     const claim = (await resistance()).find((n) => n.title === CLAIM);
-    expect(claim, 'the contradicted claim should still be surfaced').toBeDefined();
+    expect(
+      claim,
+      'the contradicted claim should still be surfaced',
+    ).toBeDefined();
     expect(claim?.overturnedBy).toBeUndefined();
   });
 });

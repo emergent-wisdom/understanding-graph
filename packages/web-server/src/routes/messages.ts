@@ -210,10 +210,10 @@ export function createMessagesRouter(_projectDir: string) {
     }
   });
 
-/** Minimal chat surface, served standalone so the SPA needs no rebuild. */
-messagesRouter.get('/messages-ui', (_req, res) => {
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(`<!doctype html><meta charset="utf-8">
+  /** Minimal chat surface, served standalone so the SPA needs no rebuild. */
+  messagesRouter.get('/messages-ui', (_req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!doctype html><meta charset="utf-8">
 <title>Messages</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
@@ -281,7 +281,7 @@ document.getElementById('t').addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
 pull(); setInterval(pull,2000);
 </script>`);
-});
+  });
 
   return messagesRouter;
 }

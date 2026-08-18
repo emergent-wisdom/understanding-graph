@@ -67,7 +67,9 @@ export function getExplicitToolFailure(result: unknown): string | null {
 
   const suggestions = payload.suggestions;
   if (Array.isArray(suggestions)) {
-    const usable = suggestions.filter((s): s is string => typeof s === 'string');
+    const usable = suggestions.filter(
+      (s): s is string => typeof s === 'string',
+    );
     if (usable.length > 0) parts.push(`Try: ${usable.join('; ')}.`);
   }
 

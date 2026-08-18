@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resetGraphStore, sqlite } from '@emergent-wisdom/understanding-graph-core';
+import {
+  resetGraphStore,
+  sqlite,
+} from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
@@ -125,10 +128,10 @@ describe('a document in the batch widens grounding rather than replacing it', ()
   });
 
   it('still accepts them when a document root joins the same batch', async () => {
-    const result = await batch(
-      'The same two concepts plus a document root',
-      [...CONNECTED_CONCEPTS, DOCUMENT],
-    );
+    const result = await batch('The same two concepts plus a document root', [
+      ...CONNECTED_CONCEPTS,
+      DOCUMENT,
+    ]);
     expect(
       result.success,
       'The identical concepts were refused once a doc_create was added. A ' +

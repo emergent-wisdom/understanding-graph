@@ -191,7 +191,8 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
   // not an exemption from how it must be reached.
   const readingDocumentTools = documentTools.filter(
     (t) =>
-      ['doc_revise'].includes(t.name) && !batchOnlyDocumentToolNames.has(t.name),
+      ['doc_revise'].includes(t.name) &&
+      !batchOnlyDocumentToolNames.has(t.name),
   );
 
   // Concept tools needed for reading (read-only metadata access)
@@ -388,7 +389,11 @@ export async function handleToolCall(
  */
 function refusalIn(result: unknown): string | null {
   if (!result || typeof result !== 'object') return null;
-  const payload = result as { success?: unknown; message?: unknown; error?: unknown };
+  const payload = result as {
+    success?: unknown;
+    message?: unknown;
+    error?: unknown;
+  };
   if (payload.success !== false) return null;
   const reason = payload.message ?? payload.error;
   return typeof reason === 'string' && reason.trim() ? reason : 'refused';

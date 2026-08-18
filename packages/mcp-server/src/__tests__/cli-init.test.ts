@@ -58,9 +58,7 @@ describe('understanding-graph init', () => {
         'understanding-graph:fluid-understanding-v1',
       );
       expect(instructions).toContain('Do not wait for the user to name a tool');
-      expect(instructions).toContain(
-        'not merely to write a novel',
-      );
+      expect(instructions).toContain('not merely to write a novel');
     }
     expect(agents).toBe(claude);
     expect(codex).toContain('[mcp_servers.understanding_graph]');

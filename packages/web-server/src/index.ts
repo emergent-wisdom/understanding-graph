@@ -13,12 +13,12 @@ import { sqlite } from '@emergent-wisdom/understanding-graph-core';
 import cors from 'cors';
 import express from 'express';
 import { createApiSerializationMiddleware } from './api-serialization.js';
-import { MESSAGES_WIDGET, createMessagesRouter } from './routes/messages.js';
 import { createMcpGatewayRouter, MCP_JSON_BODY_LIMIT } from './mcp-gateway.js';
 import { createRestMutationFirewall } from './mutation-firewall.js';
 import { conversationRouter } from './routes/conversations.js';
 import { databaseRouter } from './routes/database.js';
 import { graphRouter } from './routes/graph.js';
+import { createMessagesRouter, MESSAGES_WIDGET } from './routes/messages.js';
 import { projectRouter } from './routes/projects.js';
 import { createWorkerAuthMiddleware } from './worker-auth.js';
 
@@ -217,9 +217,7 @@ function start() {
   }
 
   app.listen(PORT, HOST, () => {
-    console.log(
-      `Understanding Graph running on http://${HOST}:${PORT}`,
-    );
+    console.log(`Understanding Graph running on http://${HOST}:${PORT}`);
     console.log(`Project directory: ${PROJECT_DIR}`);
     console.log(`Frontend directory: ${FRONTEND_DIR}`);
     console.log(`Frontend exists: ${fs.existsSync(FRONTEND_DIR)}`);

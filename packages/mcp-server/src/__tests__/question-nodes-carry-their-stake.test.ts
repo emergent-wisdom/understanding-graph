@@ -141,7 +141,7 @@ describe('a question records its stake, not just its wondering', () => {
     expect(message).toContain('why');
   });
 
-  it('accepts a complete question and keeps the caller\'s why', async () => {
+  it("accepts a complete question and keeps the caller's why", async () => {
     const result = await batch(
       'Ask a question with a stake and a reason',
       batchOps(COMPLETE),

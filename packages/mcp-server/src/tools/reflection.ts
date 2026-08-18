@@ -1,9 +1,9 @@
 import {
   AnalysisService,
+  assessPractice,
   ContextService,
   EmbeddingService,
   type GraphStore,
-  assessPractice,
   getGraphStore,
   isProjectLoaded,
   isReservedThinkingNode,
@@ -886,7 +886,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_practice',
     description:
-      'Report how this graph has been WORKED, as distinct from how it is shaped: whether it is re-entered or only written to, whether prose carries the thinking that produced it, whether practices present early have since decayed, whether predictions were ever scored, and whether anything has been overturned. graph_analyze and graph_score answer whether a graph is well formed and cannot answer whether it is doing anything — a graph nobody re-enters scores exactly like one that changes someone\'s mind. Each figure arrives with what it is computed from and what it might indicate. Every one is a proxy for conduct, not a measure of quality, and there is deliberately no total, because a single score becomes a target.',
+      "Report how this graph has been WORKED, as distinct from how it is shaped: whether it is re-entered or only written to, whether prose carries the thinking that produced it, whether practices present early have since decayed, whether predictions were ever scored, and whether anything has been overturned. graph_analyze and graph_score answer whether a graph is well formed and cannot answer whether it is doing anything — a graph nobody re-enters scores exactly like one that changes someone's mind. Each figure arrives with what it is computed from and what it might indicate. Every one is a proxy for conduct, not a measure of quality, and there is deliberately no total, because a single score becomes a target.",
     inputSchema: {
       type: 'object',
       properties: {

@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resetGraphStore, sqlite } from '@emergent-wisdom/understanding-graph-core';
+import {
+  resetGraphStore,
+  sqlite,
+} from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
@@ -103,85 +106,88 @@ async function seedGraphWithDistantCorrection() {
   // satisfies grounding without opening a one-hop path from a deployment seed
   // to the overturned caching claim. Using a resistance-typed edge here would
   // make the test pass for the wrong reason.
-  await batch('Record a claim about caching, overturn it, and add deployment material', [
-    {
-      tool: 'graph_add_concept',
-      params: {
-        title: 'Cache invalidation can be left to expiry alone',
-        trigger: 'hypothesis',
-        why: 'Records the position that later work overturned',
-        // Deliberately over 600 characters: the excerpt budget must have
-        // something to cut, or the truncation assertions pass vacuously.
-        understanding:
-          'An early belief that time-based expiry would be sufficient and that explicit invalidation was unnecessary complexity. ' +
-          'The reasoning ran that a short window bounds staleness, that bounded staleness is acceptable for reads, and that an ' +
-          'explicit invalidation path introduces its own failure modes — a missed invalidation is worse than a brief stale read, ' +
-          'and the machinery to guarantee delivery is substantial. Under steady traffic this held up well enough that nobody ' +
-          'revisited it, and the assumption hardened into something the rest of the design leaned on without ever restating it. ' +
-          'The conclusion that matters, and it arrives last: this was wrong under write bursts, and the whole argument above ' +
-          'should be read as the setup rather than the finding.',
-        attend:
-          'Check the write-burst case before trusting any expiry-based staleness bound.',
+  await batch(
+    'Record a claim about caching, overturn it, and add deployment material',
+    [
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Cache invalidation can be left to expiry alone',
+          trigger: 'hypothesis',
+          why: 'Records the position that later work overturned',
+          // Deliberately over 600 characters: the excerpt budget must have
+          // something to cut, or the truncation assertions pass vacuously.
+          understanding:
+            'An early belief that time-based expiry would be sufficient and that explicit invalidation was unnecessary complexity. ' +
+            'The reasoning ran that a short window bounds staleness, that bounded staleness is acceptable for reads, and that an ' +
+            'explicit invalidation path introduces its own failure modes — a missed invalidation is worse than a brief stale read, ' +
+            'and the machinery to guarantee delivery is substantial. Under steady traffic this held up well enough that nobody ' +
+            'revisited it, and the assumption hardened into something the rest of the design leaned on without ever restating it. ' +
+            'The conclusion that matters, and it arrives last: this was wrong under write bursts, and the whole argument above ' +
+            'should be read as the setup rather than the finding.',
+          attend:
+            'Check the write-burst case before trusting any expiry-based staleness bound.',
+        },
       },
-    },
-    {
-      tool: 'graph_add_concept',
-      params: {
-        title: 'Expiry alone left stale reads under write bursts',
-        trigger: 'surprise',
-        why: 'Overturns the earlier caching position with a measured failure',
-        understanding:
-          'Under write bursts the expiry window was long enough to serve stale reads, so explicit invalidation is required after all.',
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Expiry alone left stale reads under write bursts',
+          trigger: 'surprise',
+          why: 'Overturns the earlier caching position with a measured failure',
+          understanding:
+            'Under write bursts the expiry window was long enough to serve stale reads, so explicit invalidation is required after all.',
+        },
       },
-    },
-    {
-      tool: 'graph_connect',
-      params: {
-        from: 'Expiry alone left stale reads under write bursts',
-        to: 'Cache invalidation can be left to expiry alone',
-        type: 'contradicts',
-        why: 'Following this reaches the belief the measurement overturned, and why expiry was insufficient.',
+      {
+        tool: 'graph_connect',
+        params: {
+          from: 'Expiry alone left stale reads under write bursts',
+          to: 'Cache invalidation can be left to expiry alone',
+          type: 'contradicts',
+          why: 'Following this reaches the belief the measurement overturned, and why expiry was insufficient.',
+        },
       },
-    },
-    {
-      tool: 'graph_add_concept',
-      params: {
-        title: 'Deployment rollout ordering matters for migrations',
-        trigger: 'analysis',
-        why: 'Anchors the deployment topic the query will reach',
-        understanding:
-          'Schema migrations must land before the deployment that depends on them, or the rollout serves errors.',
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Deployment rollout ordering matters for migrations',
+          trigger: 'analysis',
+          why: 'Anchors the deployment topic the query will reach',
+          understanding:
+            'Schema migrations must land before the deployment that depends on them, or the rollout serves errors.',
+        },
       },
-    },
-    {
-      tool: 'graph_add_concept',
-      params: {
-        title: 'Deployment rollback needs a tested path',
-        trigger: 'tension',
-        why: 'Adds a second deployment node so resistance has query-reached candidates',
-        understanding:
-          'A rollback path that has never been exercised is not a rollback path, and deployment confidence rests on it.',
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Deployment rollback needs a tested path',
+          trigger: 'tension',
+          why: 'Adds a second deployment node so resistance has query-reached candidates',
+          understanding:
+            'A rollback path that has never been exercised is not a rollback path, and deployment confidence rests on it.',
+        },
       },
-    },
-    {
-      tool: 'graph_connect',
-      params: {
-        from: 'Deployment rollout ordering matters for migrations',
-        to: 'Expiry alone left stale reads under write bursts',
-        type: 'learned_from',
-        why: 'Following this reaches the staleness measurement that shaped how ordering was thought about here.',
+      {
+        tool: 'graph_connect',
+        params: {
+          from: 'Deployment rollout ordering matters for migrations',
+          to: 'Expiry alone left stale reads under write bursts',
+          type: 'learned_from',
+          why: 'Following this reaches the staleness measurement that shaped how ordering was thought about here.',
+        },
       },
-    },
-    {
-      tool: 'graph_connect',
-      params: {
-        from: 'Deployment rollback needs a tested path',
-        to: 'Deployment rollout ordering matters for migrations',
-        type: 'questions',
-        why: 'Following this reaches the ordering claim that an untested rollback puts in doubt.',
+      {
+        tool: 'graph_connect',
+        params: {
+          from: 'Deployment rollback needs a tested path',
+          to: 'Deployment rollout ordering matters for migrations',
+          type: 'questions',
+          why: 'Following this reaches the ordering claim that an untested rollback puts in doubt.',
+        },
       },
-    },
-  ]);
+    ],
+  );
 }
 
 describe('corrections reach re-entry regardless of the query', () => {
@@ -252,7 +258,7 @@ describe('what re-entry delivers about a correction', () => {
     ).toContain('should be read as the setup rather than the finding');
   });
 
-  it('delivers the correction\'s attend, which is its instruction', async () => {
+  it("delivers the correction's attend, which is its instruction", async () => {
     await seedGraphWithDistantCorrection();
 
     const packet = await understand(
@@ -270,7 +276,6 @@ describe('what re-entry delivers about a correction', () => {
         'the attend is the part addressed to whoever is reading it now.',
     ).toContain('write-burst');
   });
-
 
   it('delivers the role line on the orientation channels', async () => {
     await seedGraphWithDistantCorrection();
@@ -298,9 +303,10 @@ describe('what re-entry delivers about a correction', () => {
 
     // And it must be the role, not the document sentinel.
     for (const node of withRole) {
-      expect(node.why, `"${node.title}" carried the sentinel as a role`).not.toBe(
-        'Document node',
-      );
+      expect(
+        node.why,
+        `"${node.title}" carried the sentinel as a role`,
+      ).not.toBe('Document node');
     }
   });
 

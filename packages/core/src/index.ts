@@ -39,14 +39,6 @@ export {
   updateTextSource,
 } from './database/sqlite.js';
 export * as AnalysisService from './services/AnalysisService.js';
-export {
-  assessPractice,
-  isEphemeralPath,
-} from './services/PracticeService.js';
-export type {
-  PracticeDiagnostic,
-  PracticeReport,
-} from './services/PracticeService.js';
 // Re-export services (now using GraphStore internally)
 export * as ContextService from './services/ContextService.js';
 // DocumentWriter - generates markdown files from document nodes
@@ -76,6 +68,14 @@ export {
   type SemanticSearchResult,
   type SimilarNode,
 } from './services/GraphStore.js';
+export type {
+  PracticeDiagnostic,
+  PracticeReport,
+} from './services/PracticeService.js';
+export {
+  assessPractice,
+  isEphemeralPath,
+} from './services/PracticeService.js';
 export * from './types/index.js';
 // Mode-scoped visibility for reserved synthetic Reader/CMP artifacts.
 export {

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
-import { sqlite } from '@emergent-wisdom/understanding-graph-core';
+import {
+  isEphemeralPath,
+  sqlite,
+} from '@emergent-wisdom/understanding-graph-core';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -9,7 +12,6 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { ContextManager } from './context-manager.js';
 import { SERVER_INSTRUCTIONS } from './instructions.js';
-import { isEphemeralPath } from '@emergent-wisdom/understanding-graph-core';
 import { SerialTaskQueue } from './serial-task-queue.js';
 import {
   getToolDefinitions,

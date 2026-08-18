@@ -83,13 +83,15 @@ describe('the rendered graph agrees with the stored graph', () => {
       title: 'Delivery decides medium from store',
       trigger: 'model',
       why: 'Stands as the claim a later node replaces',
-      understanding: 'An earlier position, kept so its replacement can be read against it.',
+      understanding:
+        'An earlier position, kept so its replacement can be read against it.',
     });
     const newer = store.createNode({
       title: 'The essay already contained that distinction',
       trigger: 'tension',
       why: 'Replaces the earlier claim with the passage that already made it',
-      understanding: 'The distinction was already written, so the later node supersedes the earlier.',
+      understanding:
+        'The distinction was already written, so the later node supersedes the earlier.',
     });
     const edge = store.createEdge({
       fromId: newer.id,
@@ -173,7 +175,12 @@ describe('the rendered graph agrees with the stored graph', () => {
 
     // Lifecycle, cognitive and structural types together: the bug was specific
     // to one category, so a single type would not have caught it.
-    for (const type of ['supersedes', 'refines', 'contradicts', 'learned_from']) {
+    for (const type of [
+      'supersedes',
+      'refines',
+      'contradicts',
+      'learned_from',
+    ]) {
       store.createEdge({
         fromId: first.id,
         toId: second.id,

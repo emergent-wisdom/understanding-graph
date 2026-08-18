@@ -9,7 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
-import { docBatch, docOp } from './support/doc-batch.js';
+import { docOp } from './support/doc-batch.js';
 
 const PROJECT_ID = 'document-create-passages-test';
 

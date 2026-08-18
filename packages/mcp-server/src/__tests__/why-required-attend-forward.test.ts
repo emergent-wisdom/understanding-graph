@@ -125,10 +125,12 @@ function pair(
 describe('why is required on nodes', () => {
   it('rejects a concept that omits why', async () => {
     const ops = pair();
-    // biome-ignore lint/performance/noDelete: exercising an absent key, not a falsy one.
     delete (ops[1].params as Record<string, unknown>).why;
 
-    const result = await batch('Record a correction without naming its role', ops);
+    const result = await batch(
+      'Record a correction without naming its role',
+      ops,
+    );
 
     expect(
       result.success,
@@ -214,7 +216,10 @@ describe('attend points forward without replacing why', () => {
   it('does not mark an ordinary concept as live attention', async () => {
     // Opt-in. If every concept claimed live attention, the signal that
     // something is genuinely unfinished would be worth nothing.
-    const result = await batch('Record a correction with no forward pointer', pair());
+    const result = await batch(
+      'Record a correction with no forward pointer',
+      pair(),
+    );
     expect(result.success).toBe(true);
 
     const store = getGraphStore();
