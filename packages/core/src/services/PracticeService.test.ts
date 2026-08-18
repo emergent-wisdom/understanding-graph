@@ -123,6 +123,57 @@ describe('the agent is told where its graph lives', () => {
   });
 });
 
+describe('the reading shows whether anything changed since last time', () => {
+  it('reports no movement on a first reading', () => {
+    initializeGraph();
+    sqlite.saveConversation('c_practice', 'session');
+    for (let i = 0; i < 4; i++) {
+      sqlite.logToolCall({
+        sessionId: 'c_practice',
+        toolName: 'graph_batch',
+        arguments: {},
+      });
+    }
+    sqlite.logToolCall({
+      sessionId: 'c_practice',
+      toolName: 'graph_understand',
+      arguments: {},
+    });
+
+    // Nothing to compare against yet, so no movement clause is invented.
+    const value = diagnostic('re_entry')?.value ?? '';
+    expect(value).toContain('writes per re-entry');
+    expect(value).not.toContain('since you last read this');
+  });
+
+  it('states movement once the diagnostic has been read before', () => {
+    initializeGraph();
+    sqlite.saveConversation('c_practice', 'session');
+    const call = (toolName: string) =>
+      sqlite.logToolCall({ sessionId: 'c_practice', toolName, arguments: {} });
+
+    call('graph_batch');
+    call('graph_understand');
+    call('graph_practice'); // first reading
+    call('graph_batch');
+    call('graph_batch');
+    call('graph_practice'); // second reading
+
+    // A number that is fresh every time cannot show that nothing changed, so
+    // ignoring it leaves no trace. The direction is not asserted here because
+    // tool_calls timestamps have second resolution and a fast test can land
+    // several rows in one second; what must hold is that the comparison is
+    // made and stated at all.
+    const value = diagnostic('re_entry')?.value ?? '';
+    expect(
+      value,
+      'The reading gave a bare number with no indication of whether it had ' +
+        'moved. An unchanged number then reads exactly like a fresh one, and ' +
+        'ignoring the diagnostic becomes invisible.',
+    ).toContain('since you last read this');
+  });
+});
+
 describe('a guarantee that is not running says so', () => {
   it('reports whether duplicate detection is actually active', () => {
     initializeGraph();

@@ -1648,6 +1648,55 @@ export function getToolCallsBySession(sessionId: string): ToolCall[] {
  * re-entered or only written to was answering "not recorded" while the rows
  * existed, which is the exact failure it was built to detect, one level down.
  */
+/**
+ * Per-tool counts as they stood at the previous call of `sinceTool`.
+ *
+ * A diagnostic that reports a fresh number every time cannot show that nothing
+ * changed. Reading 7.0 twice looks identical to reading it once, so ignoring
+ * the reading is invisible — which is the silent-guard shape, pointed at the
+ * agent by the agent. Recomputing the value as of the previous reading makes
+ * the delta visible, and an unchanged delta is the observable form of "you
+ * read this and did nothing".
+ *
+ * No new storage: tool_calls already carries timestamps, so the earlier state
+ * is derivable rather than something to keep in sync.
+ */
+export function getToolCallCountsAtPreviousCall(
+  sinceTool: string,
+): Record<string, { calls: number; refused: number }> | null {
+  const previous = getDb()
+    .prepare(
+      `SELECT created_at FROM tool_calls
+       WHERE tool_name = ?
+       ORDER BY id DESC
+       LIMIT 1 OFFSET 1`,
+    )
+    .get(sinceTool) as { created_at?: string } | undefined;
+  if (!previous?.created_at) return null;
+
+  const rows = getDb()
+    .prepare(
+      `SELECT tool_name,
+              COUNT(*) as calls,
+              SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) as refused
+       FROM tool_calls WHERE created_at <= ? GROUP BY tool_name`,
+    )
+    .all(previous.created_at) as Array<{
+    tool_name: string;
+    calls: number;
+    refused: number;
+  }>;
+
+  const counts: Record<string, { calls: number; refused: number }> = {};
+  for (const row of rows) {
+    counts[row.tool_name] = {
+      calls: Number(row.calls),
+      refused: Number(row.refused ?? 0),
+    };
+  }
+  return counts;
+}
+
 export function getToolCallCounts(): Record<
   string,
   { calls: number; refused: number }

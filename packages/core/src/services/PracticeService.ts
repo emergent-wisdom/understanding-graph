@@ -92,6 +92,11 @@ export function assessPractice(): PracticeReport {
   });
   const commits = allCommits();
   const callCounts = sqlite.getToolCallCounts();
+  // What this same diagnostic reported last time it was called. A number that
+  // is fresh every reading cannot show that nothing changed, so ignoring it
+  // leaves no trace — the silent-guard shape, aimed by the agent at itself.
+  const previousCounts =
+    sqlite.getToolCallCountsAtPreviousCall('graph_practice');
   const totalCalls = Object.values(callCounts).reduce((a, c) => a + c.calls, 0);
   const totalRefused = Object.values(callCounts).reduce(
     (a, c) => a + c.refused,
@@ -109,6 +114,27 @@ export function assessPractice(): PracticeReport {
   const batches = callCounts.graph_batch ?? { calls: 0, refused: 0 };
   const writes = batches.calls - batches.refused;
   const reEntries = callCounts.graph_understand?.calls ?? 0;
+
+  const writesPerReEntry = (w: number, r: number) =>
+    r === 0 ? null : w / r;
+  const current = writesPerReEntry(writes, reEntries);
+  let movement = '';
+  if (previousCounts) {
+    const pb = previousCounts.graph_batch ?? { calls: 0, refused: 0 };
+    const before = writesPerReEntry(
+      pb.calls - pb.refused,
+      previousCounts.graph_understand?.calls ?? 0,
+    );
+    if (before !== null && current !== null) {
+      const delta = current - before;
+      movement =
+        Math.abs(delta) < 0.05
+          ? ` — unchanged since you last read this (${before.toFixed(1)})`
+          : delta < 0
+            ? ` — down from ${before.toFixed(1)} since you last read this`
+            : ` — UP from ${before.toFixed(1)} since you last read this`;
+    }
+  }
   worked.push({
     key: 're_entry',
     value:
@@ -116,7 +142,7 @@ export function assessPractice(): PracticeReport {
         ? 'not recorded'
         : reEntries === 0
           ? `${writes} writes, no re-entry`
-          : `${(writes / reEntries).toFixed(1)} writes per re-entry`,
+          : `${(writes / reEntries).toFixed(1)} writes per re-entry${movement}`,
     basis: 'tool_calls, this project',
     reading:
       totalCalls === 0
@@ -170,7 +196,88 @@ export function assessPractice(): PracticeReport {
       : 'The embedding model is not loaded, so duplicate detection is skipped silently on every write. Nothing will stop the same understanding being recorded twice under different titles, and no refusal will say so. Three of graph_batch\'s four guarantees still hold; this is the one that does not.',
   });
 
-  // 4. Prose grounding. Passages arrive holding `contains` and `next`, so they
+  // 4. What the understanding says that the artifact does not.
+  //
+  // Everything above measures CONDUCT — whether the graph is re-entered,
+  // whether commits are attributed, whether predictions get scored. None of it
+  // says anything about the thing being built. An agent building an artifact
+  // in here gets no feedback on the artifact, which is the half that matters
+  // to it, and the graph is the only place that could give it: nothing else
+  // knows which unit expresses which decision.
+  //
+  // Two directions, and they mean opposite things. A decision nothing
+  // expresses is understanding that outran the artifact — the interesting
+  // case, because it is usually the newest thinking and the thing most worth
+  // building next. A unit expressing a decision that has since been overturned
+  // is the artifact outrunning the understanding, which is staler and more
+  // dangerous: code that still says what its author no longer believes.
+  const artifactCount = analysis.stats.artifactNodeCount ?? 0;
+  if (artifactCount > 0) {
+    const expressed = new Set(
+      edges
+        .filter((e) => e.type === 'expresses' || e.type === 'inspired_by')
+        .map((e) => e.toId),
+    );
+    const overturnedIds = new Set(
+      edges
+        .filter((e) => e.type === 'invalidates' || e.type === 'supersedes')
+        .map((e) => e.toId),
+    );
+    const DECIDED = new Set([
+      'decision',
+      'model',
+      'foundation',
+      'hypothesis',
+      'tension',
+      'evaluation',
+    ]);
+    const isArtifact = (n: (typeof nodes)[number]) =>
+      Boolean(n.isDocRoot || n.level);
+
+    const unbuilt = nodes.filter(
+      (n) =>
+        !isArtifact(n) &&
+        n.trigger &&
+        DECIDED.has(n.trigger) &&
+        !expressed.has(n.id) &&
+        !overturnedIds.has(n.id),
+    );
+    const stale = edges
+      .filter((e) => e.type === 'expresses' || e.type === 'inspired_by')
+      .filter((e) => overturnedIds.has(e.toId));
+
+    worked.push({
+      key: 'understanding_ahead_of_artifact',
+      value:
+        unbuilt.length === 0
+          ? 'nothing decided is unexpressed'
+          : `${unbuilt.length} decision(s) nothing in the artifact expresses: ${unbuilt
+              .slice(0, 3)
+              .map((n) => `"${n.title}"`)
+              .join(', ')}`,
+      basis:
+        'live decision-shaped concepts with no inbound expresses or inspired_by edge',
+      reading:
+        unbuilt.length === 0
+          ? 'Every standing decision has something in the artifact answering to it.'
+          : 'These are usually the newest thinking, and the most likely candidates for what to build next. Some will be about the work rather than in it, and belong here unexpressed — but a central finding sitting in this list means the artifact has not caught up with what you know.',
+    });
+
+    worked.push({
+      key: 'artifact_ahead_of_understanding',
+      value:
+        stale.length === 0
+          ? 'nothing expresses a retired decision'
+          : `${stale.length} unit(s) still express a decision that was overturned`,
+      basis: 'expresses edges pointing at invalidated or superseded concepts',
+      reading:
+        stale.length === 0
+          ? 'No part of the artifact is still answering to a position that has since been retired.'
+          : 'This is code that says what its author no longer believes. Nothing else can detect it: the compiler cannot know a decision was overturned, and the decision cannot know which code expressed it. Revise the unit or record why it survives the change.',
+    });
+  }
+
+  // 5. Prose grounding. Passages arrive holding `contains` and `next`, so they
   //    can never register as orphans however little thought is attached.
   const documentCount = analysis.stats.artifactNodeCount ?? 0;
   const ungrounded = analysis.stats.ungroundedProseCount ?? 0;
@@ -187,7 +294,7 @@ export function assessPractice(): PracticeReport {
         : 'Ungrounded passages are prose that some thinking probably produced, where the link was never recorded. That state is indistinguishable from genuine thoughtlessness, and orphan prevention cannot see it.',
   });
 
-  // 5. Practice drift. Measured across two real projects: practices adopted at
+  // 6. Practice drift. Measured across two real projects: practices adopted at
   //    the start held at 100 per cent, and every practice retrofitted mid-way
   //    decayed. So the first few commits predict the rest, and the comparison
   //    is worth more than either figure alone.
@@ -206,7 +313,7 @@ export function assessPractice(): PracticeReport {
       'A practice that was present early and is absent now has decayed, and re-adopting it mid-project historically does not take. A practice absent from the start rarely arrives later.',
   });
 
-  // 6. Scored predictions. Staking a claim before looking is only worth
+  // 7. Scored predictions. Staking a claim before looking is only worth
   //    anything if the verdict is recorded afterwards, and an unscored
   //    prediction is indistinguishable from one that was quietly abandoned.
   const predictions = nodes.filter((n) => n.trigger === 'prediction');
@@ -226,7 +333,7 @@ export function assessPractice(): PracticeReport {
         : 'Unscored predictions accumulate as debt. A prediction whose verdict is never written cannot correct anything, and the graph keeps the confident half while losing the outcome.',
   });
 
-  // 7. Refusals. The most informative thing an agent does is the thing the
+  // 8. Refusals. The most informative thing an agent does is the thing the
   //    tool refuses, and none of it was recorded until refusals stopped being
   //    reported as completed calls. A guard that never fires is dead weight; a
   //    guard that fires constantly means the tool is fighting its users, and
@@ -244,7 +351,7 @@ export function assessPractice(): PracticeReport {
         : 'A steady trickle is the tool working. A long run with none may mean the guards are not reaching what you do; a high share means you are repeatedly asking for something the design forbids, which is worth reading as a question about the design.',
   });
 
-  // 8. Self-correction. A graph in which nothing was ever overturned is either
+  // 9. Self-correction. A graph in which nothing was ever overturned is either
   //    a record of unusual luck or a record that stopped arguing with itself.
   const overturning = edges.filter((e) => OVERTURNING.has(e.type)).length;
   worked.push({
@@ -258,7 +365,7 @@ export function assessPractice(): PracticeReport {
       'Near zero means nothing here has been revised against anything else. That is worth checking rather than celebrating: the corrections a graph holds are the part re-entry can actually use.',
   });
 
-  // 9. Edge vocabulary. `relates` records that two things are connected and
+  // 10. Edge vocabulary. `relates` records that two things are connected and
   //    nothing about how, so a graph leaning on it has recorded adjacency
   //    rather than relation.
   const generic = edges.filter((e) => e.type === 'relates').length;

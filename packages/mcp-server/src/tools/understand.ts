@@ -206,6 +206,20 @@ interface FramedNode {
   /** One line naming what this node does to the understanding around it. */
   why?: string;
   /**
+   * The title of a node that later overturned this one, when there is one.
+   *
+   * Resistance surfaces overturned nodes deliberately, and carries their
+   * `attend` deliberately too — on a node something later contradicted, the
+   * attend is the instruction that correction exists to give. But the packet
+   * said nothing about the node's standing, so a discharged instruction
+   * arrived looking exactly like a pending one. Measured: an attend reading
+   * "test this on a larger city" was delivered as live work after the test had
+   * been run and had invalidated the node that carried it. A later instance
+   * following it would redo finished work and reach a conclusion the graph
+   * already held.
+   */
+  overturnedBy?: string;
+  /**
    * The node's own message to a later instance: what to attend to differently
    * because of it. Carried here because the packet IS the later instance's
    * arrival, and omitting it delivered the record while dropping the pointer
@@ -792,6 +806,7 @@ function frameNode(
   options: {
     includeAttend?: boolean;
     includeWhy?: boolean;
+    overturnedBy?: string;
   } = {},
 ): FramedNode {
   const attend = node.metadata?.attend;
@@ -824,7 +839,34 @@ function frameNode(
     ...(options.includeAttend && typeof attend === 'string' && attend.trim()
       ? { attend: attend.replace(/\s+/g, ' ').trim() }
       : {}),
+    ...(options.overturnedBy ? { overturnedBy: options.overturnedBy } : {}),
   };
+}
+
+/**
+ * The title of whatever later overturned this node, if anything did.
+ *
+ * `invalidates` and `supersedes` are the two types that retire a claim
+ * outright. `contradicts` is deliberately excluded: two positions can conflict
+ * with each other while both remain live, and reporting that as overturned
+ * would settle by fiat an argument the graph is holding open.
+ */
+function overturnedBy(
+  store: GraphStore,
+  nodeId: string,
+): string | undefined {
+  const retiring = store
+    .getAll()
+    .edges.filter(
+      (e) =>
+        e.toId === nodeId &&
+        (e.type === 'invalidates' || e.type === 'supersedes'),
+    );
+  for (const edge of retiring) {
+    const source = store.getNode(edge.fromId);
+    if (source?.title) return source.title;
+  }
+  return undefined;
 }
 
 function priorState(
@@ -1598,7 +1640,11 @@ export async function handleUnderstandingTools(
     // later overturned, and leave the rest excerpted-and-marked.
     const isCorrection = overturnedIds.has(candidate.node.id);
     return {
-      ...frameNode(candidate.node, { includeAttend: true, includeWhy: true }),
+      ...frameNode(candidate.node, {
+        includeAttend: true,
+        includeWhy: true,
+        overturnedBy: overturnedBy(store, candidate.node.id),
+      }),
       ...(isCorrection
         ? {
             excerpt: (displayText(candidate.node) || '')
