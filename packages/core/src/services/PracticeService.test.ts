@@ -504,3 +504,191 @@ describe('a reading that names one bad end names the other', () => {
     ).toBe(TWO_SIDED.length);
   });
 });
+
+describe('edge_vocabulary reports a generic share when there is one', () => {
+  /**
+   * This reading had never fired. Both projects dogfooding the tool sat at
+   * 0% generic for its whole life, which is evidence about how those graphs
+   * were written and not evidence that the diagnostic works — a reading nobody
+   * has exercised is one nobody has checked, and 0% is exactly what a broken
+   * counter would also report.
+   *
+   * `relates` is still a legal, deliberate choice: EDGE_TYPE_REQUIRED refuses
+   * an ABSENT type, and its refusal message offers `relates` explicitly for a
+   * connection with no better name. So a non-zero share is a state real graphs
+   * can reach, and the arithmetic behind the warning should be pinned.
+   */
+  function twoConcepts(store: ReturnType<typeof initializeGraph>) {
+    const a = store.createNode({
+      title: 'A grounding concept',
+      trigger: 'foundation',
+      why: 'Anchors the pair an edge connects',
+      understanding: 'Something the other concept can point at.',
+    });
+    const b = store.createNode({
+      title: 'A second concept',
+      trigger: 'analysis',
+      why: 'Draws out what the first one implies',
+      understanding: 'Follows from the first.',
+    });
+    return [a, b] as const;
+  }
+
+  it('counts an explicit relates edge as generic', () => {
+    const store = initializeGraph();
+    const [a, b] = twoConcepts(store);
+
+    // Three typed, one deliberately generic.
+    for (const type of ['learned_from', 'refines', 'questions', 'relates']) {
+      store.createEdge({
+        fromId: b.id,
+        toId: a.id,
+        type,
+        why: `Following this reaches the first concept, as a ${type} relation.`,
+      });
+    }
+
+    const value = diagnostic('edge_vocabulary')?.value;
+    console.log(`edge_vocabulary exercised at: ${value}`);
+    // The case this diagnostic exists for, reached for the first time.
+    expect(value).toBe('25% generic');
+    expect(diagnostic('edge_vocabulary')?.reading).toContain('decorative');
+  });
+
+  it('still reports 0% when every edge is typed', () => {
+    const store = initializeGraph();
+    const [a, b] = twoConcepts(store);
+    for (const type of ['learned_from', 'refines']) {
+      store.createEdge({
+        fromId: b.id,
+        toId: a.id,
+        type,
+        why: `Following this reaches the first concept, as a ${type} relation.`,
+      });
+    }
+    // Pins that 0% means measured-and-none, not counter-never-ran — the two
+    // were indistinguishable for this diagnostic's entire life until now.
+    expect(diagnostic('edge_vocabulary')?.value).toBe('0% generic');
+  });
+
+  it('says there are no edges rather than reporting 0%', () => {
+    initializeGraph();
+    expect(diagnostic('edge_vocabulary')?.value).toBe('no edges yet');
+  });
+});
+
+describe('the diagnostics that had never seen their own bad state', () => {
+  /**
+   * Found by mutation, not by reading: forcing each diagnostic to its
+   * reassuring value regardless of input and running the whole suite. Three
+   * survived untouched — the suite could not tell a working diagnostic from
+   * one that had been replaced by a constant.
+   *
+   * `store_durability` was the instructive one. Its helper `isEphemeralPath`
+   * is exhaustively tested, and two tests here do name the diagnostic — but
+   * both are branch-agnostic by construction: one asserts the value matches
+   * /^(EPHEMERAL|durable): \//, a disjunction true either way, and the other
+   * is an if/else asserting something different depending on which branch it
+   * lands in. Coverage of a helper is not coverage of its use, and a test that
+   * asserts across the branches passes whichever one runs. This is the hazard
+   * that cost two hundred nodes.
+   */
+  it('flags an ephemeral store as EPHEMERAL, without accepting either answer', () => {
+    initializeGraph();
+    const d = diagnostic('store_durability');
+    // The fixture builds under os.tmpdir(): /var/folders/... on macOS, /tmp on
+    // Linux, both ephemeral. Asserted outright so a platform where that stops
+    // holding fails loudly instead of passing through a disjunction.
+    console.log(`store_durability in fixture: ${d?.value}`);
+    expect(d?.value.startsWith('EPHEMERAL')).toBe(true);
+    expect(d?.reading).toContain('silently recreate an empty database');
+  });
+
+  it('reports a stale expresses edge pointing at an overturned decision', () => {
+    const store = initializeGraph();
+
+    const decision = store.createNode({
+      title: 'Mixing costs nothing at all',
+      trigger: 'model',
+      why: 'Records what the first run appeared to show',
+      understanding:
+        'Segregation halved while access cost held, so mixing looked free.',
+    });
+    const unit = store.createDocumentNode({
+      title: 'city_dwelling.py',
+      content: '# a module built on that claim',
+      level: 'document',
+      isDocRoot: true,
+    });
+    store.createEdge({
+      fromId: unit.id,
+      toId: decision.id,
+      type: 'expresses',
+      why: 'Following this reaches the claim this module was written around.',
+    });
+
+    expect(diagnostic('artifact_ahead_of_understanding')?.value).toBe(
+      'nothing expresses a retired decision',
+    );
+
+    // Now retire the decision the artifact is built on. The code did not
+    // change, so nothing else in the system can notice this.
+    const verdict = store.createNode({
+      title: 'The free result was an artifact of a small city',
+      trigger: 'evaluation',
+      why: 'Reports the wider test and what it settled',
+      understanding:
+        'On six blocks the trade-off reappears, so the result was the demo.',
+    });
+    store.createEdge({
+      fromId: verdict.id,
+      toId: decision.id,
+      type: 'invalidates',
+      why: 'Following this reaches the claim the wider test retired.',
+    });
+
+    expect(diagnostic('artifact_ahead_of_understanding')?.value).toBe(
+      '1 unit(s) still express a decision that was overturned',
+    );
+    expect(diagnostic('artifact_ahead_of_understanding')?.reading).toContain(
+      'no longer believes',
+    );
+  });
+
+  it('reports attribution that was present early and is gone now', () => {
+    initializeGraph();
+
+    // Ten commits, oldest first, attributed for the first five only. Explicit
+    // timestamps because the comparison is first-five against last-five and
+    // same-millisecond ordering would decide the result by accident.
+    for (let i = 0; i < 10; i++) {
+      sqlite.createCommit(
+        `commit ${i}`,
+        [],
+        [],
+        i < 5 ? 'loop-session' : undefined,
+        `2026-08-1${i === 9 ? 9 : i}T12:00:0${i}.000Z`,
+      );
+    }
+
+    const d = diagnostic('practice_drift');
+    console.log(`practice_drift with attribution dropped: ${d?.value}`);
+    expect(d?.value).toBe('attribution 100% early against 0% lately');
+  });
+
+  it('does not call it drift when the practice held throughout', () => {
+    initializeGraph();
+    for (let i = 0; i < 10; i++) {
+      sqlite.createCommit(
+        `commit ${i}`,
+        [],
+        [],
+        'loop-session',
+        `2026-08-1${i === 9 ? 9 : i}T12:00:0${i}.000Z`,
+      );
+    }
+    expect(diagnostic('practice_drift')?.value).toBe(
+      'attribution 100% early against 100% lately',
+    );
+  });
+});

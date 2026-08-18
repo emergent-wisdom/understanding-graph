@@ -147,7 +147,22 @@ export interface UpdateNodeInput {
 export interface CreateEdgeInput {
   fromId: string;
   toId: string;
-  type?: string;
+  /**
+   * Required. An omitted type used to fall through to the schema default,
+   * `relates`, which records that two nodes are connected without recording
+   * how — so following it later buys nothing a search would not.
+   *
+   * `graph_connect` refuses a missing type at the tool layer, but that guard
+   * does not cover a direct call to this method, and the default beneath it
+   * was still live. No product code reached it (19 of 19 call sites passed a
+   * type), so this closes a trap rather than fixing a leak: the compiler now
+   * refuses what the tool layer already refused, for the next caller who
+   * would otherwise have got a silent generic edge and no complaint.
+   *
+   * `relates` remains a legal VALUE, chosen deliberately when the connection
+   * genuinely has no better name. What is no longer legal is not choosing.
+   */
+  type: string;
   explanation?: string;
   why?: string;
   conversationId?: string; // Optional - only set if session is active
