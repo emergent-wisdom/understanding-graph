@@ -111,12 +111,74 @@ describe('graph_suggest_next', () => {
         query: 'Investigate why fixed retries collapse under burst load',
         workflow: 'coding',
         focusNodeIds: reentry?.subjects?.map((subject) => subject.id),
+        stance: reentry?.stance,
       },
       contextManager,
       'full',
     )) as { stance: string; stanceSource: string };
     expect(inferred.stance).toBe(reentry?.stance);
-    expect(inferred.stanceSource).toBe('suggested-route');
+    expect(inferred.stanceSource).toBe('explicit');
+  });
+
+  it('does not present answered questions or healthy diversity as unresolved conflict', async () => {
+    const store = getGraphStore();
+    const question = store.createNode({
+      title: 'Which clock governs retries?',
+      trigger: 'question',
+      why: 'Keeps the timing ambiguity explicit',
+      understanding: 'The scheduler and client clocks may diverge.',
+    });
+    const answer = store.createNode({
+      title: 'The scheduler clock governs retries',
+      trigger: 'decision',
+      why: 'Records the resolved timing convention',
+      understanding: 'All retry deadlines are normalized by the scheduler.',
+    });
+    const alternative = store.createNode({
+      title: 'Client-local timing remains useful for telemetry',
+      trigger: 'model',
+      why: 'Preserves a compatible second perspective',
+      understanding: 'Local clocks still explain observed latency.',
+    });
+    store.createEdge({
+      fromId: answer.id,
+      toId: question.id,
+      type: 'answers',
+      why: 'This decision resolves the governing-clock question.',
+    });
+    store.createEdge({
+      fromId: alternative.id,
+      toId: answer.id,
+      type: 'diverse_from',
+      why: 'Both views are useful at different layers and do not conflict.',
+    });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    const result = (await handleToolCall(
+      'graph_suggest_next',
+      {
+        task: 'Continue the retry design',
+        workflow: 'coding',
+        count: 6,
+      },
+      contextManager,
+      'general',
+    )) as {
+      options: Array<{
+        action: string;
+        label: string;
+        subjects?: Array<{ id: string }>;
+      }>;
+    };
+
+    const deepen = result.options.find((option) => option.action === 'deepen');
+    expect(deepen?.label).not.toContain(question.title);
+    expect(deepen?.subjects ?? []).not.toContainEqual(
+      expect.objectContaining({ id: question.id }),
+    );
+    expect(result.options.some((option) => option.action === 'integrate')).toBe(
+      false,
+    );
   });
 
   it('uses exact suggestion subjects for a forced generative pass without mutating the graph', async () => {

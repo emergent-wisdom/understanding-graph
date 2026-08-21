@@ -28,9 +28,9 @@ const PACKAGE_VERSION: string = (
   require('../package.json') as { version: string }
 ).version;
 
-// Tool mode from environment (default: full). Fail closed to a known surface
+// Tool mode from environment (default: general). Fail closed to a known surface
 // instead of accepting an arbitrary string that silently produces a hybrid.
-const configuredToolMode = process.env.TOOL_MODE || 'full';
+const configuredToolMode = process.env.TOOL_MODE || 'general';
 if (!TOOL_MODES.includes(configuredToolMode as ToolMode)) {
   throw new Error(
     `Invalid TOOL_MODE "${configuredToolMode}". Choose one of: ${TOOL_MODES.join(', ')}`,

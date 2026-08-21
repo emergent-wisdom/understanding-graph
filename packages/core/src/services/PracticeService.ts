@@ -9,13 +9,14 @@ import { getGraphStore } from './GraphStore.js';
  * graph_analyze and graph_score answer whether a graph is well formed. They
  * are not able to answer whether it is doing anything, and on a real project
  * they reported 0.0% fragmentation, 100% connectivity and 75/100 at the same
- * moment that five of six prose passages were connected to no thinking at all.
+ * moment that five of six artifact units were connected to no cognitive
+ * testimony at all.
  * A well-formed graph nobody re-enters scores exactly like a well-formed graph
  * that changes someone's mind.
  *
  * So these diagnostics measure conduct rather than structure: whether the
- * graph is re-entered or only written to, whether prose carries the thinking
- * that produced it, whether practices adopted early survived, whether
+ * graph is re-entered or only written to, whether artifacts carry the
+ * understanding that produced them, whether practices adopted early survived, whether
  * predictions were ever scored, whether anything was ever overturned.
  *
  * Three rules hold throughout.
@@ -71,8 +72,11 @@ export function isEphemeralPath(dir: string): boolean {
   return EPHEMERAL_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
-const OVERTURNING = new Set(['supersedes', 'contradicts', 'invalidates']);
-const VERDICT = new Set(['validates', 'invalidates', 'contradicts']);
+// A contradiction records an unresolved conflict; it does not itself retire
+// either endpoint. Only these relations assert that an earlier position has
+// been displaced or invalidated.
+const OVERTURNING = new Set(['supersedes', 'invalidates']);
+const VERDICT = new Set(['validates', 'invalidates']);
 
 /** Commits, oldest first. The default accessor caps at 50 and orders newest first. */
 function allCommits() {
@@ -163,7 +167,12 @@ export function describeDuplicateDetection(
 
 export function assessPractice(): PracticeReport {
   const store = getGraphStore();
-  const { nodes, edges } = store.getAll();
+  // Conduct is historical: a supersession still happened after its displaced
+  // node left the active graph. Current-shape figures below come from the
+  // collapsed analysis, while correction, verdict, and provenance diagnostics
+  // retain the lifecycle edges that record how the graph was worked.
+  const { nodes, edges } = store.getAllWithSuperseded();
+  const activeNodes = nodes.filter((node) => node.active);
   const analysis = analyzeGraph(sqlite.getCurrentProjectId() ?? '', {
     showEvolution: false,
   });
@@ -287,9 +296,7 @@ export function assessPractice(): PracticeReport {
   const artifactCount = analysis.stats.artifactNodeCount ?? 0;
   if (artifactCount > 0) {
     const expressed = new Set(
-      edges
-        .filter((e) => e.type === 'expresses' || e.type === 'inspired_by')
-        .map((e) => e.toId),
+      edges.filter((e) => e.type === 'expresses').map((e) => e.toId),
     );
     const overturnedIds = new Set(
       edges
@@ -307,7 +314,7 @@ export function assessPractice(): PracticeReport {
     const isArtifact = (n: (typeof nodes)[number]) =>
       Boolean(n.isDocRoot || n.level);
 
-    const unbuilt = nodes.filter(
+    const unbuilt = activeNodes.filter(
       (n) =>
         !isArtifact(n) &&
         n.trigger &&
@@ -316,7 +323,7 @@ export function assessPractice(): PracticeReport {
         !overturnedIds.has(n.id),
     );
     const stale = edges
-      .filter((e) => e.type === 'expresses' || e.type === 'inspired_by')
+      .filter((e) => e.type === 'expresses')
       .filter((e) => overturnedIds.has(e.toId));
 
     // The composition matters as much as the count. This figure has a floor
@@ -346,7 +353,7 @@ export function assessPractice(): PracticeReport {
               .map((n) => `"${n.title}"`)
               .join(', ')}`,
       basis:
-        'live decision-shaped concepts with no inbound expresses or inspired_by edge, grouped by trigger',
+        'live decision-shaped concepts with no inbound expresses edge, grouped by trigger',
       reading:
         unbuilt.length === 0
           ? 'Every standing decision has something in the artifact answering to it.'
@@ -367,21 +374,23 @@ export function assessPractice(): PracticeReport {
     });
   }
 
-  // 5. Prose grounding. Passages arrive holding `contains` and `next`, so they
-  //    can never register as orphans however little thought is attached.
+  // 5. Artifact grounding. Document/code units arrive holding `contains` and
+  //    `next`, so they can never register as orphans however little cognition
+  //    is attached. The stable key retains its historical name for clients
+  //    that compare reports across versions.
   const documentCount = analysis.stats.artifactNodeCount ?? 0;
   const ungrounded = analysis.stats.ungroundedProseCount ?? 0;
   worked.push({
     key: 'prose_grounding',
     value:
       documentCount === 0
-        ? 'no prose yet'
-        : `${documentCount - ungrounded} of ${documentCount} passages carry thinking`,
-    basis: 'document nodes with at least one edge to a cognitive node',
+        ? 'no artifact units yet'
+        : `${documentCount - ungrounded} of ${documentCount} artifact units carry cognitive links`,
+    basis: 'document/artifact nodes with at least one edge to a cognitive node',
     reading:
       documentCount === 0
         ? 'No artifact units exist, so there is nothing to ground.'
-        : 'Ungrounded passages are prose that some thinking probably produced, where the link was never recorded. That state is indistinguishable from genuine thoughtlessness, and orphan prevention cannot see it.',
+        : 'Ungrounded artifact units are prose, code, or evidence structure that some understanding may have shaped without the relationship being recorded. That state is indistinguishable from genuine thoughtlessness, and orphan prevention cannot see it.',
   });
 
   // 6. Practice drift. Measured across two real projects: practices adopted at
@@ -416,8 +425,7 @@ export function assessPractice(): PracticeReport {
       predictions.length === 0
         ? 'no predictions made'
         : `${scored.length} of ${predictions.length} predictions carry a verdict`,
-    basis:
-      'prediction nodes with an inbound validates, invalidates or contradicts edge',
+    basis: 'prediction nodes with an inbound validates or invalidates edge',
     reading:
       predictions.length === 0
         ? 'Nothing has been staked before looking, so nothing can have been wrong in a way the graph records.'
@@ -451,7 +459,7 @@ export function assessPractice(): PracticeReport {
       edges.length === 0
         ? 'no edges yet'
         : `${overturning} of ${edges.length} edges overturn something (${ratio(overturning, edges.length)})`,
-    basis: 'supersedes, contradicts and invalidates edges',
+    basis: 'supersedes and invalidates edges',
     reading:
       'Near zero means nothing here has been revised against anything else. That is worth checking rather than celebrating: the corrections a graph holds are the part re-entry can actually use. A large share is its own problem and not a better one — if most edges retract something, little is accumulating and each round is mostly arguing with the last. Neither end is a target: what makes a correction worth having is that something downstream depended on the claim it retired.',
   });

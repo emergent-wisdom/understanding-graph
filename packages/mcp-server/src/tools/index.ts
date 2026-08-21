@@ -23,6 +23,7 @@ import { handleUnderstandingTools, understandingTools } from './understand.js';
 // Tool exposure modes. Keep the runtime list and TypeScript union together so
 // startup validation, tool listing, and call enforcement cannot drift apart.
 export const TOOL_MODES = [
+  'general',
   'reading',
   'research',
   'coding',
@@ -130,7 +131,7 @@ function assertSyntheticThinkingAccess(
 
 // Get tool definitions based on mode
 // ARCHITECTURE: All mutations go through graph_batch (enforces commit messages).
-export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
+export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
   const visibleReflectionTools = reflectionToolsForMode(mode);
 
   // Exploration is read-only at the top level. Synthesis mutations are exact
@@ -166,6 +167,7 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
       'graph_context',
       'graph_context_region',
       'graph_path',
+      'graph_updates',
       'graph_history',
       'project_switch',
       'project_list',
@@ -267,6 +269,22 @@ export function getToolDefinitions(mode: ToolMode = 'full'): Tool[] {
     ];
   }
 
+  if (mode === 'general') {
+    // Safe cross-domain default: the ordinary understanding loop, atomic
+    // mutations, bounded exploration, source work, and addressable artifacts.
+    // Destructive administration, raw bulk mutation, chaos pipelines, and
+    // solver coordination remain explicit full/focused-mode choices.
+    return [
+      ...understandingTools,
+      ...coreReflection,
+      ...batchTools,
+      ...groundedDiscoveryTools,
+      ...coreSourceTools,
+      ...ordinaryFullDocumentTools,
+      ...coreConceptTools,
+    ];
+  }
+
   if (mode === 'research') {
     // ~32 tools: reading + solver/parliament
     return [
@@ -353,7 +371,7 @@ export async function handleToolCall(
   name: string,
   args: Record<string, unknown>,
   contextManager: ContextManager,
-  mode: ToolMode = 'full',
+  mode: ToolMode = 'general',
   internal = false,
 ): Promise<unknown> {
   const startedAt = Date.now();

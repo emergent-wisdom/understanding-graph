@@ -16,7 +16,7 @@ Claude Desktop reads MCP server configuration from a JSON file. Add an
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.28", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }

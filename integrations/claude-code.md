@@ -1,19 +1,21 @@
 # Understanding Graph + Claude Code
 
-Give every Claude Code session and agent team persistent, shared reasoning
-memory. One command to install, one command to bootstrap a project.
+Give every Claude Code session and agent team persistent, shared understanding.
+One command to connect, one command to bootstrap a project.
 
 ## Setup
 
 ### Fastest: zero-install via npx
 
 ```bash
-claude mcp add ug -- npx -y understanding-graph mcp
+claude mcp add ug -- npx -y understanding-graph@0.1.28 mcp
 ```
 
 `npx -y` downloads, caches, and runs `understanding-graph` on first
-invocation. No global install, no clone, no build step. After this, every
-Claude Code session in every directory can talk to the graph.
+invocation. No global install, no clone, no build step. Claude's default MCP
+scope is local to the current project. Use `--scope user` only if you
+deliberately want the server available from every directory; project bootstrap
+below is recommended because it also installs the understanding protocol.
 
 ### One-command project bootstrap
 
@@ -22,12 +24,12 @@ automatically — run the init flow inside the project directory:
 
 ```bash
 cd your-project
-npx -y understanding-graph init
+npx -y understanding-graph@0.1.28 init
 ```
 
 This creates:
 
-- `.claude/settings.local.json` — local MCP config (project-scoped)
+- `.mcp.json` — Claude Code project MCP config (mergeable and shareable)
 - `CLAUDE.md` — instructions that every agent and teammate loads automatically
 - `projects/default/` — the SQLite-backed graph storage directory
 - Adds `projects/` to `.gitignore`
@@ -44,9 +46,9 @@ listed.
 
 ## Using with agent teams
 
-Understanding Graph is designed as the shared memory layer for Claude Code
-Agent Teams. After `npx -y understanding-graph init`, every teammate shares
-the same graph automatically — stigmergy out of the box.
+Understanding Graph is designed as a shared medium for Claude Code Agent Teams.
+After `npx -y understanding-graph@0.1.28 init`, every teammate shares the same
+graph automatically — stigmergy out of the box.
 
 ```
 You: "Create an agent team to research and implement auth for this app"
@@ -66,12 +68,15 @@ and acts on it. No direct messaging needed.
 ## Useful first calls
 
 ```
-graph_skeleton()                     # orient yourself (~150 tokens)
-graph_understand({ query: "...", workflow: "coding" }) # route reading/coding/collaboration/writing/general
-graph_semantic_search({ query: "..." })  # find relevant past reasoning
-graph_history()                      # see what other agents did recently
-graph_find_by_trigger({ trigger: "question" })  # open questions to pick up
+graph_suggest_next({ task: "...", workflow: "coding" }) # weighted concrete possibilities; choose or reject
+graph_understand({ query: "...", workflow: "coding", stance: "resist" }) # route-selected re-entry
+graph_history()                      # inspect attributed recent work
+graph_skeleton()                     # compact connectivity/orientation check
 ```
+
+There is no mandatory sequence. Keep substantive artifact state and
+communicable, material understanding graph-canonical, and use the suggestions when
+they may help rather than turning them into ceremony.
 
 For coding, source lives in ordered document nodes. Generate runnable files for
 builds and tests, then revise or rearrange the nodes and regenerate; do not edit
@@ -83,4 +88,4 @@ the generated projection directly.
 - **Cursor / Windsurf** — see [cursor.md](cursor.md)
 - **OpenClaw via mcporter** — see [mcporter.md](mcporter.md)
 - **Any MCP client** — Understanding Graph exposes a standard stdio server
-  (`npx -y understanding-graph mcp`)
+  (`npx -y understanding-graph@0.1.28 mcp`)

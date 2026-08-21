@@ -9,6 +9,20 @@ import { hasAtomicDocumentRewireCapability } from './document-rewire-capability.
 
 const DOCUMENT_STRUCTURE_EDGE_TYPES = new Set<EdgeType>(['contains', 'next']);
 
+function rejectGenericSupersessionMutation(params: {
+  currentType?: string;
+  requestedType?: string;
+}): void {
+  if (
+    params.currentType === 'supersedes' ||
+    params.requestedType === 'supersedes'
+  ) {
+    throw new Error(
+      'SUPERSESSION_LIFECYCLE_REQUIRED: supersedes is owned by graph_supersede, which creates the successor and archives the displaced node atomically. Generic connect, disconnect, and edge_update cannot preserve that lifecycle invariant.',
+    );
+  }
+}
+
 function rejectGenericDocumentStructureMutation(params: {
   currentType?: string;
   requestedType?: string;
@@ -69,8 +83,8 @@ STRUCTURAL (for documents):
 
 SEMANTIC (for concepts):
 - "expresses" - document expresses a concept
-- "supersedes" - newer understanding replaces older
-- "contradicts" - opposing ideas (one is wrong)
+- "supersedes" - newer understanding replaces older (use graph_supersede)
+- "contradicts" - unresolved conflict between positions that may both remain live
 - "diverse_from" - different perspective (both valid)
 - "refines" - adds precision to existing concept
 - "implements" - abstract → concrete realization
@@ -324,27 +338,12 @@ export async function handleConnectionTools(
         };
       }
 
-      const targetNode = store.getNode(toResolved.id);
-      const VERDICT_TYPES = ['validates', 'invalidates', 'contradicts'];
       const requestedType = (args.type as string) || 'relates';
-      if (
-        targetNode?.trigger === 'prediction' &&
-        !VERDICT_TYPES.includes(requestedType)
-      ) {
-        return {
-          success: false,
-          error: 'UNSIGNED_VERDICT',
-          message:
-            `This edge points at a prediction ("${targetNode.title}") but is ` +
-            `typed "${requestedType}", which does not say how the prediction ` +
-            'turned out. A verdict must carry its sign in the type, not only ' +
-            'in the why.',
-          hint:
-            'Use "validates" if the evidence upheld the prediction, ' +
-            '"invalidates" or "contradicts" if it overturned it. Where a ' +
-            'prediction split by clause, record one edge per sign.',
-        };
-      }
+
+      // A prediction can be questioned, contextualized, refined, or expressed
+      // without being adjudicated. Only validates/invalidates are verdicts;
+      // do not infer a verdict merely because an edge targets a prediction.
+      rejectGenericSupersessionMutation({ requestedType });
 
       rejectGenericDocumentStructureMutation({
         requestedType: args.type as string | undefined,
@@ -459,6 +458,7 @@ export async function handleConnectionTools(
       }
 
       for (const edge of toRemove) {
+        rejectGenericSupersessionMutation({ currentType: edge.type });
         rejectGenericDocumentStructureMutation({
           currentType: edge.type,
           authorized: hasAtomicDocumentRewireCapability(args),
@@ -516,6 +516,10 @@ export async function handleConnectionTools(
 
       const edge = edges[0];
       const oldType = edge.type;
+      rejectGenericSupersessionMutation({
+        currentType: oldType,
+        requestedType: newType,
+      });
       rejectGenericDocumentStructureMutation({
         currentType: oldType,
         requestedType: newType,

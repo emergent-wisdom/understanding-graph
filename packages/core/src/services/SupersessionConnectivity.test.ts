@@ -9,15 +9,12 @@ import { getGraphStore, resetGraphStore } from './GraphStore.js';
 /**
  * Superseding a node must not orphan the nodes still pointing at it.
  *
- * The collapsed view (showEvolution false) hides superseded nodes. Their
- * incident edges were then dropped for failing the endpoint check, so a live
- * node whose only edge landed on a superseded one was reported isolated.
- *
- * Measured on a real graph before this was fixed: graph_analyze reported one
- * isolated node while graph_score, which hides nothing, reported 100%
- * connectivity on the same graph at the same moment. The node was not isolated
- * — its single `validates` edge pointed at a node that had been superseded an
- * hour earlier.
+ * The collapsed view (showEvolution false) hides superseded nodes and redirects
+ * their incident edges. That projection only works when it begins with history:
+ * the dedicated graph_supersede lifecycle archives the displaced node, and an
+ * active-only getAll() has already discarded both that node and every edge
+ * touching it. The successor and a live dependent then both look isolated, and
+ * even the supersession count incorrectly reads zero.
  *
  * That makes the defect worse than a wrong number. Revising a position is the
  * behaviour this tool exists to encourage, and it was repaid with a phantom
@@ -26,7 +23,8 @@ import { getGraphStore, resetGraphStore } from './GraphStore.js';
  * the honest response to seeing it repeatedly would be to supersede less.
  *
  * Redirection is what supersession already means: if C replaces B, then in a
- * view without B an edge onto B is an edge onto C.
+ * view without B an edge onto B is an edge onto C. The historical view still
+ * retains B and both original edges for an audit of the evolution.
  */
 const PROJECT_ID = 'supersession-connectivity';
 
@@ -49,7 +47,7 @@ afterEach(() => {
 });
 
 describe('supersession does not orphan the nodes pointing at it', () => {
-  it('keeps a node connected when its only edge lands on a superseded node', () => {
+  it('keeps lifecycle history and collapses incident edges onto the replacement', () => {
     const store = initializeGraph();
 
     const superseded = store.createNode({
@@ -85,6 +83,10 @@ describe('supersession does not orphan the nodes pointing at it', () => {
       type: 'validates',
       why: 'Following this reaches the test being applied and the case that upholds it.',
     });
+    expect(store.archiveNode(superseded.id, 'Superseded')).toBe(true);
+    expect(store.getAll().nodes.map((node) => node.id)).not.toContain(
+      superseded.id,
+    );
 
     const analysis = analyzeGraph(PROJECT_ID, { showEvolution: false });
 
@@ -94,7 +96,19 @@ describe('supersession does not orphan the nodes pointing at it', () => {
         'isolated. It is connected; the edge was dropped because its target ' +
         'is hidden in the collapsed view.',
     ).not.toContain(dependent.id);
+    expect(analysis.isolatedNodes.map((n) => n.id)).not.toContain(
+      replacement.id,
+    );
+    expect(analysis.stats.nodeCount).toBe(2);
+    expect(analysis.stats.edgeCount).toBe(1);
+    expect(analysis.stats.supersededCount).toBe(1);
     expect(analysis.stats.isolatedCount).toBe(0);
+
+    const evolution = analyzeGraph(PROJECT_ID, { showEvolution: true });
+    expect(evolution.stats.nodeCount).toBe(3);
+    expect(evolution.stats.edgeCount).toBe(2);
+    expect(evolution.stats.supersededCount).toBe(1);
+    expect(evolution.evolution?.supersessionEdges).toHaveLength(1);
   });
 
   it('reports a genuinely unconnected node, so the measure still bites', () => {
@@ -180,8 +194,13 @@ describe('supersession does not orphan the nodes pointing at it', () => {
       type: 'questions',
       why: 'Following this reaches the original claim this puts in doubt.',
     });
+    expect(store.archiveNode(first.id, 'Superseded')).toBe(true);
+    expect(store.archiveNode(second.id, 'Superseded')).toBe(true);
 
     const analysis = analyzeGraph(PROJECT_ID, { showEvolution: false });
+    expect(analysis.stats.nodeCount).toBe(2);
+    expect(analysis.stats.edgeCount).toBe(1);
+    expect(analysis.stats.supersededCount).toBe(2);
     expect(analysis.stats.isolatedCount).toBe(0);
     expect(analysis.isolatedNodes.map((n) => n.id)).not.toContain(dependent.id);
   });

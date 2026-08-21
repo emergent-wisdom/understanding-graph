@@ -383,7 +383,7 @@ describe('graph_understand contract', () => {
     expect(first.prompt).toContain('No shift and no new node are honest');
     expect(first.prompt).toContain('not a required phase');
     expect(first.prompt).toContain(
-      'Preserve all communicable task understanding',
+      'Preserve communicable, material understanding that could matter',
     );
     expect(first.prompt).toContain('Do not transcribe token-level steps');
     expect(first.prompt).toContain('never claim access to hidden');

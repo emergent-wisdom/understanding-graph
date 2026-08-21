@@ -54,10 +54,12 @@ export const CLOUD_SAFE_TOOL_NAMES = [
   'graph_skeleton',
   'graph_path',
   'graph_analyze',
+  'graph_updates',
   'graph_history',
   'graph_similar',
   'graph_semantic_search',
   'graph_suggest_next',
+  'graph_practice',
   'graph_thermostat',
   'graph_batch',
   'graph_discover_grounded',
@@ -171,6 +173,31 @@ function toMcpResult(result: unknown) {
   return { content: [{ type: 'text' as const, text: serialized }] };
 }
 
+function redactCloudResult(name: string, result: unknown): unknown {
+  if (!isJsonObject(result)) return result;
+  const redacted = structuredClone(result);
+  if (name === 'graph_practice') {
+    const worked = redacted.worked;
+    if (!Array.isArray(worked)) return redacted;
+
+    for (const item of worked) {
+      if (!isJsonObject(item) || item.key !== 'store_durability') continue;
+      item.value = 'server-managed (path withheld)';
+      item.reading =
+        'Hosted storage durability is managed by the service; local filesystem diagnostics are withheld.';
+    }
+  }
+
+  if (name === 'graph_batch' && Array.isArray(redacted.regeneratedDocuments)) {
+    for (const document of redacted.regeneratedDocuments) {
+      if (!isJsonObject(document) || typeof document.outputPath !== 'string')
+        continue;
+      document.outputPath = '[server path redacted]';
+    }
+  }
+  return redacted;
+}
+
 export interface McpGatewayOptions {
   projectDir: string;
 }
@@ -263,7 +290,7 @@ export function createMcpGatewayRouter({ projectDir }: McpGatewayOptions) {
           contextManager,
           CLOUD_DISPATCH_MODE,
         );
-        return res.json(toMcpResult(result));
+        return res.json(toMcpResult(redactCloudResult(name, result)));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return res.json({

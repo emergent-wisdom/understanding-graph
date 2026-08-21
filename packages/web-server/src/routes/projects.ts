@@ -10,6 +10,40 @@ export const projectRouter = Router();
 
 const PROJECT_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
+export function resolveProjectPath(
+  projectDirectory: string,
+  projectId: string,
+): string | null {
+  if (!PROJECT_ID_RE.test(projectId)) return null;
+  const projectRoot = path.resolve(projectDirectory);
+  const projectPath = path.resolve(projectRoot, projectId);
+  const relativePath = path.relative(projectRoot, projectPath);
+  if (
+    !relativePath ||
+    relativePath === '..' ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  ) {
+    return null;
+  }
+
+  if (fs.existsSync(projectPath)) {
+    const realRoot = fs.realpathSync(projectRoot);
+    const realProject = fs.realpathSync(projectPath);
+    const realRelative = path.relative(realRoot, realProject);
+    if (
+      !realRelative ||
+      realRelative === '..' ||
+      realRelative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(realRelative)
+    ) {
+      return null;
+    }
+  }
+
+  return projectPath;
+}
+
 // List all projects
 projectRouter.get('/', (req, res, next) => {
   try {
@@ -22,8 +56,8 @@ projectRouter.get('/', (req, res, next) => {
     const projects = fs
       .readdirSync(projectDir)
       .filter((name) => {
-        const projectPath = path.join(projectDir, name);
-        return fs.statSync(projectPath).isDirectory();
+        const projectPath = resolveProjectPath(projectDir, name);
+        return projectPath !== null && fs.statSync(projectPath).isDirectory();
       })
       .map((name) => {
         const metaPath = path.join(projectDir, name, 'meta.json');
@@ -62,7 +96,10 @@ projectRouter.post('/', (req, res, next) => {
       .replace(/^-|-$/g, '');
 
     const projectDir = req.app.locals.projectDir;
-    const projectPath = path.join(projectDir, id);
+    const projectPath = resolveProjectPath(projectDir, id);
+    if (!projectPath) {
+      return res.status(400).json({ error: 'Invalid project ID' });
+    }
 
     if (fs.existsSync(projectPath)) {
       return res.status(400).json({ error: 'Project already exists' });
@@ -94,7 +131,10 @@ projectRouter.post('/:id/load', (req, res, next) => {
   try {
     const { id } = req.params;
     const projectDir = req.app.locals.projectDir;
-    const projectPath = path.join(projectDir, id);
+    const projectPath = resolveProjectPath(projectDir, id);
+    if (!projectPath) {
+      return res.status(400).json({ error: 'Invalid project ID' });
+    }
 
     if (!fs.existsSync(projectPath)) {
       return res.status(404).json({ error: 'Project not found' });
@@ -131,7 +171,7 @@ projectRouter.post('/:id/load', (req, res, next) => {
 projectRouter.post('/:id/checkpoint', (req, res, next) => {
   try {
     const { id } = req.params;
-    if (!PROJECT_ID_RE.test(id)) {
+    if (!resolveProjectPath(req.app.locals.projectDir, id)) {
       return res.status(400).json({ error: 'Invalid project ID' });
     }
     if (!sqlite.isProjectLoaded(id)) {
@@ -153,19 +193,8 @@ projectRouter.post('/:id/checkpoint', (req, res, next) => {
 projectRouter.delete('/:id', (req, res, next) => {
   try {
     const { id } = req.params;
-    if (!PROJECT_ID_RE.test(id)) {
-      return res.status(400).json({ error: 'Invalid project ID' });
-    }
-
-    const projectRoot = path.resolve(req.app.locals.projectDir);
-    const projectPath = path.resolve(projectRoot, id);
-    const relativePath = path.relative(projectRoot, projectPath);
-    if (
-      !relativePath ||
-      relativePath === '..' ||
-      relativePath.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relativePath)
-    ) {
+    const projectPath = resolveProjectPath(req.app.locals.projectDir, id);
+    if (!projectPath) {
       return res.status(400).json({ error: 'Invalid project ID' });
     }
 
@@ -209,7 +238,10 @@ projectRouter.get('/current', (req, res) => {
     return res.status(404).json({ error: 'No project loaded' });
   }
   const projectDir = req.app.locals.projectDir;
-  const projectPath = path.join(projectDir, id);
+  const projectPath = resolveProjectPath(projectDir, id);
+  if (!projectPath) {
+    return res.status(400).json({ error: 'Invalid project ID' });
+  }
 
   let meta = { name: id, goal: '' };
   const metaPath = path.join(projectPath, 'meta.json');
@@ -227,7 +259,10 @@ projectRouter.get('/:id/export', (req, res, next) => {
   try {
     const { id } = req.params;
     const projectDir = req.app.locals.projectDir;
-    const projectPath = path.join(projectDir, id);
+    const projectPath = resolveProjectPath(projectDir, id);
+    if (!projectPath) {
+      return res.status(400).json({ error: 'Invalid project ID' });
+    }
 
     if (!fs.existsSync(projectPath)) {
       return res.status(404).json({ error: 'Project not found' });

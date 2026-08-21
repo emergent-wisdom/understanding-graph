@@ -10,22 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
-/**
- * An edge landing on a prediction is a verdict, and a verdict has a sign.
- *
- * Typed `answers`, it records that the question was settled but not how it
- * came out. Refutation and confirmation then look identical in the structure
- * and the outcome survives only in prose, where nothing can count it — so any
- * measure of whether returning to earlier thinking actually CHANGED anything
- * is uncomputable, which is the thing the graph exists to make countable.
- *
- * This is a refusal rather than a sentence for a measured reason. The
- * graph_connect description already says it, under a PREDICTIVE heading
- * naming both validates and invalidates. It was read and ignored six times
- * consecutively by an agent who had, in the same session, argued that typed
- * edges make influence inspectable rather than assumed. Advice that specific
- * did not move behaviour. A failing batch does.
- */
+/** A prediction remains an ordinary graph node until evidence adjudicates it. */
 const PROJECT_ID = 'verdict-signs';
 let tmpDir: string;
 let contextManager: ContextManager;
@@ -106,25 +91,17 @@ function verdictPair(edge: Record<string, unknown>) {
   ];
 }
 
-describe('a verdict on a prediction must carry its sign', () => {
-  it('rejects an unsigned verdict typed answers', async () => {
+describe('prediction relations do not become verdicts by position alone', () => {
+  it('accepts a non-verdict relation to a prediction', async () => {
     const result = await batch(
-      'Settle the prediction without saying how it came out',
+      'Add context without pretending the prediction was tested',
       verdictPair({
-        type: 'answers',
-        why: 'Following this reaches the prediction this settles.',
+        type: 'contextualizes',
+        why: 'Following this reaches the prediction whose scope this passage clarifies.',
       }),
     );
 
-    expect(
-      result.success,
-      'An edge onto a prediction was accepted as "answers". That records ' +
-        'that the question closed but not how, which makes refutation and ' +
-        'confirmation identical in the structure.',
-    ).toBe(false);
-    expect(String(result.message ?? result.error)).toContain(
-      'UNSIGNED_VERDICT',
-    );
+    expect(result.success).toBe(true);
   });
 
   it('accepts invalidates when the prediction was overturned', async () => {
@@ -158,8 +135,6 @@ describe('a verdict on a prediction must carry its sign', () => {
   });
 
   it('leaves edges onto ordinary concepts alone', async () => {
-    // The guard is narrow on purpose: only a prediction target makes an edge a
-    // verdict. Widening it would make `answers` unusable for actual questions.
     const result = await batch('Answer an ordinary open question', [
       {
         tool: 'graph_add_concept',
@@ -196,5 +171,51 @@ describe('a verdict on a prediction must carry its sign', () => {
       result.success,
       `"answers" onto a question was rejected: ${result.message ?? result.error}`,
     ).toBe(true);
+  });
+
+  it('requires the dedicated lifecycle operation for supersession', async () => {
+    const generic = await batch(
+      'Try to supersede through a generic edge',
+      verdictPair({
+        type: 'supersedes',
+        why: 'This route would create an edge without retiring the displaced node.',
+      }),
+    );
+    expect(generic.success).toBe(false);
+    expect(String(generic.message ?? generic.error)).toContain(
+      'SUPERSESSION_LIFECYCLE_REQUIRED',
+    );
+
+    const dedicated = await batch('Supersede through the lifecycle operation', [
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'The old governing model',
+          trigger: 'model',
+          why: 'Keeps the displaced position available for audit',
+          understanding: 'Retries should always use a fixed delay.',
+        },
+      },
+      {
+        tool: 'graph_supersede',
+        params: {
+          old: 'The old governing model',
+          new_name: 'The revised governing model',
+          new_understanding: 'Retries should add bounded jitter.',
+          why: 'Burst testing showed synchronized fixed-delay retries.',
+        },
+      },
+    ]);
+    expect(dedicated.success).toBe(true);
+    expect(
+      getGraphStore()
+        .getAll()
+        .nodes.some((node) => node.title === 'The old governing model'),
+    ).toBe(false);
+    expect(
+      getGraphStore()
+        .getAllWithSuperseded()
+        .nodes.find((node) => node.title === 'The old governing model')?.active,
+    ).toBe(false);
   });
 });

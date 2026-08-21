@@ -1,9 +1,9 @@
-# Understanding Graph: A Reasoning-Capture Architecture for AI Memory
+# Understanding Graph: A Recursive Medium for Persistent Understanding
 
-**Persistent memory for AI agents. Shared cognition through stigmergy.**
+**A recursive medium for persistent, inspectable understanding.**
 
 [![Paper](https://img.shields.io/badge/Paper-PDF-red)](https://github.com/emergent-wisdom/understanding-graph/blob/main/paper/understanding_graph.pdf)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19462908.svg)](https://doi.org/10.5281/zenodo.19462908)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19462658.svg)](https://doi.org/10.5281/zenodo.19462658)
 [![npm version](https://img.shields.io/npm/v/understanding-graph.svg)](https://www.npmjs.com/package/understanding-graph)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-blue)](https://registry.modelcontextprotocol.io/servers/io.github.emergent-wisdom/understanding-graph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -14,10 +14,10 @@ Understanding Graph is an MCP server that gives AI agents structured, persistent
 
 | Traditional Memory | Understanding Graph |
 |-------------------|---------------------|
-| Stores facts | Stores comprehension |
+| Stores facts | Stores authored understanding updates |
 | "User prefers dark mode" | "User switched to dark mode after eye strain -- tension between aesthetics and comfort resolved toward comfort" |
-| Flat retrieval | Reasoning trails |
-| Forgets context | Preserves the *why* |
+| Flat retrieval | Typed, revisable interpretation |
+| Loses the interpretive middle | Preserves recorded rationale and revision |
 | Single agent | Multi-agent coordination through shared graph |
 
 **Core insight:** AI agents don't just need to remember facts -- they need the usable before state, pivoting evidence, updated conclusion, and remaining uncertainty. That lets later work test or revise a conclusion without reconstructing hidden deliberation.
@@ -50,7 +50,8 @@ Graph itself makes no model API calls.
 
 The package ships both `.codex-plugin` and `.claude-plugin` manifests. The
 plugin combines the MCP capabilities with an `understanding-work` skill. While
-the mode is active, all communicable task understanding develops in the graph.
+the mode is active, material, communicable understanding that could matter to
+the work or a future inquiry develops in the graph.
 The graph rolls a small state-dependent set of concrete next moves; the model
 judges their weights against the user task and freely chooses, combines, changes,
 or rejects them. The initializer above provides the same contract without
@@ -95,7 +96,7 @@ alone do not reliably activate a multi-step understanding workflow.
 
 This creates:
 - `.codex/config.toml` -- Codex MCP configuration
-- `.claude/settings.local.json` -- Claude Code MCP configuration
+- `.mcp.json` -- Claude Code project MCP configuration
 - `AGENTS.md` and `CLAUDE.md` -- the same canonical understanding workflow
 - `projects/default/` -- Graph storage directory
 
@@ -127,7 +128,7 @@ Per-client setup guides: [Claude Code](https://github.com/emergent-wisdom/unders
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.28", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }
@@ -145,7 +146,7 @@ Add to your MCP config:
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.28", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }
@@ -160,7 +161,7 @@ The root npm package includes the built frontend and depends on the web server,
 so the published package can launch the UI directly:
 
 ```bash
-PROJECT_DIR=/path/to/your/projects npx -y understanding-graph start
+PROJECT_DIR=/path/to/your/projects npx -y understanding-graph@0.1.28 start
 # open http://localhost:3000
 ```
 
@@ -168,8 +169,8 @@ Run independent sidecars by giving each process its own port and project-store
 root. The roots may be sibling directories on the same volume:
 
 ```bash
-PORT=3101 PROJECT_DIR=/srv/undergraph/worker-1 npx -y understanding-graph start
-PORT=3102 PROJECT_DIR=/srv/undergraph/worker-2 npx -y understanding-graph start
+PORT=3101 PROJECT_DIR=/srv/undergraph/worker-1 npx -y understanding-graph@0.1.28 start
+PORT=3102 PROJECT_DIR=/srv/undergraph/worker-2 npx -y understanding-graph@0.1.28 start
 ```
 
 Use absolute paths in deployments. Sharing the installed package and its
@@ -184,7 +185,7 @@ closed without both:
 HOST=0.0.0.0 PORT=3101 \
 UG_WORKER_TOKEN=replace-with-a-long-random-secret \
 PROJECT_DIR=/srv/undergraph/worker-1 \
-npx -y understanding-graph start
+npx -y understanding-graph@0.1.28 start
 ```
 
 The trusted caller must send `Authorization: Bearer <UG_WORKER_TOKEN>` on every
@@ -204,11 +205,15 @@ npm run start:web
 
 ### Optional: enable embedding-based search
 
-`graph_semantic_search`, `graph_similar`, `graph_semantic_gaps`, and `graph_backfill_embeddings` all rely on `@xenova/transformers` (a local embedding model, ~160 MB once compiled). It is declared as an *optional peer dependency* so the default install stays small. If you need those tools:
+`graph_semantic_search`, `graph_similar`, `graph_semantic_gaps`, and `graph_backfill_embeddings` can use `@huggingface/transformers` (a local embedding model, roughly 160 MB once compiled). It is an *optional peer dependency* so the default install stays small. For an npx-based project, install both packages locally so Node can resolve the peer from the same dependency tree:
 
 ```bash
-npm install -g @xenova/transformers
+npm install --save-dev understanding-graph@0.1.28 @huggingface/transformers@4.2.0
+npx understanding-graph@0.1.28 init
 ```
+
+A separate global `@huggingface/transformers` install does not reliably satisfy an
+isolated npx cache install.
 
 Without it, the rest of the graph works normally. `graph_understand` and
 `graph_semantic_search` use deterministic lexical retrieval when embeddings are
@@ -224,16 +229,17 @@ modes also expose document helpers at the top level; use a batch when related
 document, concept, and edge changes must land together. Every batch requires a
 `commit_message` and runs in a SQLite transaction: if any operation fails, the
 entire batch rolls back as if it never ran. Workflow tools such as `source_read`
-manage their own atomic updates. Nodes are never deleted, only superseded. The
-commit stream becomes an inspectable update log—each node's commit message
-becomes its *Origin Story*.
+manage their own atomic updates. Ordinary work revises, archives, or supersedes
+nodes while preserving their history; irreversible purge is a separate,
+explicitly selected administrative action. The commit stream becomes an
+inspectable update log—each node's commit message becomes its *Origin Story*.
 
 ```
 1. project_switch("my-project")
 2. graph_suggest_next({ task, workflow: "coding" })
 3. [judge the sampled concrete routes and their weights]
 4. [choose, combine, modify, reject, or invent a route]
-5. graph_batch({ commit_message, ... }) # preserve artifact + understanding
+5. graph_batch({ commit_message, agent_name, ... }) # preserve artifact + understanding
 6. [use batch.navigation.suggestedCall at the next real choice point]
 ```
 
@@ -263,7 +269,7 @@ A graph node in one project can reference a node in another project via `graph_a
 
 ### Nodes (Understanding Units)
 
-Each node captures a moment of comprehension with a **trigger** marking *why* it was created:
+Each cognitive node captures an authored understanding update with a **trigger** marking *why* it was created:
 
 Triggers are *cognitive acts*, not categories — they capture *why* the agent created the node at this exact moment, not what kind of thing it is. The seven you'll use most often:
 
@@ -277,13 +283,13 @@ Triggers are *cognitive acts*, not categories — they capture *why* the agent c
 | `decision` | Choice made between alternatives, with rationale |
 | `prediction` | Forward-looking belief that can be validated later |
 
-Less common but available: `hypothesis`, `model`, `evaluation`, `analysis`, `experiment`, `serendipity`, `repetition`, `randomness`, `reference`, `library`. These ordinary cognitive nodes may preserve rich, provisional, unresolved testimony—not only settled conclusions—when it will help a future agent re-enter the work. The `thinking` trigger is different: it is reserved for the separate synthetic Reader/CMP synthesizer, which reconstructs chronological inner-voice training blocks from the underlying graph. Reserved blocks are hidden from and immutable to ordinary reading, writing, coding, and general workflows; only `TOOL_MODE=synthetic_reader` can access them. The full, deliberately chosen set of 18 trigger types is documented in the [understanding-graph paper](https://github.com/emergent-wisdom/understanding-graph/blob/main/paper/understanding_graph.pdf) (Section 3.1); it is an evolving design rather than a claimed formal minimum.
+Less common but available: `hypothesis`, `model`, `evaluation`, `analysis`, `experiment`, `serendipity`, `repetition`, `randomness`, `reference`, `library`. These ordinary cognitive nodes may preserve rich, provisional, unresolved testimony—not only settled conclusions—when it will help a future agent re-enter the work. The `thinking` trigger is different: it is reserved for the separate synthetic Reader/CMP synthesizer, which reconstructs chronological training blocks from the underlying graph. Reserved blocks are hidden from and immutable to ordinary reading, writing, coding, and general workflows; only `TOOL_MODE=synthetic_reader` can access them. The full, deliberately chosen set of 18 trigger types is documented in the [understanding-graph paper](https://github.com/emergent-wisdom/understanding-graph/blob/main/paper/understanding_graph.pdf) (Section 3.1); it is an evolving design rather than a claimed formal minimum.
 
 ### Edges (Connections)
 
 | Edge Type | Meaning |
 |-----------|---------|
-| `supersedes` | New understanding replaces old |
+| `supersedes` | New understanding replaces old; created through the dedicated `graph_supersede` lifecycle operation |
 | `contradicts` | Ideas in conflict |
 | `refines` | Adds precision to existing understanding |
 | `learned_from` | Attribution of insight |
@@ -293,9 +299,19 @@ Less common but available: `hypothesis`, `model`, `evaluation`, `analysis`, `exp
 
 ### Documents
 
-Structured prose, source material, and graph-native code. Code document roots
-generate runnable files; a leaf can be split atomically into ordered children,
-then units can be merged, moved, and reordered before regeneration.
+Structured prose, source material, and graph-native code share the same
+addressable document tree. A leaf can be a passage, function, class, type, or
+test with its own recorded purpose, origin commit, revisions, and typed links to
+the questions, decisions, evidence, or tensions that shaped it. This allows a
+later Reader to ask why one exact unit exists—not merely why the file exists—by
+calling `doc_read({ nodeId, showProvenance: true, showRevisions: true })`.
+
+`implements` points from an abstract commitment to its concrete unit;
+`expresses` and `inspired_by` point from an artifact unit to what it renders or
+what its author reports as influential; `learned_from` points from a cognitive
+update to the source or artifact encounter that occasioned it. These are
+inspectable authored claims, not verified causes. Code roots generate runnable
+files; units can be split, merged, moved, and reordered before regeneration.
 
 ### Projects
 
@@ -306,7 +322,7 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 ## Tools Overview
 
 <details>
-<summary>50+ top-level tools listed via <code>tools/list</code>, plus additional batch-only operations callable through <code>graph_batch</code> (click to expand)</summary>
+<summary>41 tools in the default <code>general</code> surface, 69 in explicit <code>full</code> mode, plus batch-only operations callable through <code>graph_batch</code> (click to expand)</summary>
 
 ### Batch Operations
 | Tool | Purpose |
@@ -400,16 +416,6 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 | `graph_resolve_references` | Verify cross-project references |
 | `graph_global_lookup` | Search across all projects |
 
-### Thematic System
-| Tool | Purpose |
-|------|---------|
-| `theme_create` | Define theme with activation zones |
-| `theme_activate` | Enter activation zone |
-| `theme_landing` | Mark pause point |
-| `theme_get_active` | Get active themes |
-| `theme_check_alignment` | Validate prose alignment |
-| `theme_deactivate` | Leave activation zone |
-
 ### Multi-Agent Coordination (Solver)
 | Tool | Purpose |
 |------|---------|
@@ -426,7 +432,7 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 
 ## Multi-Agent with Claude Code Agent Teams
 
-Understanding Graph is designed as the shared memory layer for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams). After running `npx understanding-graph init`, every teammate in an agent team automatically shares the same graph -- stigmergy out of the box.
+Understanding Graph is designed as a shared persistent medium for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams). After running `npx -y understanding-graph@0.1.28 init`, every teammate in an agent team automatically shares the same graph -- stigmergy out of the box.
 
 ### How it works
 
@@ -440,24 +446,24 @@ Claude (Team Lead):
   └── synthesizes findings from graph_history()               ┘
 ```
 
-1. **`init` creates the CLAUDE.md** -- Every teammate loads it automatically, so all agents know to use `graph_skeleton()` to orient, `graph_batch` for mutations, and `graph_history()` to read the metacognitive trail.
+1. **`init` installs the same fluid protocol for every teammate** -- Each agent treats the graph as the canonical medium, asks `graph_suggest_next` for concrete possibilities at natural choice points, and remains free to choose or reject them.
 2. **Commit messages are the coordination layer** -- Each `graph_batch` requires a `commit_message`. When the Security teammate writes "Security Agent: found JWT stored in localStorage -- tension between convenience and XSS risk", the Backend teammate sees it via `graph_history()` and acts on it.
 3. **Triggers classify contributions** -- Teammates tag their nodes (`tension`, `question`, `decision`, `surprise`), making it easy to find what matters: "show me all unresolved tensions" or "what questions are still open?"
-4. **No direct messaging needed** -- Teammates coordinate through the graph itself. The researcher leaves `question` nodes; the backend agent finds them via `graph_find_by_trigger` and creates `answers` edges.
+4. **Persistent handoffs without mandatory direct messaging** -- Teammates can coordinate through the graph itself. The researcher leaves `question` nodes; the backend agent finds them via `graph_find_by_trigger` and creates `answers` edges.
 
 ### Getting started with a swarm
 
 ```bash
 cd your-project
-npx understanding-graph init     # one-time setup
+npx -y understanding-graph@0.1.28 init     # one-time setup
 ```
 
 Then in Claude Code:
 ```
 Create an agent team with 3 teammates to [your task].
-Each teammate should read graph_skeleton() first to orient,
-then use graph_batch with descriptive commit messages so
-the team can coordinate through the shared understanding graph.
+Each teammate should work through the shared Understanding Graph,
+preserve material understanding as it emerges, and use graph_batch
+with descriptive commit messages so the team can coordinate.
 ```
 
 ### Long-running coordination (solver system)
@@ -481,7 +487,7 @@ The solver system persists in the SQLite database, so tasks survive across sessi
 ```
 packages/
   core/          # Graph logic, SQLite storage, embeddings
-  mcp-server/    # MCP server (70+ listed tools + batch-only operations)
+  mcp-server/    # MCP server (41 default / 69 full tools + batch operations)
   web-server/    # REST API + serves frontend
   frontend/      # 3D visualization (React + Three.js)
 ```
@@ -525,35 +531,47 @@ cd packages/frontend && npm run dev
 | `HOST` | `127.0.0.1` | Web bind address; non-loopback requires `UG_WORKER_TOKEN` |
 | `UG_WORKER_TOKEN` | -- | Bearer secret required for remote worker API/admin requests |
 | `ANTHROPIC_API_KEY` | -- | For repository autonomous-worker scripts (optional) |
-| `TOOL_MODE` | `full` | Enforced tool surface: `reading`, `research`, `coding`, `collaborative_coding`, `writing`, `full`, or the reserved `synthetic_reader` pretraining producer |
+| `ANTHROPIC_MODEL` | -- | Explicit model ID for the optional Anthropic autonomous worker |
+| `TOOL_MODE` | `general` | Enforced tool surface: safe cross-domain `general`; focused `reading`, `research`, `coding`, `collaborative_coding`, or `writing`; explicit broad `full`; or the reserved `synthetic_reader` pretraining producer |
 | `DEFAULT_PROJECT` | `default` | Project loaded on startup |
 
 ---
 
-## The Five Laws
+## Working principles
 
-1. **Git for Cognition** — Nodes are never deleted, only superseded. The supersession edge preserves the *epistemic journey*: a future agent reading the chain learns not just the current belief but the path from the wrong belief to the right one. Every `graph_batch` requires a `commit_message` that becomes the node's *Origin Story*.
-2. **PURE Standard** — After open exploration, use **P**arsimonious, **U**nique, **R**ealizable, **E**xpansive as non-compensatory gates when stabilizing a generalized analysis, model, or decision. Do not use PURE to suppress an early surprise, question, tension, or hypothesis.
-3. **Graph-First Context** — Always check existing graph before creating new nodes. Duplicate detection is a forcing function, not a check: it pulls prior cognition into the current moment.
-4. **Synthesize, Don't Transcribe** — Capture what an encounter did to attention and understanding, including unresolved implications and tensions—not a generic copy of the input.
-5. **Coordinate Deliberately** — In collaborative workflows, make ownership, handoffs, and integration evidence explicit through the solver system. Focused work does not need a ceremonial team.
+1. **Use the graph as the medium** — While Understanding mode is active,
+   preserve the communicable understanding and addressable artifact units that
+   matter to the work, not merely its final answer.
+2. **Keep agency with the model** — `graph_suggest_next` offers weighted,
+   concrete provocations. The model may choose, combine, modify, reject, or
+   replace them according to the user's task.
+3. **Re-enter when it can change the work** — Revisit the accumulated graph at
+   genuine choice points, surprises, resistance, or uncertainty—not on a fixed
+   timer and not as ceremony.
+4. **Synthesize rather than transcribe** — Preserve what an encounter changed,
+   including unresolved implications and tensions, rather than copying the
+   input. PURE is available as an optional stabilization check after open
+   exploration; it is not a quota or a gate on emergence.
+5. **Preserve provenance** — Use descriptive commits, dedicated revision and
+   supersession operations, evidence from the real artifact, and explicit
+   ownership or handoffs when collaboration actually requires them.
 
 ---
 
 ## Using with sema
 
-Understanding Graph gives your agents shared *episodic* memory — the reasoning trail behind a decision. [Sema](https://github.com/emergent-wisdom/sema) gives them shared *semantic* memory — a content-addressed vocabulary of cognitive patterns. They compose:
+Understanding Graph gives your agents shared *episodic* memory — the recorded interpretive trail behind a decision. [Sema](https://github.com/emergent-wisdom/sema) gives them shared *semantic* memory — a content-addressed vocabulary of cognitive patterns. They compose:
 
 ```bash
 # Add both to Claude Code
-claude mcp add ug   -- npx -y understanding-graph mcp
+claude mcp add ug   -- npx -y understanding-graph@0.1.28 mcp
 claude mcp add sema -- uvx --from semahash sema mcp
 ```
 
 With both installed, an agent can:
 
-1. Reference a sema pattern hash (e.g. `StateLock#7859`) inside an understanding-graph node's `mechanism` field to pin the meaning of a coordination primitive.
-2. Use `graph_semantic_search` to find all graph nodes that reference a given sema pattern, across projects and agent teams.
+1. Reference a sema pattern URI (for example, `sema://StateLock#7859`) inside a node's `understanding` or `why` text to pin the meaning of a coordination primitive.
+2. Use `graph_semantic_search` to find nodes that reference a pattern in the current project. Switch projects explicitly, or use cross-project reference tools, when the search spans graphs.
 3. Call `sema_handshake` to verify that two agents share the *same* definition of a pattern *before* building on each other's thinking in the graph — the fail-closed handshake prevents silent semantic drift.
 
 Full walkthrough: [using Understanding Graph with sema](https://github.com/emergent-wisdom/understanding-graph/blob/main/docs/using-with-sema.md)
@@ -566,7 +584,7 @@ tests, then revise or rearrange the source nodes and regenerate—never patch th
 generated projection directly.
 
 See [coding-inside-the-graph](https://github.com/emergent-wisdom/understanding-graph/blob/main/docs/coding-inside-the-graph.md) for the basic
-shape; the current dogfood suite extends this pattern to multi-file projects,
+shape; the current case-study suite extends this pattern to multi-file projects,
 structural reordering, and debugging from executable evidence.
 
 ---
@@ -575,13 +593,13 @@ structural reordering, and debugging from executable evidence.
 
 ```bibtex
 @misc{westerberg2026understanding,
-  title        = {Understanding Graph: Persisting the Invisible Thinking},
+  title        = {Understanding Graph: A Recursive Medium for Persistent Understanding},
   author       = {Westerberg, Henrik},
   year         = {2026},
-  month        = apr,
+  month        = aug,
   publisher    = {Zenodo},
-  doi          = {10.5281/zenodo.19462908},
-  url          = {https://doi.org/10.5281/zenodo.19462908}
+  doi          = {10.5281/zenodo.19462658},
+  url          = {https://doi.org/10.5281/zenodo.19462658}
 }
 ```
 

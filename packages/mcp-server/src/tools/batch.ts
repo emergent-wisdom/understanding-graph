@@ -270,7 +270,9 @@ Use for:
 - Bulk concept/connection creation
 - Any multi-step modification that should land all-or-nothing
 
-PARAMETER NAMES (these are strict — wrong names fail silently):
+Every call requires operations, commit_message, and agent_name.
+
+PARAMETER NAMES (these are strict — wrong names are rejected with an explicit remedy):
   graph_add_concept: { title, trigger, understanding, why, attend? } — NOT name/body/text; why is one line naming what this node does to the understanding around it (corrects/reframes/opens/settles); attend is an optional pointer to what a later instance should attend to DIFFERENTLY, and marks the node live attention
   graph_note:        { about, testimony, title?, trigger?, why?, status?: "open"|"resolved", relations? } — preserve a substantive change caused by an exact source, artifact, or prior cognitive node; prefer the specific honest trigger (omission = neutral analysis); routine execution needs no note
   graph_connect:     { from, to, type, why }                 — NOT source/target/edgeType
@@ -278,7 +280,7 @@ PARAMETER NAMES (these are strict — wrong names fail silently):
   graph_serendipity: { name, synthesis, source_elements, why } — after grounded discovery reveals a real unexpected bridge, never merely because random nodes were sampled
   graph_validate:    { node, insight } — preserve why later evidence made a serendipitous bridge survive scrutiny
   graph_decide:      { question, options, chosen, reasoning } — preserve an actual choice and its considered alternatives
-  doc_create:        { title, content, fileType, isDocRoot, parentId, afterId, level, expressesIds }
+  doc_create:        { title, content, purpose?, fileType, isDocRoot, parentId, afterId, level, expressesIds } — purpose records why this exact artifact unit exists; a root uses isDocRoot: true; a child uses parentId; when that parent already has children, append with afterId set to the current tail (or "$N.id" for a sibling created earlier in this batch)
   doc_revise:        { nodeId, content?, summary?, why } — why preserves the local edit; when a discovered insight/question/tension should influence other passages or future work, pair with graph_note about the exact passage in this batch; purely local revisions need no note
   doc_weave:         { parentId, title, targetNodeIds, content, connections, level?, afterId? } — each connection becomes an inspired_by edge whose why preserves the causal influence
   doc_create_passages: { parentId, title, narrativeRole?, containerLevel?: "section"|"subsection"|"scene"|"chapter"|"movement", afterId?, passages: [{ title, content, level: "paragraph"|"sentence", inspirations?: [{ nodeId, why }] }] } — atomically append a coherent scene/chapter/movement and the passages a future writer may move, replace, compare, annotate, or revise independently; scene/chapter/movement render as sections, optional afterId guards the current tail, and inspiration is optional, never forced
@@ -878,14 +880,6 @@ export async function handleBatchTools(
     };
   }
 
-  if (operations.length > MAX_BATCH_OPERATIONS) {
-    return {
-      success: false,
-      error: 'BATCH_OPERATION_LIMIT_EXCEEDED',
-      message: `A graph_batch may contain at most ${MAX_BATCH_OPERATIONS} operations. Split independent work into separate committed encounters.`,
-    };
-  }
-
   if (
     !Array.isArray(operations) ||
     operations.some(
@@ -903,6 +897,14 @@ export async function handleBatchTools(
       error: 'INVALID_BATCH_OPERATIONS',
       message:
         'operations must be an array of { tool: string, params: object } entries.',
+    };
+  }
+
+  if (operations.length > MAX_BATCH_OPERATIONS) {
+    return {
+      success: false,
+      error: 'BATCH_OPERATION_LIMIT_EXCEEDED',
+      message: `A graph_batch may contain at most ${MAX_BATCH_OPERATIONS} operations. Split independent work into separate committed encounters.`,
     };
   }
 
@@ -1291,7 +1293,11 @@ export async function handleBatchTools(
     // Inside the transaction. If we find orphans, throw BatchEarlyExit so
     // the catch block ROLLBACKs the entire batch (no half-state).
     const sweepStore = getGraphStore();
-    const sweepEdges = sweepStore.getAll().edges;
+    // Supersession archives the replaced node, so the ordinary active view
+    // deliberately hides both that node and its incident supersedes edge.
+    // The lifecycle edge still grounds the replacement and must remain
+    // visible to this integrity check.
+    const sweepEdges = sweepStore.getAllWithSuperseded().edges;
     const sweepConnectedIds = new Set<string>();
     for (const edge of sweepEdges) {
       sweepConnectedIds.add(edge.fromId);

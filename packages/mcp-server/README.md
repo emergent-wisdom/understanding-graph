@@ -16,7 +16,7 @@ Add the server to an MCP client:
       "args": ["-y", "@emergent-wisdom/understanding-graph-mcp-server"],
       "env": {
         "PROJECT_DIR": "/absolute/path/to/projects",
-        "TOOL_MODE": "full"
+        "TOOL_MODE": "general"
       }
     }
   }
@@ -47,8 +47,8 @@ coding use the other typed cognitive nodes.
 
 ## Understanding mode
 
-The graph is the working medium, not a log. Preserve all communicable task
-understanding a later instance could use: questions, interpretations,
+The graph is the working medium, not a log. Preserve communicable, material
+understanding that could matter to the work or a future inquiry: questions, interpretations,
 alternatives, relations, evidence, reasons, uncertainty, decisions, revisions,
 and artifact intent—not only conclusions. This is authored, user-visible
 testimony, never hidden token-level chain-of-thought.
@@ -80,11 +80,12 @@ Direct concept and edge mutations are operations inside `graph_batch`; they are
 not separate top-level MCP tools. Relevant workflow modes also expose document
 helpers at the top level. Use `graph_batch` whenever related document, concept,
 and edge changes must land together: every batch requires a `commit_message`
-and runs atomically.
+and the actual committing `agent_name`, and runs atomically.
 
 ```javascript
 graph_batch({
   commit_message: "The failing boundary test changed the interval model",
+  agent_name: "coding-agent",
   operations: [
     {
       tool: "graph_add_concept",
@@ -120,12 +121,13 @@ updates.
 
 | Mode | Intended work |
 |---|---|
+| `general` | Safe cross-domain understanding, sources, and artifacts (default) |
 | `reading` | Chronological sources and passage-grounded understanding |
 | `research` | Reading plus solver coordination |
 | `coding` | Graph-native code documents, generation, and tests |
 | `collaborative_coding` | Coding plus ownership, locks, and handoffs |
 | `writing` | Graph-backed manuscripts and editorial revision |
-| `full` | All ordinary workflow tools (default) |
+| `full` | Explicit broad access, including administrative and experimental tools |
 | `synthetic_reader` | Reserved production/signing/translation of Reader/CMP `thinking` blocks |
 
 Ordinary modes—including `full`—reject hidden or nested attempts to create a

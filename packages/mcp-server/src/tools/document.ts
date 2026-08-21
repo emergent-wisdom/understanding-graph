@@ -300,6 +300,11 @@ export const documentTools: Tool[] = [
           description:
             'Renderable content for this coherent unit. It need not contain the entire file; ordered descendants are concatenated during generation.',
         },
+        purpose: {
+          type: 'string',
+          description:
+            'Recorded local reason this exact passage, function, class, test, or other unit exists. State the purpose known now; do not invent causality.',
+        },
         summary: {
           type: 'string',
           description: 'Compressed version for context loading (optional)',
@@ -523,7 +528,7 @@ export const documentTools: Tool[] = [
   {
     name: 'doc_read',
     description:
-      'Read document content starting from any node. Pass a document root to read the whole document, or any section node to read just that branch. Returns content, structure, and compact open attention causally linked to these artifact nodes. Add showRevisions: true to see full edit history.',
+      'Read document content starting from any node. Pass a document root to read the whole document, or an exact passage/function/test node to inspect that unit. Returns content, structure, and compact open attention. Add showRevisions: true for edit history and showProvenance: true for the recorded purpose, origin commit, and typed rationale relations that answer why this unit exists or changed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -536,6 +541,11 @@ export const documentTools: Tool[] = [
           type: 'boolean',
           description:
             'If true, include full revision history for each section showing how it evolved. Default false.',
+        },
+        showProvenance: {
+          type: 'boolean',
+          description:
+            "If true, include each unit's recorded purpose, origin commit, and all non-structural incoming/outgoing relations with their exact why. These are authored provenance claims, not verified causes.",
         },
         project: {
           type: 'string',
@@ -1337,6 +1347,7 @@ export async function handleDocumentTools(
         {
           title: args.title as string,
           content: args.content as string,
+          purpose: args.purpose as string | undefined,
           summary: args.summary as string | undefined,
           level: args.level as string | undefined,
           isDocRoot,
@@ -1669,8 +1680,9 @@ export async function handleDocumentTools(
       const flattened = store.flattenDocument(nodeId);
 
       // Get all edges to show relationships
-      const { edges } = store.getAll();
+      const { nodes, edges } = store.getAll();
       const nodeIds = new Set(flattened.map((f) => f.node.id));
+      const nodeById = new Map(nodes.map((node) => [node.id, node]));
 
       // Find contains and next edges within this document
       const docEdges = edges.filter(
@@ -1705,6 +1717,7 @@ export async function handleDocumentTools(
       }
 
       const showRevisions = args.showRevisions as boolean;
+      const showProvenance = args.showProvenance as boolean;
 
       // Build annotated content with node boundaries and relationships
       interface SectionInfo {
@@ -1725,6 +1738,28 @@ export async function handleDocumentTools(
           summary?: string;
           contentStored: boolean;
         }>;
+        provenance?: {
+          recordedPurpose: string | null;
+          originCommit: {
+            id: string;
+            message: string;
+            agentName: string | null;
+            author: string | null;
+            createdAt: string;
+          } | null;
+          relations: Array<{
+            edgeId: string;
+            type: string;
+            direction: 'incoming' | 'outgoing';
+            why: string | null;
+            explanation: string | null;
+            otherNode: {
+              id: string;
+              title: string;
+              trigger: string | null;
+            };
+          }>;
+        };
       }
 
       const sections: SectionInfo[] = [];
@@ -1804,6 +1839,59 @@ export async function handleDocumentTools(
           }));
         }
 
+        if (showProvenance && fullNode) {
+          const origin = sqlite.getCommitForNode(node.id);
+          const recordedPurpose = fullNode.why?.trim();
+          const relations = edges
+            .filter(
+              (edge) =>
+                edge.type !== 'contains' &&
+                edge.type !== 'next' &&
+                (edge.fromId === node.id || edge.toId === node.id),
+            )
+            .map((edge) => {
+              const direction =
+                edge.fromId === node.id ? 'outgoing' : 'incoming';
+              const otherId =
+                direction === 'outgoing' ? edge.toId : edge.fromId;
+              const otherNode = nodeById.get(otherId);
+              return {
+                edgeId: edge.id,
+                type: edge.type,
+                direction,
+                why: edge.why,
+                explanation: edge.explanation,
+                otherNode: {
+                  id: otherId,
+                  title: otherNode?.title || '[unavailable]',
+                  trigger: otherNode?.trigger || null,
+                },
+              } as const;
+            })
+            .sort(
+              (a, b) =>
+                a.type.localeCompare(b.type) ||
+                a.otherNode.id.localeCompare(b.otherNode.id),
+            );
+
+          sectionInfo.provenance = {
+            recordedPurpose:
+              recordedPurpose && recordedPurpose !== 'Document node'
+                ? recordedPurpose
+                : null,
+            originCommit: origin
+              ? {
+                  id: origin.id,
+                  message: origin.message,
+                  agentName: origin.agentName,
+                  author: origin.author,
+                  createdAt: origin.createdAt,
+                }
+              : null,
+            relations,
+          };
+        }
+
         sections.push(sectionInfo);
       }
 
@@ -1820,11 +1908,27 @@ export async function handleDocumentTools(
           contains: 'parent → child (hierarchy)',
           next: 'sibling → sibling (reading order)',
         },
+        ...(showProvenance
+          ? {
+              provenanceGuide: {
+                inspired_by:
+                  'artifact unit → prior graph material claimed to have shaped it',
+                expresses: 'artifact unit → concept it renders',
+                implements:
+                  'abstract commitment or design → concrete artifact unit',
+                learned_from:
+                  'cognitive update → source or artifact encounter that occasioned it',
+                caveat:
+                  'This is a precise account of recorded provenance, not proof of hidden computation or causality. A missing link means no rationale was recorded, not that no cause existed.',
+              },
+            }
+          : {}),
         openAttention: getOpenArtifactAttention(nodeIds),
         granularityReviews: getProseGranularityReviews(nodeIds, mode),
-        hint: showRevisions
-          ? 'Showing revision history. Each section shows version and previous states.'
-          : 'Each section shows [node_id] v[version] and relationships. Update with doc_revise({ nodeId, content, why }). Add showRevisions: true to see edit history.',
+        hint:
+          showRevisions || showProvenance
+            ? `Showing${showRevisions ? ' revision history' : ''}${showRevisions && showProvenance ? ' and' : ''}${showProvenance ? ' recorded provenance' : ''}. Missing provenance means unrecorded, not uncaused.`
+            : 'Each section shows [node_id] v[version] and relationships. Revise through graph_batch with doc_revise({ nodeId, content, why }). Add showRevisions or showProvenance to inspect how and why the exact unit changed.',
       };
     }
 

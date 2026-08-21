@@ -4,6 +4,12 @@
   "description": "Web server for understanding graph visualization",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "dist/index.js",
   "files": [
     "dist",
@@ -11,7 +17,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-server-json.mjs",
     "start": "node dist/index.js",
     "dev": "nodemon --watch src --ext ts --exec 'tsx src/index.ts'",
     "clean": "rm -rf dist",
@@ -22,19 +28,15 @@
   "dependencies": {
     "@emergent-wisdom/understanding-graph-core": "0.1.12",
     "@emergent-wisdom/understanding-graph-mcp-server": "0.1.12",
-    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^4.22.2",
-    "multer": "^1.4.5-lts.1"
+    "express": "^4.22.2"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/multer": "^1.4.11",
     "@types/node": "^20.0.0",
     "nodemon": "^3.1.11",
     "tsx": "^4.20.6",
     "typescript": "^5.3.0",
-    "vitest": "^2.1.0"
+    "vitest": "^4.1.11"
   }
 }

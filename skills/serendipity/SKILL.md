@@ -1,81 +1,77 @@
 ---
 name: serendipity
 description: |
-  Grounded and pure serendipity workflows for injecting novelty.
-  Use when the graph feels too tight, the thermostat says DIVERGE,
-  or you want to break creative blocks.
+  Explore distant graph material through grounded comparison, random
+  perturbation, or temporary forced bisociation. Use when a live task could
+  benefit from leaving its most familiar path without abandoning evidence.
 user-invocable: true
 allowed-tools: |
-  mcp__ug__graph_discover_grounded
-  mcp__ug__graph_discover_grounded_chaos
-  mcp__ug__graph_discover
-  mcp__ug__graph_random
-  mcp__ug__graph_chaos
-  mcp__ug__graph_batch
-  mcp__ug__graph_skeleton
-  mcp__ug__graph_semantic_search
-  mcp__ug__graph_thermostat
-  mcp__ug__graph_context
+  mcp__plugin_understanding-graph_ug__graph_suggest_next
+  mcp__plugin_understanding-graph_ug__graph_understand
+  mcp__plugin_understanding-graph_ug__graph_analyze
+  mcp__plugin_understanding-graph_ug__graph_practice
+  mcp__plugin_understanding-graph_ug__graph_discover_grounded
+  mcp__plugin_understanding-graph_ug__graph_random
+  mcp__plugin_understanding-graph_ug__graph_semantic_search
+  mcp__plugin_understanding-graph_ug__graph_path
+  mcp__plugin_understanding-graph_ug__graph_history
+  mcp__plugin_understanding-graph_ug__doc_list_roots
+  mcp__plugin_understanding-graph_ug__graph_batch
 ---
 
 # Serendipity
 
-## Grounded serendipity
+Serendipity is an encounter with material outside the most likely completion
+path, followed by judgment. It is not a novelty quota, a claim that unrelated
+things must connect, or permission to abandon the user's task.
 
-`graph_discover_grounded({ nodes: 3, intensity: 0.2 })` samples distant graph
-material and asks whether a real bridge exists.
+## Choose the encounter
 
-Protocol:
-1. Inspect the sampled nodes and edges.
-2. Articulate a defensible bridge: shared mechanism, constraint, structure, or
-   functional analogy. If none exists, report that and stop.
-3. Let the bridge change the current question or artifact only if it survives
-   scrutiny.
-4. Optionally call `graph_discover_grounded_chaos` when stronger divergence is
-   explicitly useful. Perturbation is not part of every grounded discovery.
+If the user has not requested a particular method and there is a genuine
+exploratory choice, start with:
 
-Use grounded serendipity for durable understanding. Preserve a `serendipity`,
-`surprise`, `hypothesis`, or other honest update only when the encounter changes
-later attention or work, connecting it to the sampled sources. A defensible
+```javascript
+graph_suggest_next({
+  task: "State the live task or uncertainty",
+  workflow: "general"
+})
+```
+
+Replace `general` with the live work domain when reading, research, coding,
+collaborative coding, or writing applies.
+
+Consider higher-weighted routes seriously, then choose, combine, modify, or
+reject them. The model decides whether a proposed encounter can serve the live
+task; the menu is neither exhaustive nor mandatory. Do not call for another
+roll merely because one turn elapsed.
+
+Use `graph_discover_grounded({ nodes: 3, intensity: 0.2 })` when you want the
+graph to sample distant material and ask whether a real bridge exists. Inspect
+the actual sources, then look for a shared mechanism, constraint, structure, or
+functional analogy. A defensible
 no-connection result needs no node.
 
-## Pure serendipity
+Use `graph_random({ nodes: 3, cold: true, force: false })` when the value lies in
+letting a colder sample perturb the current framing. Returned nodes are
+provocations, not premises. Re-enter selected material with
+`graph_understand({ query, workflow, stance: "disrupt", focusNodeIds })` when
+its surrounding evidence or resistance matters.
 
-`graph_discover()` — high novelty, lower coherence.
+Use `graph_random({ nodes: 2, cold: true, force: true })` for a temporary
+Physics What-If. For one generative pass, assume the sampled concepts connect
+and articulate a possible mechanism. Then release the assumption, test it
+against the task and sources, and preserve it only if a defensible relation
+remains. “No connection” is a successful result.
 
-The serendipity engine forces unexpected connections through enforced blindness:
-- `graph_discover` returns ONLY a prompt — the blind agent doesn't see source nodes
-- The blind agent treats corrupted seeds as axioms and invents physics
-- Cold nodes (rarely accessed) are prioritized for unexpected combinations
+## Let divergence affect the work
 
-Use pure serendipity only when the user explicitly wants high-divergence,
-speculative exploration. It is available on the local `full` tool surface, not
-the focused hosted surface.
+When an encounter materially changes the artifact, make that change in its
+canonical graph document unit while Understanding mode is active. Preserve a
+durable insight atomically with `graph_batch`, using a nested
+`graph_serendipity` operation whose `source_elements` identify every source
+node. Choose another honest cognitive type when the result is really a
+question, surprise, hypothesis, tension, or decision.
 
-## Physics What-If
-
-`graph_random({ force: true, cold: true })` temporarily treats two sampled
-concepts as connected so the model has to articulate a mechanism that ordinary
-relevance retrieval would not propose. This is a generative lens, not evidence.
-Release the forced assumption after the pass, test the candidate against the
-task and sources, and preserve it only if a defensible relation remains. “No
-connection” is a successful result.
-
-When an insight survives scrutiny, preserve it atomically with `graph_batch`:
-add a nested `graph_serendipity` operation whose `source_elements` name every
-source node. The operation creates the typed `serendipity` node and its
-`learned_from` edges together; do not call it at the top level.
-
-## When to use
-
-- The non-binding thermostat suggests disruption
-- Graph density is high (tight mental model needs disruption)
-- You're stuck in a rut
-- The same triggers keep appearing (too much `foundation` and `decision`)
-
-## Follow through
-
-**Divergence is not decoration.** If a bridge materially changes understanding
-or the artifact, preserve that change with exact provenance in the next atomic
-batch. If it does not, write nothing. Never create a note merely to prove that
+If the encounter does not change later attention or work, write nothing.
+Never create a note merely to prove that
 the exploratory call was useful.

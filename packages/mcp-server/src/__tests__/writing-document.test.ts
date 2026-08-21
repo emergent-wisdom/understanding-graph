@@ -56,6 +56,127 @@ async function createRoot(content: string, summary?: string) {
 }
 
 describe('writing document revisions', () => {
+  it('explains why one exact artifact unit exists and changed', async () => {
+    const store = getGraphStore();
+    const decision = store.createNode({
+      title: 'Retry policy must resist synchronized recovery',
+      trigger: 'decision',
+      why: 'The failure mode requires diversity in client timing.',
+      understanding:
+        'Use jitter so independently recovering clients do not synchronize.',
+    });
+    const purpose =
+      'Apply the response-diversity decision at the retry boundary.';
+    const unit = (await docCall(
+      'doc_create',
+      {
+        title: 'retry_with_jitter',
+        content:
+          'def retry_with_jitter(delay, jitter):\n    return delay + jitter\n',
+        purpose,
+        level: 'function',
+        isDocRoot: true,
+        fileType: 'py',
+      },
+      contextManager,
+      'coding',
+    )) as { id: string };
+    const relationWhy =
+      'This function is the concrete boundary where the response-diversity decision is enforced.';
+
+    const linked = (await handleToolCall(
+      'graph_batch',
+      {
+        agent_name: 'test-agent',
+        commit_message: 'Connect retry design to its implementation',
+        operations: [
+          {
+            tool: 'graph_connect',
+            params: {
+              from: decision.id,
+              to: unit.id,
+              type: 'implements',
+              why: relationWhy,
+            },
+          },
+        ],
+      },
+      contextManager,
+      'coding',
+    )) as { success: boolean };
+    expect(linked.success).toBe(true);
+
+    await docCall(
+      'doc_revise',
+      {
+        nodeId: unit.id,
+        content:
+          'def retry_with_jitter(delay, jitter):\n    return max(0, delay + jitter)\n',
+        why: 'Prevent a negative delay after applying jitter.',
+      },
+      contextManager,
+      'coding',
+    );
+
+    const read = (await handleToolCall(
+      'doc_read',
+      {
+        nodeId: unit.id,
+        showProvenance: true,
+        showRevisions: true,
+      },
+      contextManager,
+      'coding',
+    )) as {
+      structure: Array<{
+        revisions: Array<{ why: string }>;
+        provenance: {
+          recordedPurpose: string | null;
+          originCommit: {
+            message: string;
+            agentName: string | null;
+          } | null;
+          relations: Array<{
+            type: string;
+            direction: string;
+            why: string | null;
+            otherNode: { id: string; title: string };
+          }>;
+        };
+      }>;
+      provenanceGuide: { caveat: string };
+    };
+
+    expect(read.structure[0]?.provenance).toEqual(
+      expect.objectContaining({
+        recordedPurpose: purpose,
+        originCommit: expect.objectContaining({
+          message: 'Run doc_create under test',
+          agentName: 'test-agent',
+        }),
+        relations: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'implements',
+            direction: 'incoming',
+            why: relationWhy,
+            otherNode: expect.objectContaining({
+              id: decision.id,
+              title: decision.title,
+            }),
+          }),
+        ]),
+      }),
+    );
+    expect(read.structure[0]?.revisions).toEqual([
+      expect.objectContaining({
+        why: 'Prevent a negative delay after applying jitter.',
+      }),
+    ]);
+    expect(read.provenanceGuide.caveat).toContain(
+      'not proof of hidden computation or causality',
+    );
+  });
+
   it('preserves genuine graph influence as inspired_by without leaking the note into prose', async () => {
     const store = getGraphStore();
     const cognitiveTestimony =

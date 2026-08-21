@@ -95,9 +95,10 @@ Environment variables:
   UG_WORKER_TOKEN
                 Required as Authorization: Bearer <token> when HOST is not loopback
   PROJECT_DIR   Where graph data lives (default: ./projects relative to cwd)
-  TOOL_MODE     MCP tool exposure: reading | research | coding |
+  TOOL_MODE     MCP tool exposure: general | reading | research | coding |
                 collaborative_coding | writing | full | synthetic_reader
-                (default: full; synthetic_reader is reserved Reader/CMP production)
+                (default: general; full is explicit broad access;
+                synthetic_reader is reserved Reader/CMP production)
 
 Quick start with Claude Code:
   claude mcp add ug -- npx -y understanding-graph mcp
@@ -134,44 +135,94 @@ function init() {
   let created = [];
   let skipped = [];
 
-  // 1. Create .claude/settings.local.json with MCP config
-  const claudeDir = path.join(cwd, '.claude');
-  const settingsPath = path.join(claudeDir, 'settings.local.json');
+  // 1. Create Claude Code's supported project-scoped MCP configuration.
+  // MCP servers do not load from .claude/settings.local.json. Migrate only a
+  // previously generated UG entry from that legacy location and leave every
+  // unrelated setting untouched.
+  const claudeMcpPath = path.join(cwd, '.mcp.json');
+  const legacyClaudeSettingsPath = path.join(
+    cwd,
+    '.claude',
+    'settings.local.json',
+  );
+  const legacyClaudeSettings = readJsonObject(legacyClaudeSettingsPath);
+  const legacyClaudeServer =
+    legacyClaudeSettings &&
+    isJsonObject(legacyClaudeSettings.mcpServers) &&
+    isManagedClaudeMcpConfig(
+      legacyClaudeSettings.mcpServers['understanding-graph'],
+    )
+      ? legacyClaudeSettings.mcpServers['understanding-graph']
+      : null;
+  const claudeMcp = fs.existsSync(claudeMcpPath)
+    ? readJsonObject(claudeMcpPath)
+    : {};
 
-  if (!fs.existsSync(claudeDir)) {
-    fs.mkdirSync(claudeDir, { recursive: true });
-  }
-
-  let settings = {};
-  if (fs.existsSync(settingsPath)) {
-    try {
-      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
-    } catch (e) {
-      // Corrupted file, start fresh
-    }
-  }
-
-  if (!settings.mcpServers) {
-    settings.mcpServers = {};
-  }
-
-  if (settings.mcpServers['understanding-graph']) {
-    skipped.push('.claude/settings.local.json (MCP server already configured)');
+  if (claudeMcp === null) {
+    skipped.push('.mcp.json (invalid JSON preserved; MCP config not changed)');
   } else {
-    // Use an absolute PROJECT_DIR so the MCP server finds the graph regardless
-    // of where Claude Code is launched from (a common foot-gun with cwd-relative
-    // paths is launching Claude from a parent directory and getting an "empty"
-    // graph because ./projects doesn't exist relative to the new cwd).
-    settings.mcpServers['understanding-graph'] = {
-      command: 'npx',
-      args: ['-y', `understanding-graph@${packageVersion}`, 'mcp'],
-      env: {
-        PROJECT_DIR: path.join(cwd, 'projects')
-      }
-    };
+    if (!isJsonObject(claudeMcp.mcpServers)) claudeMcp.mcpServers = {};
+    const servers = claudeMcp.mcpServers;
+    let managedKey = 'understanding-graph';
+    let existingClaudeServer = servers[managedKey];
 
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
-    created.push('.claude/settings.local.json');
+    if (!existingClaudeServer) {
+      const managedEntry = Object.entries(servers).find(([, config]) =>
+        isManagedClaudeMcpConfig(config),
+      );
+      if (managedEntry) {
+        [managedKey, existingClaudeServer] = managedEntry;
+      }
+    }
+
+    let claudeConfigReady = false;
+    if (
+      existingClaudeServer &&
+      !isManagedClaudeMcpConfig(existingClaudeServer)
+    ) {
+      skipped.push('.mcp.json (custom Understanding Graph server preserved)');
+    } else {
+      const managedServer = existingClaudeServer ?? legacyClaudeServer ?? {
+        command: 'npx',
+        args: ['-y', `understanding-graph@${packageVersion}`, 'mcp'],
+        env: { PROJECT_DIR: '${CLAUDE_PROJECT_DIR:-.}/projects' },
+      };
+      const packageArg = managedServer.args.findIndex((arg) =>
+        /^understanding-graph@[^/\s]+$/.test(arg),
+      );
+      managedServer.args[packageArg] = `understanding-graph@${packageVersion}`;
+      servers[managedKey] = managedServer;
+
+      const serialized = `${JSON.stringify(claudeMcp, null, 2)}\n`;
+      const current = fs.existsSync(claudeMcpPath)
+        ? fs.readFileSync(claudeMcpPath, 'utf8')
+        : '';
+      if (current === serialized) {
+        skipped.push('.mcp.json (managed Claude MCP server is current)');
+      } else {
+        fs.writeFileSync(claudeMcpPath, serialized);
+        created.push(
+          current
+            ? '.mcp.json (updated managed Claude MCP version)'
+            : '.mcp.json',
+        );
+      }
+      claudeConfigReady = true;
+    }
+
+    if (claudeConfigReady && legacyClaudeServer) {
+      delete legacyClaudeSettings.mcpServers['understanding-graph'];
+      if (Object.keys(legacyClaudeSettings.mcpServers).length === 0) {
+        delete legacyClaudeSettings.mcpServers;
+      }
+      fs.writeFileSync(
+        legacyClaudeSettingsPath,
+        `${JSON.stringify(legacyClaudeSettings, null, 2)}\n`,
+      );
+      created.push(
+        '.claude/settings.local.json (removed obsolete managed MCP entry)',
+      );
+    }
   }
 
   // 2. Create project-scoped Codex MCP configuration.
@@ -181,23 +232,27 @@ function init() {
   if (!fs.existsSync(codexDir)) {
     fs.mkdirSync(codexDir, { recursive: true });
   }
-  if (
-    fs.existsSync(codexConfigPath) &&
-    fs.readFileSync(codexConfigPath, 'utf8').includes(
-      '[mcp_servers.understanding_graph]',
-    )
-  ) {
-    skipped.push('.codex/config.toml (MCP server already configured)');
+  const existingCodex = fs.existsSync(codexConfigPath)
+    ? fs.readFileSync(codexConfigPath, 'utf8')
+    : '';
+  if (existingCodex.includes('[mcp_servers.understanding_graph]')) {
+    const updated = updateManagedCodexMcpVersion(existingCodex, packageVersion);
+    if (updated === null) {
+      skipped.push('.codex/config.toml (custom MCP server preserved)');
+    } else if (updated === existingCodex) {
+      skipped.push('.codex/config.toml (managed MCP server is current)');
+    } else {
+      fs.writeFileSync(codexConfigPath, updated);
+      created.push('.codex/config.toml (updated managed MCP version)');
+    }
   } else {
-    const prefix = fs.existsSync(codexConfigPath)
-      ? `${fs.readFileSync(codexConfigPath, 'utf8').trimEnd()}\n\n`
-      : '';
+    const prefix = existingCodex ? `${existingCodex.trimEnd()}\n\n` : '';
     fs.writeFileSync(codexConfigPath, `${prefix}${codexSection}`);
     created.push('.codex/config.toml');
   }
 
   // 3. Give both subscription clients the same canonical workflow skill.
-  const ugSection = getUnderstandingWorkSection();
+  const ugSection = getUnderstandingWorkSection(packageVersion);
   installInstructionFile(path.join(cwd, 'CLAUDE.md'), ugSection, created, skipped);
   installInstructionFile(path.join(cwd, 'AGENTS.md'), ugSection, created, skipped);
 
@@ -245,15 +300,63 @@ function init() {
     1. Open Codex or Claude Code in this directory and sign in with your normal
        ChatGPT or Claude subscription
     2. Ask naturally for substantive work; you do not need to say "use the graph"
-    3. The agent should orient, work in the graph, commit material understanding,
-       and re-enter the changed graph before it reports completion
+    3. The agent should work in the graph, preserve material understanding as it
+       emerges, and use weighted suggestions or re-entry at natural choice points
 
-  PROJECT_DIR was written as an absolute path in both client configurations so
-  the graph is found regardless of where you launch the agent.
+  Both client configurations resolve this project's projects/ directory
+  regardless of the agent process's launch directory.
 `);
 }
 
-function getUnderstandingWorkSection() {
+function isManagedClaudeMcpConfig(config) {
+  return Boolean(
+    config &&
+      typeof config === 'object' &&
+      config.command === 'npx' &&
+      Array.isArray(config.args) &&
+      config.args.includes('mcp') &&
+      config.args.some(
+        (arg) =>
+          typeof arg === 'string' && /^understanding-graph@[^/\s]+$/.test(arg),
+      ),
+  );
+}
+
+function isJsonObject(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readJsonObject(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    return isJsonObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function updateManagedCodexMcpVersion(content, packageVersion) {
+  const start = content.indexOf('[mcp_servers.understanding_graph]');
+  if (start < 0) return null;
+  const nextSection = content.indexOf('\n[', start + 1);
+  const end = nextSection < 0 ? content.length : nextSection + 1;
+  const section = content.slice(start, end);
+  if (
+    !/^command\s*=\s*"npx"\s*$/m.test(section) ||
+    !/understanding-graph@[^"\s,]+/.test(section) ||
+    !/args\s*=\s*\[[^\]]*"mcp"[^\]]*\]/s.test(section)
+  ) {
+    return null;
+  }
+  const updatedSection = section.replace(
+    /understanding-graph@[^"\s,]+/,
+    `understanding-graph@${packageVersion}`,
+  );
+  return `${content.slice(0, start)}${updatedSection}${content.slice(end)}`;
+}
+
+function getUnderstandingWorkSection(packageVersion) {
   const skillPath = path.join(
     packageRoot,
     'skills',
@@ -265,7 +368,7 @@ function getUnderstandingWorkSection() {
     .replace(/^---\n[\s\S]*?\n---\n/, '')
     .replace(/^# Work through Understanding\n+/, '')
     .trim();
-  return `<!-- understanding-graph:fluid-understanding-v1 -->
+  return `<!-- understanding-graph:fluid-understanding-v1 package=${packageVersion} -->
 # Understanding Graph
 
 ${body}
@@ -273,6 +376,7 @@ ${body}
 ---
 
 *Generated from the bundled \`understanding-work\` skill by \`npx understanding-graph init\`. The graph workflow applies automatically to substantive work; the user does not need to name it.*
+<!-- /understanding-graph -->
 `;
 }
 
@@ -285,26 +389,28 @@ function installInstructionFile(filePath, section, created, skipped) {
   }
 
   const existing = fs.readFileSync(filePath, 'utf8');
-  if (existing.includes('understanding-graph:fluid-understanding-v1')) {
+  if (existing.includes(section)) {
     skipped.push(`${label} (current Understanding Graph protocol already present)`);
     return;
   }
 
-  const generatedSection =
-    /<!-- understanding-graph:[^>]+ -->[\s\S]*?\*Generated from the bundled `understanding-work` skill by `npx understanding-graph init`\.[\s\S]*?\*\n?/;
+  const boundedGeneratedSection =
+    /<!-- understanding-graph:[^>]+ -->[\s\S]*?<!-- \/understanding-graph -->\n?/;
+  const priorGeneratedSection =
+    /<!-- understanding-graph:[^>]+ -->[\s\S]*?\*Generated from the bundled `understanding-work` skill by `npx understanding-graph init`\.[^\n]*\*\n?/;
+  const generatedSection = boundedGeneratedSection.test(existing)
+    ? boundedGeneratedSection
+    : priorGeneratedSection;
   if (generatedSection.test(existing)) {
     fs.writeFileSync(filePath, existing.replace(generatedSection, section));
     created.push(`${label} (updated Understanding Graph protocol)`);
     return;
   }
 
-  const legacyStart = existing.indexOf('# Understanding Graph');
-  const generatedLegacy = existing.includes(
-    '*This file was generated by `npx understanding-graph init`.',
-  );
-  if (generatedLegacy && legacyStart >= 0) {
-    const prefix = existing.slice(0, legacyStart).trimEnd();
-    fs.writeFileSync(filePath, prefix ? `${prefix}\n\n${section}` : section);
+  const generatedLegacy =
+    /# Understanding Graph[\s\S]*?\*This file was generated by `npx understanding-graph init`\.[^\n]*\*\n?/;
+  if (generatedLegacy.test(existing)) {
+    fs.writeFileSync(filePath, existing.replace(generatedLegacy, section));
     created.push(`${label} (updated Understanding Graph protocol)`);
     return;
   }

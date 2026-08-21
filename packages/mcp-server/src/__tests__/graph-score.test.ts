@@ -57,6 +57,20 @@ async function scoreGraph(): Promise<ScoreResult> {
   )) as ScoreResult;
 }
 
+async function batch(operations: unknown[]): Promise<void> {
+  const result = (await handleToolCall(
+    'graph_batch',
+    {
+      agent_name: 'score-test',
+      commit_message: 'Exercise supersession diagnostics through the lifecycle',
+      operations,
+    },
+    contextManager,
+    'research',
+  )) as { success: boolean; message?: string };
+  expect(result.success, result.message).toBe(true);
+}
+
 function setNodeEvidence(
   nodeId: string,
   createdAt: string,
@@ -195,5 +209,158 @@ describe('graph_score ordinary graph boundary', () => {
     expect(result.hint).toContain('specific, explained edges');
     expect(result.hint).not.toMatch(/thinking|Reader|CMP|synthe/i);
     expect(JSON.stringify(result.metrics)).not.toMatch(/thinking/i);
+  });
+
+  it('scores the collapsed graph while retaining dedicated supersession history', async () => {
+    await batch([
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Fixed-delay retries are safest',
+          trigger: 'model',
+          why: 'Records the model that burst testing later displaces',
+          understanding: 'A fixed delay keeps retry timing predictable.',
+        },
+      },
+      {
+        tool: 'graph_add_concept',
+        params: {
+          title: 'Worker scheduling follows the retry model',
+          trigger: 'consequence',
+          why: 'Makes connectivity through the displaced model observable',
+          understanding: 'Worker timing is derived from retry timing.',
+        },
+      },
+      {
+        tool: 'graph_connect',
+        params: {
+          from: 'Worker scheduling follows the retry model',
+          to: 'Fixed-delay retries are safest',
+          type: 'learned_from',
+          why: 'The worker schedule was derived from this retry model.',
+        },
+      },
+    ]);
+    await batch([
+      {
+        tool: 'graph_revise',
+        params: {
+          node: 'Fixed-delay retries are safest',
+          understanding:
+            'A fixed delay makes retry timing predictable, but its burst behavior remains untested.',
+          why: 'Make the remaining uncertainty explicit before the burst test.',
+        },
+      },
+    ]);
+    await batch([
+      {
+        tool: 'graph_supersede',
+        params: {
+          old: 'Fixed-delay retries are safest',
+          new_name: 'Retries need bounded jitter',
+          new_understanding:
+            'Bounded jitter avoids synchronized bursts while retaining a timing ceiling.',
+          why: 'Burst testing displaced the fixed-delay model.',
+        },
+      },
+    ]);
+
+    expect(
+      getGraphStore()
+        .getAll()
+        .nodes.map((node) => node.title),
+    ).toEqual(
+      expect.arrayContaining([
+        'Worker scheduling follows the retry model',
+        'Retries need bounded jitter',
+      ]),
+    );
+    expect(
+      getGraphStore()
+        .getAll()
+        .nodes.map((node) => node.title),
+    ).not.toContain('Fixed-delay retries are safest');
+    const displaced = getGraphStore()
+      .getAllWithSuperseded()
+      .nodes.find((node) => node.title === 'Fixed-delay retries are safest');
+    expect(displaced?.active).toBe(false);
+
+    const revisions = (await handleToolCall(
+      'node_get_revisions',
+      { nodeId: displaced?.id },
+      contextManager,
+      'full',
+    )) as {
+      error?: string;
+      nodeId?: string;
+      nodeName?: string;
+      currentState?: { understanding?: string };
+      revisions?: Array<{ changes?: { understanding?: string } }>;
+      revisionCount?: number;
+    };
+    expect(revisions).not.toHaveProperty('error');
+    expect(revisions).toMatchObject({
+      nodeId: displaced?.id,
+      nodeName: 'Fixed-delay retries are safest',
+      currentState: {
+        understanding:
+          'A fixed delay makes retry timing predictable, but its burst behavior remains untested.',
+      },
+      revisionCount: 1,
+      revisions: [
+        {
+          changes: {
+            understanding: 'A fixed delay keeps retry timing predictable.',
+          },
+        },
+      ],
+    });
+
+    const analysis = (await handleToolCall(
+      'graph_analyze',
+      {},
+      contextManager,
+    )) as {
+      stats: {
+        nodeCount: number;
+        edgeCount: number;
+        isolatedCount: number;
+        supersededCount: number;
+      };
+      isolatedNodes: Array<{ id: string }>;
+    };
+    expect(analysis.stats).toMatchObject({
+      nodeCount: 2,
+      edgeCount: 1,
+      isolatedCount: 0,
+      supersededCount: 1,
+    });
+    expect(analysis.isolatedNodes).toEqual([]);
+
+    const score = await scoreGraph();
+    expect(score.counts).toEqual({
+      totalNodes: 2,
+      questionNodes: 0,
+      totalEdges: 1,
+    });
+    expect(score.metrics.supersessionCount).toBe(1);
+    expect(score.metrics.connectivity).toBe('100%');
+
+    const practice = (await handleToolCall(
+      'graph_practice',
+      {},
+      contextManager,
+    )) as {
+      shaped: { nodeCount: number; edgeCount: number; isolatedCount: number };
+      worked: Array<{ key: string; value: string }>;
+    };
+    expect(practice.shaped).toMatchObject({
+      nodeCount: 2,
+      edgeCount: 1,
+      isolatedCount: 0,
+    });
+    expect(
+      practice.worked.find((item) => item.key === 'self_correction')?.value,
+    ).toBe('1 of 2 edges overturn something (50%)');
   });
 });

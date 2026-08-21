@@ -10,9 +10,10 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 import { sqlite } from '@emergent-wisdom/understanding-graph-core';
-import cors from 'cors';
 import express from 'express';
 import { createApiSerializationMiddleware } from './api-serialization.js';
+import { createBrowserOriginGuard } from './browser-origin.js';
+import { resolveServerJsonPath } from './mcp-discovery.js';
 import { createMcpGatewayRouter, MCP_JSON_BODY_LIMIT } from './mcp-gateway.js';
 import { createRestMutationFirewall } from './mutation-firewall.js';
 import { conversationRouter } from './routes/conversations.js';
@@ -42,7 +43,7 @@ const workerAuth = createWorkerAuthMiddleware({
 // A non-loopback worker endpoint is an explicit, authenticated deployment
 // mode. Authenticate before parsing potentially large API request bodies.
 app.use(['/api', '/admin'], workerAuth);
-app.use(cors());
+app.use(createBrowserOriginGuard(HOST));
 app.use('/api/mcp', express.json({ limit: MCP_JSON_BODY_LIMIT }));
 app.use(express.json());
 
@@ -118,14 +119,15 @@ app.use('/api', graphRouter);
 app.use('/api', databaseRouter);
 app.use('/api', conversationRouter);
 
-// MCP Registry discovery: serve the package's server.json at the 2026
-// well-known path so agents can auto-discover understanding-graph.
-// server.json lives at the repo root (4 levels up from dist/index.js:
-// dist/index.js -> dist -> web-server -> packages -> repo root).
-const packageRoot = path.resolve(__dirname, '../../..');
-const serverJsonPath = path.join(packageRoot, 'server.json');
+// MCP Registry discovery: production builds copy server.json beside this
+// entry point. Source development falls back to the repository root, and
+// deployments may explicitly provide a record path.
+const serverJsonPath = resolveServerJsonPath(
+  __dirname,
+  process.env.UG_SERVER_JSON,
+);
 app.get('/.well-known/mcp/server.json', (_req, res) => {
-  if (fs.existsSync(serverJsonPath)) {
+  if (serverJsonPath) {
     res.setHeader('Content-Type', 'application/json');
     return res.sendFile(serverJsonPath);
   }

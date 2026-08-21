@@ -1,9 +1,8 @@
 \documentclass[11pt, a4paper]{article}
 
 \usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
-% geometry package is loaded by arxiv.sty, do not reload it here to avoid option clash
 \usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{graphicx}
 \usepackage{hyperref}
 \usepackage{booktabs}
@@ -25,15 +24,15 @@
 \usepackage{subcaption}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
-\usepackage{arxiv}
-\usepackage{emergentwisdom} 
+\usepackage{emergentwisdom-preprint}
+\renewcommand{\shorttitle}{Understanding Graph}
 
 \hypersetup{
-    colorlinks=true,
-    linkcolor=black,
-    filecolor=black,
-    urlcolor=black,
-    citecolor=black,
+    hidelinks,
+    pdftitle={Understanding Graph: A Recursive Medium for Persistent Understanding},
+    pdfauthor={Henrik Westerberg},
+    pdfsubject={A recursive architecture for persistent, graph-mediated understanding},
+    pdfkeywords={AI memory, understanding graphs, recursive understanding, self-directed understanding, interpretive state, provenance, graph-native artifacts},
 }
 
 \author{
@@ -41,4 +40,3 @@
   Emergent Wisdom \\
   \href{mailto:henrik.westerberg@emergentwisdom.org}{\texttt{henrik.westerberg@emergentwisdom.org}}
 }
-\date{\today}

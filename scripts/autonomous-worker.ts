@@ -6,7 +6,7 @@
  * and commits results directly to the graph.
  *
  * Usage:
- *   ANTHROPIC_API_KEY=sk-... npx tsx scripts/autonomous-worker.ts
+ *   ANTHROPIC_API_KEY=sk-... ANTHROPIC_MODEL=<model-id> npx tsx scripts/autonomous-worker.ts
  *
  * Or run multiple workers in parallel for faster processing.
  */
@@ -35,6 +35,12 @@ if (AGENT_FOUNDATION) {
 const POLL_INTERVAL_MS = 5000; // 5 seconds
 const MAX_RETRIES = 3;
 const WORKER_ID = `worker_${Math.random().toString(36).slice(2, 8)}`;
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL?.trim();
+
+if (!ANTHROPIC_MODEL) {
+  console.error('[INIT] ANTHROPIC_MODEL is required for the optional autonomous worker');
+  process.exit(1);
+}
 
 // Initialize Anthropic client
 const anthropic = new Anthropic();
@@ -476,7 +482,7 @@ Execute this task now. Use the graph tools to make changes, then call submit_res
 
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: ANTHROPIC_MODEL,
         max_tokens: 4096,
         system: systemPrompt,
         tools: AGENT_TOOLS,

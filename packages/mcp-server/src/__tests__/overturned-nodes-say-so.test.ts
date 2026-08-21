@@ -84,20 +84,38 @@ async function batch(commit_message: string, operations: unknown[]) {
 
 /** A claim carrying an instruction, and something that later retires it. */
 async function seed(retiringType: string) {
-  await batch('Record a claim, then retire it', [
-    {
-      tool: 'graph_add_concept',
-      params: {
-        title: CLAIM,
-        trigger: 'surprise',
-        why: 'Records what a first run appeared to show',
-        understanding:
-          'Two allocations had identical access cost while segregation halved, so mixing looked free. ' +
-          'The city was small enough that almost every journey fell inside the tolerance, which is the part that was never checked.',
-        attend:
-          'Test this on a larger city with a wider income spread before relying on it.',
-      },
+  const claim = {
+    tool: 'graph_add_concept',
+    params: {
+      title: CLAIM,
+      trigger: 'surprise',
+      why: 'Records what a first run appeared to show',
+      understanding:
+        'Two allocations had identical access cost while segregation halved, so mixing looked free. ' +
+        'The city was small enough that almost every journey fell inside the tolerance, which is the part that was never checked.',
+      attend:
+        'Test this on a larger city with a wider income spread before relying on it.',
     },
+  };
+  if (retiringType === 'supersedes') {
+    await batch('Record a claim, then supersede it', [
+      claim,
+      {
+        tool: 'graph_supersede',
+        params: {
+          old: CLAIM,
+          new_name: VERDICT,
+          new_understanding:
+            'On a six-block city the trade-off reappears, so the free result belonged to the demo rather than to cities.',
+          why: 'Following this reaches the claim the wider test settled, and how it came out.',
+        },
+      },
+    ]);
+    return;
+  }
+
+  await batch('Record a claim, then relate the evaluation', [
+    claim,
     {
       tool: 'graph_add_concept',
       params: {
@@ -120,20 +138,25 @@ async function seed(retiringType: string) {
   ]);
 }
 
-async function resistance(): Promise<Framed[]> {
+async function framedNodes(
+  query = 'what did the earlier run get wrong',
+): Promise<Framed[]> {
   const packet = (await handleToolCall(
     'graph_understand',
-    { query: 'what did the earlier run get wrong', retrieval: 'lexical' },
+    { query, retrieval: 'lexical' },
     contextManager,
     'research',
   )) as Packet;
-  return packet.frame?.resistance ?? [];
+  return [
+    ...(packet.frame?.baseline ?? []),
+    ...(packet.frame?.resistance ?? []),
+  ];
 }
 
 describe('a retired claim arrives dated', () => {
   it('names what overturned it, beside the instruction it still carries', async () => {
     await seed('invalidates');
-    const claim = (await resistance()).find((n) => n.title === CLAIM);
+    const claim = (await framedNodes()).find((n) => n.title === CLAIM);
     expect(claim, 'the overturned claim was not surfaced at all').toBeDefined();
 
     // The attend must still arrive — on an overturned node it is the
@@ -148,7 +171,7 @@ describe('a retired claim arrives dated', () => {
 
   it('treats supersedes the same way', async () => {
     await seed('supersedes');
-    const claim = (await resistance()).find((n) => n.title === CLAIM);
+    const claim = (await framedNodes()).find((n) => n.title === CLAIM);
     expect(claim?.overturnedBy).toBe(VERDICT);
   });
 
@@ -156,7 +179,9 @@ describe('a retired claim arrives dated', () => {
     // Two positions can conflict while both stay live. Reporting that as
     // overturned would settle by fiat an argument the graph is holding open.
     await seed('contradicts');
-    const claim = (await resistance()).find((n) => n.title === CLAIM);
+    const claim = (
+      await framedNodes('what did we conclude about whether mixing is free')
+    ).find((n) => n.title === CLAIM);
     expect(
       claim,
       'the contradicted claim should still be surfaced',

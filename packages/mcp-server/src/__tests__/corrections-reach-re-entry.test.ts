@@ -101,8 +101,8 @@ async function seedGraphWithDistantCorrection() {
   // existing knowledge — a second, self-contained batch would be an island.
   //
   // The grounding edge from the deployment material is deliberately
-  // `learned_from`, which is NOT a resistance type. Resistance walks only
-  // invalidates / contradicts / supersedes / questions / diverse_from, so this
+  // `learned_from`, which is NOT a resistance type. Resistance walks signed
+  // invalidation, supersession, and live tensions, so this
   // satisfies grounding without opening a one-hop path from a deployment seed
   // to the overturned caching claim. Using a resistance-typed edge here would
   // make the test pass for the wrong reason.
@@ -144,7 +144,7 @@ async function seedGraphWithDistantCorrection() {
         params: {
           from: 'Expiry alone left stale reads under write bursts',
           to: 'Cache invalidation can be left to expiry alone',
-          type: 'contradicts',
+          type: 'invalidates',
           why: 'Following this reaches the belief the measurement overturned, and why expiry was insufficient.',
         },
       },

@@ -281,7 +281,33 @@ describe('what the diagnostics see in a graph that was worked', () => {
     expect(abandoned.id).toBeTruthy();
   });
 
-  it('reports prose with no thinking attached, which orphan checks cannot see', () => {
+  it('does not score a prediction merely because another claim contradicts it', () => {
+    const store = initializeGraph();
+    const prediction = store.createNode({
+      title: 'The retry burst will stay below two seconds',
+      trigger: 'prediction',
+      why: 'Stakes a measurable expectation before the run',
+      understanding: 'The queue should clear before the second sample.',
+    });
+    const contrary = store.createNode({
+      title: 'The queue may persist past two seconds',
+      trigger: 'hypothesis',
+      why: 'Keeps an unresolved competing expectation live',
+      understanding: 'Correlated retries could extend the tail.',
+    });
+    store.createEdge({
+      fromId: contrary.id,
+      toId: prediction.id,
+      type: 'contradicts',
+      why: 'The claims conflict, but no run has yet supplied a verdict.',
+    });
+
+    expect(diagnostic('scored_predictions')?.value).toBe(
+      '0 of 1 predictions carry a verdict',
+    );
+  });
+
+  it('reports artifact units with no cognitive link, which orphan checks cannot see', () => {
     const store = initializeGraph();
 
     const concept = store.createNode({
@@ -319,7 +345,9 @@ describe('what the diagnostics see in a graph that was worked', () => {
     // Passages are born holding `contains` and `next`, so the ungrounded ones
     // are connected by every structural measure and still carry no thought.
     const grounding = diagnostic('prose_grounding');
-    expect(grounding?.value).toContain('of 3 passages carry thinking');
+    expect(grounding?.value).toContain(
+      'of 3 artifact units carry cognitive links',
+    );
     expect(grounding?.value).not.toContain('3 of 3');
   });
 
@@ -414,6 +442,142 @@ describe('the unexpressed list names what it is made of', () => {
     // The reading has to tell the agent that this residue is not work.
     expect(diagnostic('understanding_ahead_of_artifact')?.reading).toContain(
       'verdicts scoring predictions',
+    );
+  });
+
+  it('does not treat creative influence as semantic expression', () => {
+    const store = initializeGraph();
+    const decision = store.createNode({
+      title: 'The opening should withhold the name',
+      trigger: 'decision',
+      why: 'Preserves a live compositional choice',
+      understanding:
+        'Withholding the name keeps the first exchange unstable for the reader.',
+    });
+    const passage = store.createDocumentNode({
+      title: 'The unnamed caller',
+      content: 'The receiver lit, but the caller field remained blank.',
+      level: 'paragraph',
+      isDocRoot: true,
+    });
+    store.createEdge({
+      fromId: passage.id,
+      toId: decision.id,
+      type: 'inspired_by',
+      why: 'The withholding decision prompted this image.',
+    });
+
+    expect(diagnostic('understanding_ahead_of_artifact')?.value).toContain(
+      '1 decision(s)',
+    );
+
+    const revision = store.createNode({
+      title: 'The caller must be named immediately',
+      trigger: 'evaluation',
+      why: 'Records what the complete reread changed',
+      understanding:
+        'The later reveal repeats information, so the name now belongs here.',
+    });
+    store.createEdge({
+      fromId: revision.id,
+      toId: decision.id,
+      type: 'invalidates',
+      why: 'The full-sequence reread retired the withholding decision.',
+    });
+
+    expect(diagnostic('artifact_ahead_of_understanding')?.value).toBe(
+      'nothing expresses a retired decision',
+    );
+  });
+});
+
+describe('self-correction distinguishes conflict from retirement', () => {
+  it('retains a supersession after the lifecycle archives the displaced node', () => {
+    const store = initializeGraph();
+    const displaced = store.createNode({
+      title: 'Retries should always use a fixed delay',
+      trigger: 'model',
+      why: 'Records the position that the burst test later replaces',
+      understanding: 'A fixed delay makes retry timing predictable.',
+    });
+    const dependent = store.createNode({
+      title: 'The worker schedule follows the retry model',
+      trigger: 'consequence',
+      why: 'Makes incident connectivity observable after replacement',
+      understanding: 'Worker timing is derived from the retry model.',
+    });
+    const replacement = store.createNode({
+      title: 'Retries should add bounded jitter',
+      trigger: 'model',
+      why: 'Replaces the fixed-delay position after burst testing',
+      understanding: 'Bounded jitter prevents synchronized retry bursts.',
+    });
+    store.createEdge({
+      fromId: dependent.id,
+      toId: displaced.id,
+      type: 'learned_from',
+      why: 'The schedule was derived from the model that has now evolved.',
+    });
+    store.createEdge({
+      fromId: replacement.id,
+      toId: displaced.id,
+      type: 'supersedes',
+      why: 'Burst testing displaced the fixed-delay model.',
+    });
+    expect(store.archiveNode(displaced.id, 'Superseded')).toBe(true);
+
+    const report = assessPractice();
+    expect(report.shaped).toMatchObject({
+      nodeCount: 2,
+      edgeCount: 1,
+      isolatedCount: 0,
+    });
+    expect(
+      report.worked.find((item) => item.key === 'self_correction')?.value,
+    ).toBe('1 of 2 edges overturn something (50%)');
+  });
+
+  it('does not call an unresolved contradiction an overturned claim', () => {
+    const store = initializeGraph();
+    const first = store.createNode({
+      title: 'Retries should remain deterministic',
+      trigger: 'hypothesis',
+      why: 'Keeps one live design position explicit',
+      understanding: 'Determinism makes failure reproduction easier.',
+    });
+    const second = store.createNode({
+      title: 'Retries should include jitter',
+      trigger: 'hypothesis',
+      why: 'Keeps the competing design position explicit',
+      understanding: 'Jitter reduces synchronized load spikes.',
+    });
+    store.createEdge({
+      fromId: second.id,
+      toId: first.id,
+      type: 'contradicts',
+      why: 'Both claims remain live until the burst test settles the trade-off.',
+    });
+
+    expect(diagnostic('self_correction')?.value).toBe(
+      '0 of 1 edges overturn something (0%)',
+    );
+
+    const verdict = store.createNode({
+      title: 'Jitter survives the burst test',
+      trigger: 'evaluation',
+      why: 'Records the observed result',
+      understanding:
+        'Jitter lowers correlated load without preventing reproduction under a fixed seed.',
+    });
+    store.createEdge({
+      fromId: verdict.id,
+      toId: first.id,
+      type: 'invalidates',
+      why: 'The test retires the claim that deterministic timing is required.',
+    });
+
+    expect(diagnostic('self_correction')?.value).toBe(
+      '1 of 2 edges overturn something (50%)',
     );
   });
 });

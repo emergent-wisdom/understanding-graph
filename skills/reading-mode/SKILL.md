@@ -8,21 +8,21 @@ description: |
 user-invocable: true
 argument-hint: "[source-title-or-path]"
 allowed-tools: |
-  mcp__ug__source_load
-  mcp__ug__source_read
-  mcp__ug__source_position
-  mcp__ug__source_list
-  mcp__ug__source_export
-  mcp__ug__graph_batch
-  mcp__ug__graph_suggest_next
-  mcp__ug__graph_understand
-  mcp__ug__graph_skeleton
-  mcp__ug__graph_semantic_search
-  mcp__ug__graph_find_by_trigger
-  mcp__ug__graph_context
-  mcp__ug__graph_history
-  mcp__ug__graph_score
-  mcp__ug__graph_thermostat
+  mcp__plugin_understanding-graph_ug__source_load
+  mcp__plugin_understanding-graph_ug__source_read
+  mcp__plugin_understanding-graph_ug__source_position
+  mcp__plugin_understanding-graph_ug__source_list
+  mcp__plugin_understanding-graph_ug__source_export
+  mcp__plugin_understanding-graph_ug__graph_batch
+  mcp__plugin_understanding-graph_ug__graph_suggest_next
+  mcp__plugin_understanding-graph_ug__graph_understand
+  mcp__plugin_understanding-graph_ug__graph_skeleton
+  mcp__plugin_understanding-graph_ug__graph_semantic_search
+  mcp__plugin_understanding-graph_ug__graph_find_by_trigger
+  mcp__plugin_understanding-graph_ug__graph_context
+  mcp__plugin_understanding-graph_ug__graph_history
+  mcp__plugin_understanding-graph_ug__graph_score
+  mcp__plugin_understanding-graph_ug__graph_thermostat
   Read
 ---
 
@@ -37,8 +37,10 @@ reader to continue from it.
 1. Load the source: `source_load({ title: "...", content: "..." })` or `source_load({ title: "...", filePath: "..." })`
 2. Check the current source position. The loaded source and its chronological
    position are authoritative.
-3. Condition the reading task without asking the model to recall or summarize
-   the unread work:
+3. At the first real choice point, call
+   `graph_suggest_next({ task: "Read this source chronologically", workflow: "reading" })`.
+   Choose, change, or reject its routes. When re-entry would help, condition the
+   reading task without asking the model to recall or summarize the unread work:
 
 ```javascript
 graph_understand({
@@ -71,8 +73,10 @@ that point.
    unresolved, and multi-paragraph. There is no quota and no trigger checklist.
 4. **Connect to exact evidence and prior state**: Use `learned_from` for the
    source content node and the most specific honest relations, such as
-   `supersedes`, `contradicts`, `refines`, `questions`, or `answers`. Do not
-   manufacture a causal edge merely to satisfy graph structure.
+   `contradicts`, `refines`, `questions`, or `answers`. When a new position
+   truly displaces an old one, use the dedicated `graph_supersede` batch
+   operation; generic supersession edges are rejected. Do not manufacture a
+   causal edge merely to satisfy graph structure.
 5. **Commit the encounter**: Use `graph_batch` with a message that names why
    this moment deserves to remain available. If an understanding actually
    stabilized, its durable summary can use before → passage → after while the

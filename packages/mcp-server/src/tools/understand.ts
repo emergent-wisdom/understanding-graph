@@ -19,7 +19,6 @@ import {
   type UnderstandingStance,
   understandingMode,
 } from '../protocol.js';
-import { inferSuggestedStance } from '../suggestion-state.js';
 
 const STOPWORDS = new Set([
   'a',
@@ -852,15 +851,15 @@ function frameNode(
  * would settle by fiat an argument the graph is holding open.
  */
 function overturnedBy(store: GraphStore, nodeId: string): string | undefined {
-  const retiring = store
-    .getAll()
-    .edges.filter(
-      (e) =>
-        e.toId === nodeId &&
-        (e.type === 'invalidates' || e.type === 'supersedes'),
-    );
+  const history = store.getAllWithSuperseded();
+  const nodeById = new Map(history.nodes.map((node) => [node.id, node]));
+  const retiring = history.edges.filter(
+    (e) =>
+      e.toId === nodeId &&
+      (e.type === 'invalidates' || e.type === 'supersedes'),
+  );
   for (const edge of retiring) {
-    const source = store.getNode(edge.fromId);
+    const source = nodeById.get(edge.fromId);
     if (source?.title) return source.title;
   }
   return undefined;
@@ -1213,8 +1212,8 @@ function buildPrompt(
         ]
       : [
           '',
-          'Preserve all communicable task understanding that a future instance could',
-          'use—not only conclusions—with exact provenance. This may include questions,',
+          'Preserve communicable, material understanding that could matter to the work',
+          'or a future inquiry—not only conclusions—with exact provenance. This may include questions,',
           'interpretations, alternatives, relations, reasons, uncertainty, decisions,',
           'and what an artifact is trying to do. Do not manufacture content when none exists.',
           'No shift and no new node are honest when an encounter changes nothing material.',
@@ -1255,6 +1254,10 @@ export async function handleUnderstandingTools(
 
   const store = getGraphStore();
   const { nodes, edges } = store.getAll();
+  const history = store.getAllWithSuperseded();
+  const historicalNodeById = new Map(
+    history.nodes.map((node) => [node.id, node]),
+  );
   const artifactCognitionBalance = assessArtifactCognitionBalance(nodes, edges);
   const activeArtifactCognitionBalance =
     artifactCognitionBalance.advisories.length > 0
@@ -1293,17 +1296,11 @@ export async function handleUnderstandingTools(
   }
   const focusedNodes = focusNodes as GraphNodeData[];
   const focusedNodeIds = new Set(focusedNodes.map((node) => node.id));
-  const suggestedStance =
-    args.stance == null
-      ? inferSuggestedStance(projectId, focusNodeIds)
-      : undefined;
-  const stance = resolveStance(args.stance ?? suggestedStance);
-  const stanceSource =
-    args.stance != null
-      ? 'explicit'
-      : suggestedStance
-        ? 'suggested-route'
-        : 'default';
+  // Suggested routes include stance in the concrete graph_understand call.
+  // Do not infer it from project-global memory: in a shared graph one agent's
+  // roll must not silently alter another agent's retrieval.
+  const stance = resolveStance(args.stance);
+  const stanceSource = args.stance != null ? 'explicit' : 'default';
   const queryTokens = tokens(query);
   const artifactEvidence = ['reading', 'research', 'general'].includes(
     workflow.resolved,
@@ -1580,16 +1577,12 @@ export async function handleUnderstandingTools(
   // This is a floor, not a preference. It fires only when seed-adjacent
   // resistance contains no overturned position at all, so it cannot crowd out
   // resistance the query genuinely reached. When it fires it admits the most
-  // recent node that something later contradicted, invalidated or superseded:
+  // recent node that something later invalidated or superseded:
   // the graph's freshest recorded "this turned out wrong", whether or not it
   // resembles what is being asked.
-  const OVERTURNING_TYPES = new Set([
-    'invalidates',
-    'contradicts',
-    'supersedes',
-  ]);
+  const OVERTURNING_TYPES = new Set(['invalidates', 'supersedes']);
   const overturnedIds = new Set(
-    edges
+    history.edges
       .filter((edge) => OVERTURNING_TYPES.has(edge.type))
       .map((edge) => edge.toId),
   );
@@ -1613,7 +1606,7 @@ export async function handleUnderstandingTools(
     ]);
     const freshestOverturned = [...overturnedIds]
       .filter((id) => !alreadyShown.has(id))
-      .map((id) => nodeById.get(id) || store.getNode(id))
+      .map((id) => historicalNodeById.get(id))
       .filter((node): node is GraphNodeData => Boolean(node))
       .sort((a, b) =>
         String(b.createdAt || '').localeCompare(String(a.createdAt || '')),
