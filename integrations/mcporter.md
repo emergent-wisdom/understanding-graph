@@ -10,9 +10,9 @@ tools.
 npm install -g mcporter
 mcporter config add ug \
   --command npx \
-  --arg -y --arg understanding-graph --arg mcp \
+  --arg -y --arg understanding-graph@0.1.28 --arg mcp \
   --scope home \
-  --description "Understanding Graph: persistent reasoning memory for agents"
+  --description "Understanding Graph: a persistent medium for agent understanding"
 ```
 
 `--scope home` stores the config in your home directory so it's shared
@@ -26,7 +26,7 @@ Most agents want a persistent project dir outside the cwd. Pass it via
 ```bash
 mcporter config add ug \
   --command npx \
-  --arg -y --arg understanding-graph --arg mcp \
+  --arg -y --arg understanding-graph@0.1.28 --arg mcp \
   --env PROJECT_DIR=/Users/you/.ug/projects \
   --scope home
 ```
@@ -34,7 +34,7 @@ mcporter config add ug \
 ## Verify
 
 ```bash
-mcporter list ug --schema     # should show ~51 tools
+mcporter list ug --schema     # inspect the current safe general catalog
 mcporter call ug.graph_skeleton
 ```
 
@@ -59,21 +59,22 @@ Add a section to your agent's `AGENTS.md` or `SOUL.md`:
 ```markdown
 ## Persistent Memory Protocol
 
-This agent uses Understanding Graph (via mcporter `ug`) for persistent,
-shared reasoning memory.
+This agent uses Understanding Graph (via mcporter `ug`) as the canonical
+medium for persistent, shared understanding and substantive artifact work.
 
-Before starting any non-trivial task:
+At the start of substantive work and at natural choice points, call:
 
-1. `mcporter call ug.graph_skeleton` — orient yourself in the graph
-2. `mcporter call ug.graph_understand query="<concrete task>" workflow="<reading|coding|collaborative_coding|writing|general>"` — condition the native workflow
-3. `mcporter call ug.graph_semantic_search query="<task keywords>"` — find
-   relevant past reasoning
-4. `mcporter call ug.graph_history` — see what other agents did recently
+`mcporter call ug.graph_suggest_next task="<user task>" workflow="<reading|research|coding|collaborative_coding|writing|general>"`
+
+Judge the returned weighted, concrete routes against the user task. Choose,
+combine, modify, reject, or replace them. Use `graph_understand` with the
+selected route's explicit stance when prior state may change the next move;
+there is no mandatory call sequence.
 
 For direct concept and document-tree mutation, use `graph_batch` with a
-descriptive `commit_message` that names the agent and explains intent. Workflow
-tools such as `source_read` manage their own atomic updates. Other agents read
-the commit stream to coordinate.
+descriptive `commit_message` that names the agent and explains intent. Preserve
+communicable, material understanding as it emerges rather than reconstructing it at
+the end. Other agents can use `graph_history` or `graph_updates` to coordinate.
 ```
 
 ## Also works with

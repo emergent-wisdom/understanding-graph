@@ -1,16 +1,30 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const cliPath = path.resolve(process.env.UG_CLI_PATH || 'bin/cli.js');
+const packageRoot = path.resolve(process.env.UG_PACKAGE_ROOT || process.cwd());
+const requireFromPackage = createRequire(path.join(packageRoot, 'package.json'));
+const libraryPath = requireFromPackage.resolve(
+  '@emergent-wisdom/understanding-graph-mcp-server',
+);
+const { getToolDefinitions } = await import(pathToFileURL(libraryPath).href);
+const expectedToolNames = getToolDefinitions('general')
+  .map((tool) => tool.name)
+  .sort();
+const { TOOL_MODE: _discardedToolMode, ...cleanEnvironment } = process.env;
 
 const temporaryDirectory = fs.mkdtempSync(
   path.join(os.tmpdir(), 'understanding-graph-mcp-smoke-'),
 );
-const child = spawn(process.execPath, ['bin/cli.js', 'mcp'], {
+const child = spawn(process.execPath, [cliPath, 'mcp'], {
   cwd: process.cwd(),
   env: {
-    ...process.env,
+    ...cleanEnvironment,
     PROJECT_DIR: path.join(temporaryDirectory, 'projects'),
   },
   stdio: ['pipe', 'pipe', 'pipe'],
@@ -45,12 +59,31 @@ try {
     })}\n`,
   );
 
-  const response = await waitForInitialize();
+  const response = await waitForResponse(1);
   if (response.result?.serverInfo?.name !== 'understanding-graph') {
     throw new Error(`Unexpected MCP initialize response: ${JSON.stringify(response)}`);
   }
+
+  child.stdin.write(
+    `${JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+    })}\n`,
+  );
+  child.stdin.write(
+    `${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })}\n`,
+  );
+  const toolsResponse = await waitForResponse(2);
+  const actualToolNames = toolsResponse.result?.tools
+    ?.map((tool) => tool.name)
+    .sort();
+  if (JSON.stringify(actualToolNames) !== JSON.stringify(expectedToolNames)) {
+    throw new Error(
+      `Default MCP catalog differs from general mode.\nExpected: ${JSON.stringify(expectedToolNames)}\nActual: ${JSON.stringify(actualToolNames)}`,
+    );
+  }
   console.log(
-    `MCP initialize smoke passed (${response.result.serverInfo.name} ${response.result.serverInfo.version}).`,
+    `MCP initialize and general catalog smoke passed (${response.result.serverInfo.name} ${response.result.serverInfo.version}, ${actualToolNames.length} tools).`,
   );
 } finally {
   clearTimeout(timeout);
@@ -61,7 +94,7 @@ try {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 }
 
-function waitForInitialize() {
+function waitForResponse(id) {
   return new Promise((resolve, reject) => {
     let settled = false;
     let responseTimeout;
@@ -76,7 +109,7 @@ function waitForInitialize() {
         if (!line.trim()) continue;
         try {
           const message = JSON.parse(line);
-          if (message.id === 1) {
+          if (message.id === id) {
             finish(resolve, message);
             return true;
           }
@@ -94,7 +127,7 @@ function waitForInitialize() {
         finish(
           reject,
           new Error(
-            `MCP process exited before initialize (code=${code}, signal=${signal}).\n${stderr}`,
+            `MCP process exited before response ${id} (code=${code}, signal=${signal}).\n${stderr}`,
           ),
         );
       }
@@ -103,7 +136,7 @@ function waitForInitialize() {
       if (!inspect()) {
         finish(
           reject,
-          new Error(`Timed out waiting for MCP initialize.\n${stderr}`),
+          new Error(`Timed out waiting for MCP response ${id}.\n${stderr}`),
         );
       }
     }, 9_000);

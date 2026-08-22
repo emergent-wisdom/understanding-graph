@@ -45,10 +45,12 @@ async function call(
   name: string,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  return (await handleToolCall(name, args, contextManager)) as Record<
-    string,
-    unknown
-  >;
+  return (await handleToolCall(
+    name,
+    args,
+    contextManager,
+    'collaborative_coding',
+  )) as Record<string, unknown>;
 }
 
 async function spawn(name: string, role: 'executive' | 'validation') {

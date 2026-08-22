@@ -16,7 +16,7 @@ edit directly:
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.28", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }
@@ -54,7 +54,8 @@ exposes:
 - `coding` — graph-native code document nodes, structural editing, and generation
 - `collaborative_coding` — coding plus subtree ownership, locks, and handoffs
 - `writing` — graph-backed drafting and editorial revision
-- `full` — every ordinary workflow tool; reserved synthetic production stays isolated (default)
+- `general` — safe cross-domain ordinary work (default)
+- `full` — explicit broad ordinary access; reserved synthetic production stays isolated
 - `synthetic_reader` — dedicated producer for reconstructed Reader/CMP pretraining blocks
 
 ```json

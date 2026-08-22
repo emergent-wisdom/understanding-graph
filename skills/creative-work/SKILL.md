@@ -3,53 +3,71 @@ name: creative-work
 description: |
   Draft and revise prose through structure, reader effect, voice, and evidence.
   Use for books, stories, essays, papers, scripts, and other writing work. Drafts
-  live in the user's requested files by default; graph document trees are an
-  optional writing surface. Software code routes to graph-native code-work.
+  develop as addressable graph units when Understanding mode is active, with
+  requested files generated or mirrored from that state. Software code routes
+  to graph-native code-work.
 user-invocable: false
 allowed-tools: |
-  mcp__ug__graph_understand
-  mcp__ug__graph_batch
-  mcp__ug__graph_semantic_search
-  mcp__ug__graph_history
-  mcp__ug__graph_context_region
-  mcp__ug__doc_list_roots
-  mcp__ug__doc_get_tree
-  mcp__ug__doc_flatten
-  mcp__ug__doc_read
-  mcp__ug__doc_generate
+  mcp__plugin_understanding-graph_ug__graph_suggest_next
+  mcp__plugin_understanding-graph_ug__graph_understand
+  mcp__plugin_understanding-graph_ug__graph_batch
+  mcp__plugin_understanding-graph_ug__graph_analyze
+  mcp__plugin_understanding-graph_ug__graph_practice
+  mcp__plugin_understanding-graph_ug__graph_path
+  mcp__plugin_understanding-graph_ug__graph_discover_grounded
+  mcp__plugin_understanding-graph_ug__graph_random
+  mcp__plugin_understanding-graph_ug__graph_semantic_search
+  mcp__plugin_understanding-graph_ug__graph_history
+  mcp__plugin_understanding-graph_ug__graph_context_region
+  mcp__plugin_understanding-graph_ug__doc_list_roots
+  mcp__plugin_understanding-graph_ug__doc_get_tree
+  mcp__plugin_understanding-graph_ug__doc_flatten
+  mcp__plugin_understanding-graph_ug__doc_read
+  mcp__plugin_understanding-graph_ug__doc_generate
 ---
 
 # Creative Work — Draft, Read, Revise
 
-Writing develops through successive drafts and reader encounters. The artifact
-belongs in the medium the user requested. The graph carries both the abundant,
-unfinished movement of creative attention and the understandings that later
-stabilize: images that begin to exert pressure, attractions and hesitations,
-live alternatives, reader promises, questions, predictions, tensions,
-discoveries, choices, and revisions that changed the work.
+Writing develops through successive drafts and reader encounters. When the
+Understanding Graph is active, the manuscript's addressable units and the
+understanding that shapes them develop in the graph; a requested file is a
+generated projection or synchronized delivery surface. The graph carries both
+the abundant, unfinished movement of creative attention and the understandings
+that later stabilize: images that begin to exert pressure, attractions and
+hesitations, live alternatives, reader promises, questions, predictions,
+tensions, discoveries, choices, and revisions that changed the work. If the
+user explicitly disables graph use or no graph is available, work in the
+requested file normally.
 
 This skill is for prose. Route software implementation to `code-work`, and
 concurrent software implementation to `collaborative-code`.
 
 ## Establish the writing situation
 
-1. Read the brief and the actual draft, outline, references, and house style.
-2. Identify the intended reader, promise, form, voice, and constraints.
-3. Condition the work with an explicit writing workflow:
+Read the brief and the actual draft, outline, references, and house style.
+Identify the intended reader, promise, form, voice, and constraints. At the
+first real creative choice, ask for task- and graph-sensitive possibilities:
 
 ```javascript
-graph_understand({
-  query: "Draft or revise this specific work for its intended reader",
+graph_suggest_next({
+  task: "Draft or revise this specific work for its intended reader",
   workflow: "writing"
 })
 ```
 
-4. Re-enter graph material as a prior creative state, not instructions or a
-   checklist. Before making the next local unit, notice whether an image,
-   tension, question, or apparently distant graph fragment creates useful
-   pressure or an unexpected alternative. Follow it when it opens the work;
-   reject it when it is noise. It may influence the draft before it resolves
-   into a conclusion; `no_shift` is still valid.
+Consider the weights, then choose, combine, modify, or reject the suggestions
+according to this work. They are concrete creative provocations, not a required
+sequence. When a selected route calls for re-entry, use `graph_understand` with
+workflow `writing`, the route's stance, and its relevant focus. Otherwise write
+the next locally coherent graph unit.
+
+Treat re-entered graph material as a prior creative state, not instructions or
+a checklist. Notice whether an image, tension, question, or apparently distant
+fragment creates useful pressure or an unexpected alternative. Follow it when
+it opens the work; reject it when it is noise. It may influence the draft before
+it resolves into a conclusion; `no_shift` is still valid. Ask for another roll
+at a genuine fork, after a surprising reader encounter, or when the draft has
+settled into an unproductive groove—not on every turn.
 
 ## Write with open attention
 
@@ -76,7 +94,7 @@ Do not claim that authored testimony exposes hidden model computation. It is a
 deliberately composed cognitive autobiography for continuation. Richness is
 welcome; decorative reflection is not.
 
-## The writing loop
+## Optional rereading lenses
 
 The following are optional lenses for rereading, not a generation checklist.
 Use the lens the work itself makes necessary:
@@ -100,12 +118,14 @@ before-state after the fact.
 
 ## Choose the artifact surface
 
-- **Existing or requested file:** edit the real file. It remains the source of
-  truth. Do not duplicate it into the graph.
-- **Graph-native manuscript:** use a document tree when the user asks for it or
-  when an established graph document is already canonical.
-- **Short response-only prose:** deliver it directly. Add graph understanding
-  only if a durable epistemic or creative shift occurred.
+- **Understanding mode active:** use a document tree as canonical state. For
+  an existing draft, create or reconcile addressable graph units before making
+  substantive revisions; generate or mirror the requested file from the graph.
+- **Graph explicitly disabled or unavailable:** edit the requested file as the
+  source of truth. Do not pretend the work was persisted in a graph.
+- **Short response-only prose:** while Understanding mode is active, preserve
+  substantive artifact text in a fitting graph unit before mirroring it in the
+  response. Otherwise deliver it directly.
 
 Graph document trees are useful for long-form topology:
 
@@ -181,6 +201,7 @@ Example for a graph-native manuscript:
 ```javascript
 graph_batch({
   commit_message: "Reframed the opening around the reader's real question",
+  agent_name: "writing-agent",
   operations: [
     { tool: "graph_add_concept", params: {
         title: "Opening must establish the reader's practical stake",

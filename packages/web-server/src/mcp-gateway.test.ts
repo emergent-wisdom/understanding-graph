@@ -94,6 +94,7 @@ describe('graph-scoped cloud MCP gateway', () => {
     expect(catalog.instructions).not.toContain('project_list');
     expect(names.has('graph_understand')).toBe(true);
     expect(names.has('graph_suggest_next')).toBe(true);
+    expect(names.has('graph_practice')).toBe(true);
     expect(names.has('graph_random')).toBe(true);
     expect(names.has('doc_create')).toBe(false);
     expect(names.has('doc_get_tree')).toBe(true);
@@ -207,6 +208,23 @@ describe('graph-scoped cloud MCP gateway', () => {
     expect(listTextSources(PROJECT_ID)).toHaveLength(1);
   });
 
+  it('exposes practice guidance without leaking the worker filesystem path', async () => {
+    const response = await fetch(`${baseUrl}/api/mcp/call`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'graph_practice', arguments: {} }),
+    });
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      content: Array<{ text: string }>;
+    };
+    const text = payload.content[0]?.text ?? '';
+    expect(text).toContain('server-managed (path withheld)');
+    expect(text).not.toContain(temporaryDirectory);
+    expect(text).not.toContain(path.join(temporaryDirectory, PROJECT_ID));
+  });
+
   it('rejects an MCP body beyond the explicit hosted limit', async () => {
     const response = await fetch(`${baseUrl}/api/mcp/call`, {
       method: 'POST',
@@ -278,8 +296,13 @@ describe('graph-scoped cloud MCP gateway', () => {
     expect(mcpResult.isError).not.toBe(true);
     const payload = JSON.parse(mcpResult.content[0].text) as {
       success: boolean;
+      regeneratedDocuments?: Array<{ outputPath: string }>;
     };
     expect(payload).toMatchObject({ success: true });
+    expect(payload.regeneratedDocuments).toEqual([
+      expect.objectContaining({ outputPath: '[server path redacted]' }),
+    ]);
+    expect(mcpResult.content[0].text).not.toContain(temporaryDirectory);
 
     const nodes = getGraphStore().getAll().nodes;
     expect(nodes.map((node) => node.title)).toEqual(

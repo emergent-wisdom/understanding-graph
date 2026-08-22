@@ -3,14 +3,15 @@ message: >-
   If you use Understanding Graph in your research, please cite the
   preprint below. The software metadata at the top of this file is
   also valid as a standalone software citation.
-title: "Understanding Graph: Persisting the Invisible Thinking"
+title: "Understanding Graph: A Recursive Medium for Persistent Understanding"
+version: 0.1.28
 abstract: >-
-  Understanding Graph is an MCP server that gives AI agents structured,
-  persistent memory. Rather than storing facts, it stores the reasoning
-  process — tensions, surprises, decisions, and how beliefs evolved
-  over time. Multiple agents coordinate through the graph itself via
-  stigmergy: each agent reads what others have written, builds on it,
-  and leaves traces for the next.
+  Understanding Graph is an MCP server for structured, persistent,
+  revisable understanding. Agents externalize material questions,
+  tensions, surprises, decisions, and revisions as typed testimony;
+  re-enter prior graph state at meaningful choice points; and keep
+  addressable document or code artifacts in the same workspace. The
+  graph records communicable understanding, not hidden chain-of-thought.
 authors:
   - family-names: Westerberg
     given-names: Henrik
@@ -21,19 +22,19 @@ license: MIT
 keywords:
   - multi-agent-systems
   - ai-memory
-  - reasoning-capture
+  - externalized-understanding
   - stigmergy
   - mcp
   - knowledge-graph
 preferred-citation:
   type: article
-  title: "Understanding Graph: Persisting the Invisible Thinking"
+  title: "Understanding Graph: A Recursive Medium for Persistent Understanding"
   authors:
     - family-names: Westerberg
       given-names: Henrik
   year: 2026
-  month: 4
+  month: 8
   publisher:
     name: Zenodo
-  doi: 10.5281/zenodo.19462908
-  url: "https://doi.org/10.5281/zenodo.19462908"
+  doi: 10.5281/zenodo.19462658
+  url: "https://doi.org/10.5281/zenodo.19462658"

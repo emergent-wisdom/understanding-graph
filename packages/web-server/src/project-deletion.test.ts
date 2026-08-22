@@ -124,3 +124,39 @@ describe('POST /api/projects/:id/checkpoint', () => {
     ).toBe(404);
   });
 });
+
+describe('project path containment', () => {
+  it('rejects invalid identifiers on load and export routes', async () => {
+    expect(
+      (
+        await fetch(`${baseUrl}/api/projects/not!valid/load`, {
+          method: 'POST',
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await fetch(`${baseUrl}/api/projects/not!valid/export`)).status,
+    ).toBe(400);
+  });
+
+  it('rejects a project directory symlink that escapes the storage root', async () => {
+    const outside = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'understanding-graph-outside-project-'),
+    );
+    try {
+      fs.symlinkSync(outside, path.join(projectsDirectory, 'escaped'));
+      expect(
+        (
+          await fetch(`${baseUrl}/api/projects/escaped/load`, {
+            method: 'POST',
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (await fetch(`${baseUrl}/api/projects/escaped/export`)).status,
+      ).toBe(400);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});

@@ -397,11 +397,11 @@ export function rollNextMoves(
       // Structural measures cannot distinguish a well-formed graph nobody
       // re-enters from a well-formed graph that changed someone's mind. On a
       // real project they reported 0.0% fragmentation, 100% connectivity and
-      // 75/100 while five of six passages were connected to no thinking at
-      // all — so the diagnostics that would have caught it have to arrive
+      // 75/100 while five of six artifact units had no cognitive link at all
+      // — so the diagnostics that would have caught it have to arrive
       // without being asked for. An agent that has to think of calling this
       // is an agent that already suspects the answer.
-      whyNow: `${input.nodeCount} nodes exist and nothing here has asked whether they are re-entered or only written to, whether prose carries the thinking that produced it, or whether any prediction was ever scored.`,
+      whyNow: `${input.nodeCount} nodes exist and nothing here has asked whether they are re-entered or only written to, whether artifact units carry the understanding that shaped them, or whether any prediction was ever scored.`,
       steps: [
         {
           description:

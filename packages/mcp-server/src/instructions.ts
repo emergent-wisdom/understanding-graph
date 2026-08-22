@@ -10,11 +10,12 @@ Use this graph as the canonical persistent workspace for substantive work: an
 active medium for **fluid, emergent understanding**, not a filing cabinet.
 Begin with \`graph_suggest_next\`; preserve with \`graph_batch\`.
 While Understanding mode is active, develop the work here and preserve **ALL
-COMMUNICABLE TASK UNDERSTANDING**, not only conclusions. Chat may report the
-work; it does not replace graph work. Persist live questions, interpretations,
+COMMUNICABLE, MATERIAL UNDERSTANDING THAT COULD MATTER TO THE WORK OR THE
+READER'S FUTURE INQUIRY**, not only conclusions. Chat may report but never
+replace graph work. Persist questions, interpretations,
 alternatives, relations, evidence, reasons, uncertainty, decisions, and revisions
-that could help a later instance continue. This is authored, user-visible
-testimony, never a transcript or claim about hidden chain-of-thought.
+that could help a later instance continue. It is authored, user-visible
+testimony, not hidden chain-of-thought.
 
 **Medium-integrity invariant:** do not leave new artifact or
 understanding only in chat. Before completing a turn, write artifact units and genuine testimony
@@ -99,18 +100,17 @@ create or imitate it in ordinary work.
 
 ## Mutation and provenance
 
-Use \`graph_batch\` for atomic mutations with an honest \`commit_message\`.
-Cognitive nodes need grounding, and so does the prose they produced
-(\`expresses\`, \`inspired_by\`). Documents need no fabricated concept. Inside a
-batch, \`$N.id\` references operation N.
-
-Use specific typed edges with a truthful \`why\`: \`learned_from\`, \`refines\`,
-\`contradicts\`, \`questions\`, \`answers\`, \`validates\`, \`invalidates\`,
-\`implements\`, \`expresses\`, \`inspired_by\`, \`contains\`, or \`next\`.
-\`inspired_by\` means graph material genuinely shaped an artifact unit;
-\`expresses\` means the artifact renders a concept, and \`learned_from\` means a
-cognitive update came from evidence. If a relation cannot be explained in one
-sentence, omit it. Revise or supersede rather than silently overwrite history.
+Use \`graph_batch\` with an honest \`commit_message\` and actual \`agent_name\`.
+Link the exact passage, function, class, or test to the cognition that shaped it.
+\`inspired_by\` records influence; \`expresses\` points artifact→concept;
+\`implements\` points commitment→unit; \`learned_from\` points update→encounter.
+A truthful \`why\` lets a later Reader inspect the recorded reason that unit
+exists or changed. These are authored claims, not verified causality; omit unreal
+relations. Documents need no fabricated concept. Inside a batch, \`$N.id\`
+references operation N. Other relations include
+\`refines\`, \`contradicts\`, \`questions\`, \`answers\`, \`validates\`,
+\`invalidates\`, \`contains\`, and \`next\`. Revise or supersede rather than
+silently overwrite.
 
 For open-ended diagnosis, this is a valid shape check:
 

@@ -1,6 +1,6 @@
 /**
  * EmbeddingService - Generate and manage semantic embeddings for nodes
- * Uses @xenova/transformers for local embedding generation
+ * Uses @huggingface/transformers for local embedding generation
  */
 
 // Dynamic import for transformers.js (ESM)
@@ -16,7 +16,7 @@ const EMBEDDING_DIM = 384;
 /**
  * Initialize the embedding pipeline (lazy loading).
  *
- * `@xenova/transformers` is a peerDependency so a fresh `npx -y understanding-graph`
+ * `@huggingface/transformers` is a peerDependency so a fresh `npx -y understanding-graph`
  * install does NOT pay the ~160MB onnxruntime download cost up front. Embedding
  * features (semantic search, similar nodes, semantic gaps, backfill) are opt-in:
  * if you call them without installing the peer, you get a clear error pointing
@@ -30,7 +30,11 @@ async function getEmbeddingPipeline(): Promise<any> {
 
   if (!pipeline) {
     try {
-      const transformers = await import('@xenova/transformers');
+      // Keep the optional peer out of the default install and developer audit.
+      // A variable specifier also lets this package compile when the peer is
+      // intentionally absent; callers who opt in still load the real module.
+      const packageName = '@huggingface/transformers';
+      const transformers = await import(packageName);
       pipeline = transformers.pipeline;
     } catch (err) {
       // Lead with the real error, not with a guess about its cause. This
@@ -44,10 +48,11 @@ async function getEmbeddingPipeline(): Promise<any> {
       throw new Error(
         'Embedding features (graph_semantic_search, graph_similar, ' +
           'graph_semantic_gaps, graph_backfill_embeddings) could not load the ' +
-          `optional @xenova/transformers peer dependency. Load error: ${reason}. ` +
-          'If the package is genuinely missing, install it with:  npm install ' +
-          '@xenova/transformers  (or  npm install -g @xenova/transformers  if you ' +
-          'launched understanding-graph via npx). If it is already installed, the ' +
+          `optional @huggingface/transformers peer dependency. Load error: ${reason}. ` +
+          'If the package is genuinely missing, install it in the same local project ' +
+          'as understanding-graph so Node can resolve both from one dependency tree. ' +
+          'A separate global install does not reliably satisfy an npx-launched package. ' +
+          'If it is already installed, the ' +
           'fault is usually one of ITS native dependencies built for another ' +
           'platform — check the load error above before reinstalling anything. ' +
           'For keyword-only search meanwhile, use graph_search_metadata or ' +
@@ -58,7 +63,7 @@ async function getEmbeddingPipeline(): Promise<any> {
 
   console.error(`[EmbeddingService] Loading model ${MODEL_NAME}...`);
   embeddingPipeline = await pipeline('feature-extraction', MODEL_NAME, {
-    quantized: true, // Use quantized model for speed
+    dtype: 'q8', // Use an 8-bit model for speed and size
   });
   console.error(`[EmbeddingService] Model loaded successfully`);
 

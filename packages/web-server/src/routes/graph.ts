@@ -1525,47 +1525,8 @@ graphRouter.post('/graph/documents/:nodeId/generate', (req, res, next) => {
   }
 });
 
-// Generate a single document to file (GET - for easy browser/curl access)
-graphRouter.get('/graph/documents/:nodeId/generate', (req, res, next) => {
-  try {
-    const writer = getDocumentWriter(req);
-    const result = writer.writeDocument(req.params.nodeId);
-
-    if (!result) {
-      return res
-        .status(404)
-        .json({ error: 'Document not found or not a document root' });
-    }
-
-    res.json({
-      success: true,
-      ...result,
-      message: `Document written to ${result.outputPath}`,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
 // Generate all documents to files (POST)
 graphRouter.post('/graph/documents/generate-all', (req, res, next) => {
-  try {
-    const writer = getDocumentWriter(req);
-    const results = writer.writeAllDocuments();
-
-    res.json({
-      success: true,
-      documents: results,
-      count: results.length,
-      message: `Generated ${results.length} documents`,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Generate all documents to files (GET - for easy browser/curl access)
-graphRouter.get('/graph/documents/generate-all', (req, res, next) => {
   try {
     const writer = getDocumentWriter(req);
     const results = writer.writeAllDocuments();

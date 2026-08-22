@@ -7,18 +7,24 @@ description: |
   files are executable projections and must never be edited directly.
 user-invocable: false
 allowed-tools: |
-  mcp__ug__graph_understand
-  mcp__ug__graph_batch
-  mcp__ug__graph_skeleton
-  mcp__ug__graph_semantic_search
-  mcp__ug__graph_history
-  mcp__ug__doc_list_roots
-  mcp__ug__doc_get_tree
-  mcp__ug__doc_get_children
-  mcp__ug__doc_flatten
-  mcp__ug__doc_read
-  mcp__ug__doc_generate
-  mcp__ug__doc_generate_all
+  mcp__plugin_understanding-graph_ug__graph_suggest_next
+  mcp__plugin_understanding-graph_ug__graph_understand
+  mcp__plugin_understanding-graph_ug__graph_batch
+  mcp__plugin_understanding-graph_ug__graph_skeleton
+  mcp__plugin_understanding-graph_ug__graph_analyze
+  mcp__plugin_understanding-graph_ug__graph_practice
+  mcp__plugin_understanding-graph_ug__graph_path
+  mcp__plugin_understanding-graph_ug__graph_discover_grounded
+  mcp__plugin_understanding-graph_ug__graph_random
+  mcp__plugin_understanding-graph_ug__graph_semantic_search
+  mcp__plugin_understanding-graph_ug__graph_history
+  mcp__plugin_understanding-graph_ug__doc_list_roots
+  mcp__plugin_understanding-graph_ug__doc_get_tree
+  mcp__plugin_understanding-graph_ug__doc_get_children
+  mcp__plugin_understanding-graph_ug__doc_flatten
+  mcp__plugin_understanding-graph_ug__doc_read
+  mcp__plugin_understanding-graph_ug__doc_generate
+  mcp__plugin_understanding-graph_ug__doc_generate_all
   Read
   Bash
 ---
@@ -46,23 +52,35 @@ file is a disposable projection used for execution; never patch it directly.
 For code file types, generation concatenates root content and descendants as
 raw code in document order. Node titles are graph metadata, not emitted code.
 
-## Start
+## Enter the work
 
-1. Orient with `graph_skeleton` and `graph_history`.
-2. Inspect existing roots with `doc_list_roots`; use `doc_get_tree` before
-   changing an established file.
-3. Condition the task explicitly:
+At the first real implementation choice, ask the graph for several concrete
+possibilities:
 
 ```javascript
-graph_understand({
-  query: "Build or change this graph-native software project and verify it",
+graph_suggest_next({
+  task: "Build or change this graph-native software project and verify it",
   workflow: "coding"
 })
 ```
 
-4. Search before adding a cognitive node. Reuse or revise an existing thread
-   when it is genuinely the same; do not compress a distinct live alternative
-   merely because it shares vocabulary.
+Consider higher-weighted routes seriously, then choose, combine, modify, or
+reject them according to the actual task. The suggestions are provocations,
+not a state machine or exhaustive menu. If the useful route requires prior
+context, follow it with `graph_understand`, carrying the suggested stance and
+focus. If the task is already locally clear, make the next coherent graph-native
+code move instead.
+
+Inspect only what the move needs. Use `doc_list_roots` and `doc_get_tree` before
+changing an established artifact; use `graph_skeleton`, `graph_history`, or
+`graph_semantic_search` when topology, chronology, or possible duplication is
+material. Do not perform all of these as an orientation ritual. Reuse or revise
+an existing cognitive thread when it is genuinely the same; do not compress a
+distinct live alternative merely because it shares vocabulary.
+
+Return to `graph_suggest_next` at a genuine design fork, a stubborn failure, or
+when repeated local moves stop producing new understanding. It is not a turn
+counter: the model remains free to pursue a better move that the roll omitted.
 
 ## Code with open attention
 
@@ -107,6 +125,7 @@ open thread so it can affect the next implementation or test.
 ```javascript
 graph_batch({
   commit_message: "Started parser structure and preserved the live token-boundary question",
+  agent_name: "coding-agent",
   operations: [
     { tool: "doc_create", params: {
         title: "parser.py", content: "from dataclasses import dataclass",

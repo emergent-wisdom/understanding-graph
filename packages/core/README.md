@@ -23,7 +23,7 @@ npm install @emergent-wisdom/understanding-graph-core
 - `EmbeddingService`: optional local semantic-search helpers.
 - Shared graph, node, edge, trigger, commit, and source types.
 
-The optional `@xenova/transformers` peer dependency is only needed for
+The optional `@huggingface/transformers` peer dependency is only needed for
 embedding-based features. The SQLite graph and non-embedding APIs work without
 it.
 

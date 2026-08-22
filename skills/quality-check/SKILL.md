@@ -1,103 +1,73 @@
 ---
 name: quality-check
 description: |
-  Graph quality assessment: graph_score, graph_analyze, thermostat.
-  Use to check structural health, find disconnected clusters, and decide
-  whether to diverge or converge. Also prompts the user to stop and think.
+  Inspect graph structure when the user asks for a check or when a concrete
+  structural problem may be affecting the work. Treat metrics as diagnostics,
+  never as quotas or semantic-quality scores.
 user-invocable: true
 allowed-tools: |
-  mcp__ug__graph_score
-  mcp__ug__graph_analyze
-  mcp__ug__graph_thermostat
-  mcp__ug__graph_centrality
-  mcp__ug__graph_find_by_trigger
-  mcp__ug__graph_semantic_gaps
-  mcp__ug__graph_skeleton
+  mcp__plugin_understanding-graph_ug__graph_score
+  mcp__plugin_understanding-graph_ug__graph_analyze
+  mcp__plugin_understanding-graph_ug__graph_thermostat
+  mcp__plugin_understanding-graph_ug__graph_centrality
+  mcp__plugin_understanding-graph_ug__graph_find_by_trigger
+  mcp__plugin_understanding-graph_ug__graph_semantic_gaps
+  mcp__plugin_understanding-graph_ug__graph_skeleton
+  mcp__plugin_understanding-graph_ug__graph_suggest_next
+  mcp__plugin_understanding-graph_ug__graph_discover_grounded
 ---
 
 # Quality Check
 
-## The real problem: disconnected clusters
+Use this skill deliberately, not on a timer. Do not interrupt useful work for
+scheduled maintenance, demand trigger diversity, or ask the user to repair the
+graph merely because a number is low.
 
-Individual orphan nodes are prevented by `graph_batch` (every node must connect). But the graph can still fragment into **islands** — clusters of well-connected nodes that don't talk to each other. Three regions about different aspects of the same project with no bridges between them means the understanding is siloed.
+## Diagnose before changing
 
-Use `graph_analyze({ include: ["gaps", "bridges"] })` to detect this. When you find disconnected clusters:
-1. Identify what the clusters are *about*
-2. Ask: what's the conceptual bridge? A shared principle, a tension, a consequence?
-3. Create bridging concept nodes with edges into both clusters
+Choose the smallest view that answers the live question:
 
-## Ask the user to stop and think
+- `graph_analyze({ include: ["gaps", "bridges", "questions"] })` for islands,
+  bridges, and genuinely unanswered questions;
+- `graph_score()` for a compact structural snapshot;
+- `graph_centrality()` when influence or bottlenecks matter;
+- `graph_semantic_gaps()` when embedding coverage exists and conceptual
+  distance is relevant;
+- `graph_skeleton()` only when the overall topology is itself in question;
+- `graph_thermostat()` as a legacy descriptive pulse, not a command.
 
-**Periodically prompt the user to pause and maintain the graph.** Don't just run quality checks silently — surface what you find and ask the user to participate:
+Metrics describe the stored shape. They cannot establish truth, creativity,
+importance, completeness, or whether a node was worth creating. A sparse graph
+can be exactly right for a small task; a dense graph can still be confused.
 
-- "The graph has 3 clusters that aren't connected — want to think about how they relate?"
-- "There are 5 open questions from earlier. Any of these resolved by what we've done since?"
-- "You haven't revised any beliefs in a while — has anything shifted?"
-- "The graph is getting dense in one area but sparse in another — should we explore the gap?"
+## Judge the finding in context
 
-Graph maintenance is a collaborative act, not just a background process.
+- A disconnected region is a problem only if the work gives it a real relation
+  to another region. Do not invent a bridge.
+- An unanswered question may remain intentionally open.
+- A contradiction is live conflict, not proof that either side is false.
+- A low supersession count is not evidence that someone failed to reconsider.
+- Trigger counts are descriptive. Never add questions, tensions, predictions,
+  or any other type to improve a distribution.
+- Artifact-heavy structure is an advisory signal only. Add cognitive testimony
+  only when genuine understanding, uncertainty, evidence, or choice exists.
 
-## Quality signals
+When a finding could materially affect the task, use
+`graph_suggest_next({ task, workflow })` for concrete weighted routes or
+`graph_discover_grounded()` for a bounded distant comparison. Choose, modify,
+combine, or reject the result. “No defensible connection” and “no repair
+needed” are valid outcomes.
 
-- `graph_thermostat` — DIVERGE (explore) or CONVERGE (synthesize)
-- `graph_score` — structural diagnostic, not a semantic-quality target
-- `graph_analyze` — gaps, bridges, and open questions
+## Repair only what is real
 
-## Cybernetic sense-making
+If the diagnosis identifies a genuine issue, make the smallest truthful change:
 
-```javascript
-graph_analyze({ include: ["gaps", "bridges", "questions"] })
-```
+- connect regions with a specific typed relation;
+- preserve an unresolved tension rather than forcing consensus;
+- answer a question only when the graph now contains an answer;
+- revise or use dedicated `graph_supersede` when a position actually changed;
+- archive noise through the explicit lifecycle operation;
+- leave healthy heterogeneity alone.
 
-| Signal | What it means | The fix |
-|--------|---------------|---------|
-| Disconnected clusters | Understanding is siloed | **Bridge** — find shared concepts across clusters |
-| Many `openQuestions` | You know what you don't know | **Explore** — answer questions, or ask the user |
-| High `density` | Tight mental model | **Disrupt** — inject serendipity |
-| Contradictions | Cognitive dissonance | **Investigate** — preserve the tension unless evidence resolves it; then record what the resolution became |
-| Low `supersessionCount` | Nobody changed their mind | **Revisit** — have beliefs actually shifted? |
-
-## Thermostat
-
-`graph_thermostat({ mode })`:
-
-- **DIVERGE** — explore, generate variety, tolerate contradiction
-- **CONVERGE** — synthesize, resolve tensions, commit to positions
-
-### Trigger audit protocol
-Before closing a turn where you did substantive graph work, check which triggers you did NOT use. Run:
-```
-graph_find_by_trigger({ trigger: "question" })
-graph_find_by_trigger({ trigger: "tension" })
-graph_find_by_trigger({ trigger: "prediction" })
-```
-If any return empty, ask whether the work genuinely warranted that trigger.
-Do not invent questions, tensions, or predictions to improve trigger diversity.
-
-### Diverge/converge action routing
-When `graph_thermostat` returns a recommendation:
-
-**DIVERGE (explore, generate variety):**
-- Use `graph_discover_grounded()` for defensible exploration that permits "no connection"
-- Use `graph_chaos()` only when the user explicitly wants high-divergence speculation
-- Create `serendipity` trigger nodes for unexpected connections
-- Tolerate contradiction — don't resolve tensions prematurely
-
-**CONVERGE (synthesize, resolve):**
-- Use `graph_analyze({ include: ["gaps", "bridges", "questions"] })` to find what needs connecting
-- Bridge disconnected clusters with specific typed relations and, when a
-  reusable result actually stabilizes, store what the synthesis became:
-  `analysis`, `model`, `hypothesis`, `decision`, or another honest trigger.
-  Synthesis itself is an operation, not a catch-all node type.
-- Resolve or reaffirm open questions
-- Supersede stale beliefs
-- Commit to positions on tensions
-
-## Coherence workflow
-
-Deploy when the graph needs consolidation:
-- Bridge disconnected clusters
-- Supersede stale nodes
-- Resolve or reaffirm open questions
-- Add tension edges where conflicts exist
-- **Don't add new ideas** — only clarify existing structure
+Explain the material finding to the user when it changes the work or needs
+their judgment. Otherwise keep the check quiet and continue the task.

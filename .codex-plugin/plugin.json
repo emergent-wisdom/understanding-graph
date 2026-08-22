@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Understanding Graph",
     "shortDescription": "Let persistent structure change the next thought.",
-    "longDescription": "Understanding Graph gives an agent a local, revisable medium in which research, writing, coding, decisions, and other substantive work can develop. The bundled skill teaches the agent to preserve all communicable task understanding, ask the graph for weighted concrete provocations, freely choose a route, and let accumulated structure produce later insight.",
+    "longDescription": "Understanding Graph gives an agent a local, revisable medium in which research, writing, coding, decisions, and other substantive work can develop. The bundled skill teaches the agent to preserve communicable, material understanding that could matter to the work or a future inquiry, ask the graph for weighted concrete provocations, freely choose a route, and let accumulated structure produce later insight.",
     "developerName": "Emergent Wisdom",
     "category": "Productivity",
     "capabilities": [

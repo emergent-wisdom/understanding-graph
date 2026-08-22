@@ -1,6 +1,10 @@
 import { EDGE_TYPES, TRIGGER_TYPES, type TriggerType } from '../types/index.js';
 import { reservedThinkingVisible } from '../visibility.js';
-import { type GraphNodeData, getGraphStore } from './GraphStore.js';
+import {
+  type GraphEdgeData,
+  type GraphNodeData,
+  getGraphStore,
+} from './GraphStore.js';
 
 /**
  * Artifact units (prose passages, code units, document roots) as opposed to
@@ -68,6 +72,56 @@ interface AnalysisResult {
   };
 }
 
+/**
+ * Project historical graph data onto the nodes that are active now.
+ *
+ * A dedicated supersession archives the displaced node but deliberately keeps
+ * its edges for history. In a current-state diagnostic, ordinary edges that
+ * touched that node therefore follow the supersession chain to the surviving
+ * replacement. The supersession edge itself collapses to a self-loop and is
+ * omitted from the active shape; callers that measure revision history should
+ * count it from the historical edges instead.
+ */
+export function projectActiveGraph(
+  nodes: GraphNodeData[],
+  edges: GraphEdgeData[],
+): { nodes: GraphNodeData[]; edges: GraphEdgeData[] } {
+  const activeNodes = nodes.filter((node) => node.active);
+  const activeNodeIds = new Set(activeNodes.map((node) => node.id));
+  const supersededBy = new Map(
+    edges
+      .filter((edge) => edge.type === 'supersedes')
+      .map((edge) => [edge.toId, edge.fromId]),
+  );
+
+  const resolveActive = (id: string): string | null => {
+    let current = id;
+    const seen = new Set<string>();
+    while (!activeNodeIds.has(current)) {
+      if (seen.has(current)) return null;
+      seen.add(current);
+      const replacement = supersededBy.get(current);
+      if (!replacement) return null;
+      current = replacement;
+    }
+    return current;
+  };
+
+  const activeEdges: GraphEdgeData[] = [];
+  for (const edge of edges) {
+    const fromId = resolveActive(edge.fromId);
+    const toId = resolveActive(edge.toId);
+    if (!fromId || !toId || fromId === toId) continue;
+    activeEdges.push(
+      fromId === edge.fromId && toId === edge.toId
+        ? edge
+        : { ...edge, fromId, toId, from: fromId, to: toId },
+    );
+  }
+
+  return { nodes: activeNodes, edges: activeEdges };
+}
+
 // Analyze graph structure
 export function analyzeGraph(
   _projectId: string,
@@ -76,18 +130,18 @@ export function analyzeGraph(
   const { showEvolution = false } = options;
   const store = getGraphStore();
 
-  // Get all nodes and edges
-  const { nodes: allNodes, edges: allEdges } = store.getAll();
-
-  // Find supersession info
-  const supersessionEdges = allEdges.filter((e) => e.type === 'supersedes');
-  const supersededNodeIds = new Set(supersessionEdges.map((e) => e.toId));
-
-  // Filter nodes based on showEvolution
-  let activeNodes = allNodes;
-  if (!showEvolution) {
-    activeNodes = allNodes.filter((n) => !supersededNodeIds.has(n.id));
-  }
+  // Both views need the lifecycle edges that active-only getAll() omits.
+  const {
+    nodes: allNodes,
+    edges: allEdges,
+    supersededNodeIds,
+  } = store.getAllWithSuperseded();
+  const supersessionEdges = allEdges.filter(
+    (edge) => edge.type === 'supersedes',
+  );
+  const activeProjection = projectActiveGraph(allNodes, allEdges);
+  const activeNodes = showEvolution ? allNodes : activeProjection.nodes;
+  const analysisEdges = showEvolution ? allEdges : activeProjection.edges;
 
   // Build node map
   const nodeMap = new Map<string, GraphNodeData>();
@@ -104,45 +158,10 @@ export function analyzeGraph(
     reverseAdj[n.id] = [];
   });
 
-  // When a superseded node is hidden, its incident edges must follow it to
-  // whatever replaced it rather than being dropped.
-  //
-  // Dropping them silently orphans nodes that are still connected. Measured on
-  // a real graph: one node's only edge pointed at a node that had been
-  // superseded, so the edge vanished from the analysis and the node was
-  // reported isolated — while graph_score, which does not hide anything,
-  // reported 100% connectivity on the same graph. Revising a position is the
-  // behaviour this tool exists to encourage, and it was being repaid with a
-  // phantom defect in the statistic meant to detect exactly that.
-  //
-  // Redirection is what supersession already means: if C replaces B, then in a
-  // view that hides B an edge onto B is an edge onto C. Chains are followed to
-  // the end, and an edge that collapses onto its own endpoint is dropped
-  // rather than recorded as a self-loop.
-  const supersededBy = new Map<string, string>();
-  for (const e of supersessionEdges) supersededBy.set(e.toId, e.fromId);
-  const resolve = (id: string): string => {
-    let current = id;
-    const seen = new Set<string>([current]);
-    while (!nodeMap.has(current)) {
-      const next = supersededBy.get(current);
-      if (!next || seen.has(next)) return current;
-      seen.add(next);
-      current = next;
-    }
-    return current;
-  };
-
-  allEdges.forEach((e) => {
-    if (!showEvolution && e.type === 'supersedes') return;
-
-    const from = showEvolution ? e.fromId : resolve(e.fromId);
-    const to = showEvolution ? e.toId : resolve(e.toId);
-    if (!nodeMap.has(from) || !nodeMap.has(to)) return;
-    if (from === to) return;
-
-    adj[from].push(to);
-    reverseAdj[to].push(from);
+  analysisEdges.forEach((edge) => {
+    if (!nodeMap.has(edge.fromId) || !nodeMap.has(edge.toId)) return;
+    adj[edge.fromId].push(edge.toId);
+    reverseAdj[edge.toId].push(edge.fromId);
   });
 
   // Convert to analysis nodes
@@ -252,9 +271,13 @@ export function analyzeGraph(
   const tightCycles = cycles.filter((c) => c.length <= 2);
   const structuralCycles = cycles.filter((c) => c.length > 2);
 
-  // 6. Open questions
+  // 6. Open questions. A question with an inbound answers edge remains in
+  //    history but is no longer an unresolved prompt for the next move.
+  const answeredQuestionIds = new Set(
+    allEdges.filter((edge) => edge.type === 'answers').map((edge) => edge.toId),
+  );
   const openQuestions = Object.values(nodes)
-    .filter((n) => n.trigger === 'question')
+    .filter((n) => n.trigger === 'question' && !answeredQuestionIds.has(n.id))
     .map((n) => ({ id: n.id, title: n.title }));
 
   // 7. Trigger distribution (include all types so curator can see what's missing)

@@ -46,8 +46,9 @@ describe('runtime instruction and tool contracts', () => {
     expect(SERVER_INSTRUCTIONS).toContain(UNDERSTANDING_PROTOCOL_ID);
     expect(SERVER_INSTRUCTIONS).toContain('There is no required state machine');
     expect(SERVER_INSTRUCTIONS).toMatch(
-      /all\s+communicable task understanding/i,
+      /all\s+communicable, material understanding/i,
     );
+    expect(SERVER_INSTRUCTIONS).toMatch(/reader's future inquiry/i);
     expect(SERVER_INSTRUCTIONS).toContain('graph_suggest_next');
     expect(UNDERSTANDING_STANCES).toEqual([
       'balanced',
@@ -87,7 +88,8 @@ describe('runtime instruction and tool contracts', () => {
     expect(skill).toContain('graph_batch');
     expect(skill).toContain('graph_suggest_next');
     expect(skill).toContain('not merely to write a novel');
-    expect(skill).toContain('all communicable, task-relevant understanding');
+    expect(skill).toContain('all communicable, material understanding');
+    expect(skill).toContain("the Reader's future inquiry");
     expect(skill).toContain('There is no mandatory loop or state machine');
     expect(skill).toContain('Maintain medium integrity');
     expect(skill).toContain('Workflow and stance are separate');
@@ -153,15 +155,27 @@ describe('runtime instruction and tool contracts', () => {
     const root = json('package.json') as {
       version: string;
       dependencies: Record<string, string>;
+      engines: { node: string };
     };
-    const core = json('packages/core/package.json') as { version: string };
+    const core = json('packages/core/package.json') as {
+      version: string;
+      engines: { node: string };
+      publishConfig: { access: string };
+    };
     const mcp = json('packages/mcp-server/package.json') as {
       version: string;
       dependencies: Record<string, string>;
+      engines: { node: string };
+      publishConfig: { access: string };
     };
     const web = json('packages/web-server/package.json') as {
       version: string;
       dependencies: Record<string, string>;
+      engines: { node: string };
+      publishConfig: { access: string };
+    };
+    const lock = json('package-lock.json') as {
+      packages: Record<string, { engines?: { node?: string } }>;
     };
     const plugin = json('.claude-plugin/plugin.json') as {
       version: string;
@@ -210,6 +224,20 @@ describe('runtime instruction and tool contracts', () => {
     expect(
       web.dependencies['@emergent-wisdom/understanding-graph-mcp-server'],
     ).toBe(mcp.version);
+    for (const manifest of [root, core, mcp, web]) {
+      expect(manifest.engines.node).toBe('>=22.0.0');
+    }
+    for (const manifest of [core, mcp, web]) {
+      expect(manifest.publishConfig.access).toBe('public');
+    }
+    for (const workspace of [
+      '',
+      'packages/core',
+      'packages/mcp-server',
+      'packages/web-server',
+    ]) {
+      expect(lock.packages[workspace]?.engines?.node).toBe('>=22.0.0');
+    }
   });
 
   it('distinguishes reading, research, coding, collaborative coding, and writing loops', () => {
@@ -249,6 +277,13 @@ describe('runtime instruction and tool contracts', () => {
     expect(SERVER_INSTRUCTIONS).toContain(
       'semantic granularity, not a word count or node quota',
     );
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /exact passage, function, class, or test[\s\S]*recorded reason that unit\s+exists or changed/,
+    );
+    expect(SERVER_INSTRUCTIONS).toMatch(/`implements` points commitment→unit/);
+    expect(SERVER_INSTRUCTIONS).toMatch(
+      /authored claims, not\s+verified causality/,
+    );
 
     const writingTools = getToolDefinitions('writing');
     // doc_create, doc_revise and doc_weave are batch-only, so they are absent
@@ -256,12 +291,16 @@ describe('runtime instruction and tool contracts', () => {
     // agent composing a graph_batch operation, so they are read from the
     // definitions themselves.
     const create = documentTools.find((tool) => tool.name === 'doc_create');
+    const read = documentTools.find((tool) => tool.name === 'doc_read');
     const revise = documentTools.find((tool) => tool.name === 'doc_revise');
     const weave = documentTools.find((tool) => tool.name === 'doc_weave');
     const batch = writingTools.find((tool) => tool.name === 'graph_batch');
     expect(create?.description).toContain(
       'move, replace, compare, or revise without rewriting neighbors',
     );
+    expect(create?.inputSchema.properties).toHaveProperty('purpose');
+    expect(read?.inputSchema.properties).toHaveProperty('showProvenance');
+    expect(read?.description).toContain('why this unit exists or changed');
     expect(revise?.description).toContain('independently revisable');
     expect(revise?.description).toContain(
       'insight, question, or tension should influence other passages or future work',
@@ -279,6 +318,25 @@ describe('runtime instruction and tool contracts', () => {
     );
     expect(batch?.description).toContain('Arguments belong inside params');
     expect(batch?.description).toContain('{ tool: "doc_create", params:');
+    expect(batch?.description).toContain(
+      'Every call requires operations, commit_message, and agent_name',
+    );
+    expect(batch?.description).toContain(
+      'wrong names are rejected with an explicit remedy',
+    );
+    expect(batch?.description).not.toContain('fail silently');
+    expect(batch?.description).toContain('a root uses isDocRoot: true');
+    expect(batch?.description).toContain('a child uses parentId');
+    expect(batch?.description).toContain('append with afterId');
+    expect(SERVER_INSTRUCTIONS).toContain('actual `agent_name`');
+
+    const history = getToolDefinitions('general').find(
+      (tool) => tool.name === 'graph_history',
+    );
+    expect(history?.description).toContain(
+      'when recent collaboration or activity could affect the current task',
+    );
+    expect(history?.description).not.toContain('start of every session');
   });
 
   it('invites open cognitive testimony while reserving synthetic thinking', () => {
@@ -286,7 +344,7 @@ describe('runtime instruction and tool contracts', () => {
       'active medium for **fluid, emergent understanding**',
     );
     expect(SERVER_INSTRUCTIONS).toMatch(
-      /all\s+communicable task understanding/i,
+      /all\s+communicable, material understanding/i,
     );
     expect(SERVER_INSTRUCTIONS).toContain('There is no required state machine');
     expect(SERVER_INSTRUCTIONS).toMatch(/preserve enough texture/i);
@@ -326,13 +384,66 @@ describe('runtime instruction and tool contracts', () => {
       ),
       'utf8',
     );
+    const frontmatter = skill.split('---')[1] ?? '';
+    const advertised = frontmatter
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('mcp__plugin_understanding-graph_ug__'))
+      .map((line) => line.replace('mcp__plugin_understanding-graph_ug__', ''));
+    const generalTools = new Set(
+      getToolDefinitions('general').map((tool) => tool.name),
+    );
 
-    expect(skill).toContain('mcp__ug__graph_discover_grounded');
+    expect(skill).toContain(
+      'mcp__plugin_understanding-graph_ug__graph_discover_grounded',
+    );
+    expect(skill).toContain(
+      'mcp__plugin_understanding-graph_ug__graph_suggest_next',
+    );
+    expect(advertised.filter((tool) => !generalTools.has(tool))).toEqual([]);
     expect(skill).toContain('A defensible\nno-connection result needs no node');
     expect(skill).not.toContain('next batch must write');
     expect(skill).toContain(
       'Never create a note merely to prove that\nthe exploratory call was useful',
     );
+  });
+
+  it('keeps artifact skills choice-driven and gates concurrent coordination', () => {
+    const repo = path.resolve(import.meta.dirname, '../../../..');
+    const skills = [
+      ['code-work', 'coding'],
+      ['creative-work', 'writing'],
+      ['collaborative-code', 'collaborative_coding'],
+    ] as const;
+    for (const [name, mode] of skills) {
+      const skill = fs.readFileSync(
+        path.join(repo, 'skills', name, 'SKILL.md'),
+        'utf8',
+      );
+      const advertised = (skill.split('---')[1] ?? '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) =>
+          line.startsWith('mcp__plugin_understanding-graph_ug__'),
+        )
+        .map((line) =>
+          line.replace('mcp__plugin_understanding-graph_ug__', ''),
+        );
+      const available = new Set(
+        getToolDefinitions(mode).map((tool) => tool.name),
+      );
+      expect(skill).toContain('graph_suggest_next');
+      expect(skill).toMatch(/choose,\s+combine,\s+modify,\s+or\s+reject/i);
+      expect(skill).not.toContain('mcp__ug__');
+      expect(advertised.filter((tool) => !available.has(tool))).toEqual([]);
+    }
+
+    const collaborative = fs.readFileSync(
+      path.join(repo, 'skills/collaborative-code/SKILL.md'),
+      'utf8',
+    );
+    expect(collaborative).toContain('TOOL_MODE=collaborative_coding');
+    expect(collaborative).toContain('Work serially through `code-work`');
   });
 
   it('treats synthesis as an operation and types only its actual result', () => {
@@ -354,6 +465,7 @@ describe('runtime instruction and tool contracts', () => {
 
   it('exposes graph_understand with the same workflow enum in every mode', () => {
     for (const mode of [
+      'general',
       'reading',
       'research',
       'coding',
@@ -387,6 +499,17 @@ describe('runtime instruction and tool contracts', () => {
     const reading = names('reading');
     expect(reading.has('source_load')).toBe(true);
     expect(reading.has('source_read')).toBe(true);
+
+    const general = names('general');
+    expect(names(undefined)).toEqual(general);
+    expect(general.has('graph_batch')).toBe(true);
+    expect(general.has('source_read')).toBe(true);
+    expect(general.has('graph_updates')).toBe(true);
+    expect(general.has('doc_generate')).toBe(true);
+    expect(general.has('graph_purge')).toBe(false);
+    expect(general.has('graph_bulk_replace')).toBe(false);
+    expect(general.has('graph_chaos')).toBe(false);
+    expect(general.has('solver_delegate')).toBe(false);
 
     const coding = names('coding');
     expect(coding.has('source_load')).toBe(false);
@@ -424,6 +547,7 @@ describe('runtime instruction and tool contracts', () => {
     expect(syntheticReader.has('graph_discover_grounded')).toBe(false);
 
     for (const mode of [
+      'general',
       'reading',
       'research',
       'coding',
@@ -481,7 +605,12 @@ describe('runtime instruction and tool contracts', () => {
       // Ordinary workflows retain graph context for their own visible nodes;
       // the runtime visibility boundary excludes reserved synthetic blocks.
       expect(names.has('graph_context')).toBe(true);
-      if (mode === 'reading' || mode === 'research' || mode === 'full')
+      if (
+        mode === 'general' ||
+        mode === 'reading' ||
+        mode === 'research' ||
+        mode === 'full'
+      )
         expect(names.has('source_export')).toBe(true);
 
       const findByTrigger = definitions.find(
@@ -543,9 +672,9 @@ describe('runtime instruction and tool contracts', () => {
       ),
       'utf8',
     );
-    const advertised = [...markdown.matchAll(/mcp__ug__([a-z0-9_]+)/g)].map(
-      (match) => match[1],
-    );
+    const advertised = [
+      ...markdown.matchAll(/mcp__plugin_understanding-graph_ug__([a-z0-9_]+)/g),
+    ].map((match) => match[1]);
     const exposed = new Set(
       getToolDefinitions('reading').map((definition) => definition.name),
     );
@@ -559,7 +688,7 @@ describe('runtime instruction and tool contracts', () => {
     ).toEqual([]);
   });
 
-  it('exposes every graph tool allowed by the coding skills', () => {
+  it('exposes every graph tool allowed by the general and coding skills', () => {
     const assertSkillTools = (
       skill: string,
       mode: Parameters<typeof getToolDefinitions>[0],
@@ -571,9 +700,11 @@ describe('runtime instruction and tool contracts', () => {
         ),
         'utf8',
       );
-      const advertised = [...markdown.matchAll(/mcp__ug__([a-z0-9_]+)/g)].map(
-        (match) => match[1],
-      );
+      const advertised = [
+        ...markdown.matchAll(
+          /mcp__plugin_understanding-graph_ug__([a-z0-9_]+)/g,
+        ),
+      ].map((match) => match[1]);
       const exposed = new Set(
         getToolDefinitions(mode).map((tool) => tool.name),
       );
@@ -582,6 +713,8 @@ describe('runtime instruction and tool contracts', () => {
       expect(advertised.filter((tool) => !exposed.has(tool))).toEqual([]);
     };
 
+    assertSkillTools('orient', 'general');
+    assertSkillTools('quality-check', 'general');
     assertSkillTools('code-work', 'coding');
     assertSkillTools('collaborative-code', 'collaborative_coding');
   });

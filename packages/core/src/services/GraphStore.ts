@@ -3878,6 +3878,7 @@ export class GraphStore {
     input: {
       title: string;
       content: string;
+      purpose?: string; // Recorded local reason this exact artifact unit exists
       summary?: string;
       level?: string;
       isDocRoot?: boolean;
@@ -4036,7 +4037,7 @@ export class GraphStore {
     const node = this.createNode({
       title: input.title,
       trigger: input.trigger || 'foundation',
-      why: 'Document node',
+      why: input.purpose?.trim() || 'Document node',
       understanding:
         input.summary || input.content?.slice(0, 200) || input.title,
       content: input.content,

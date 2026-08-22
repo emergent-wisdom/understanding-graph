@@ -18,7 +18,6 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
 import { rollNextMoves } from '../next-move.js';
 import { UNDERSTANDING_PROTOCOL_ID } from '../protocol.js';
-import { rememberSuggestedStances } from '../suggestion-state.js';
 
 const nextMoveHistory = new Map<string, string[]>();
 
@@ -522,7 +521,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_history',
     description:
-      'Read the recent activity and commit feeds for the current project: who created/revised which nodes and edges, with commit messages and agent attribution in chronological order. Returns one XML packet so structure is preserved when other agents quote from it. Use this at the start of every session to see what teammates have done since you last looked.',
+      'Read the recent activity and commit feeds for the current project: who created/revised which nodes and edges, with commit messages and agent attribution in chronological order. Returns one XML packet so structure is preserved when other agents quote from it. Use it when recent collaboration or activity could affect the current task; it is not a required session-opening ritual.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -886,7 +885,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_practice',
     description:
-      "Report how this graph has been WORKED, as distinct from how it is shaped: whether it is re-entered or only written to, whether prose carries the thinking that produced it, whether practices present early have since decayed, whether predictions were ever scored, and whether anything has been overturned. graph_analyze and graph_score answer whether a graph is well formed and cannot answer whether it is doing anything — a graph nobody re-enters scores exactly like one that changes someone's mind. Each figure arrives with what it is computed from and what it might indicate. Every one is a proxy for conduct, not a measure of quality, and there is deliberately no total, because a single score becomes a target.",
+      "Report how this graph has been WORKED, as distinct from how it is shaped: whether it is re-entered or only written to, whether artifact units carry links to the understanding that shaped them, whether practices present early have since decayed, whether predictions were ever scored, and whether anything has been overturned. graph_analyze and graph_score answer whether a graph is well formed and cannot answer whether it is doing anything — a graph nobody re-enters scores exactly like one that changes someone's mind. Each figure arrives with what it is computed from and what it might indicate. Every one is a proxy for conduct, not a measure of quality, and there is deliberately no total, because a single score becomes a target.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -982,7 +981,14 @@ export async function handleReflectionTools(
 
       const store = getGraphStore();
       const nodeId = args.nodeId as string;
-      const node = store.getNode(nodeId);
+      // A dedicated supersession archives the displaced node. Consult the
+      // lifecycle history explicitly so its preserved revisions do not depend
+      // on the active-node semantics of an ordinary point lookup.
+      const node =
+        store
+          .getAllWithSuperseded()
+          .nodes.find((candidate) => candidate.id === nodeId) ??
+        store.getNode(nodeId);
 
       if (!node) {
         return {
@@ -2219,7 +2225,7 @@ export async function handleReflectionTools(
         .filter((node) => visibleNodeIds.has(node.id))
         .map(describeNode);
       const contradictionEdges = edges.filter((edge) =>
-        ['contradicts', 'invalidates', 'diverse_from'].includes(edge.type),
+        ['contradicts', 'invalidates'].includes(edge.type),
       );
       const recentActions = nextMoveHistory.get(projectId) ?? [];
       const options = rollNextMoves({
@@ -2228,9 +2234,9 @@ export async function handleReflectionTools(
         focusNodeIds,
         nodeCount: nodes.length,
         edgeCount: edges.length,
-        unresolvedCount: nodes.filter(
-          (node) => node.trigger === 'question' || node.trigger === 'tension',
-        ).length,
+        unresolvedCount:
+          analysis.openQuestions.length +
+          nodes.filter((node) => node.trigger === 'tension').length,
         documentCount: nodes.filter((node) => node.isDocRoot || node.level)
           .length,
         isolatedCount: analysis.stats.isolatedCount,
@@ -2279,7 +2285,6 @@ export async function handleReflectionTools(
         projectId,
         options.map((option) => option.action),
       );
-      rememberSuggestedStances(projectId, options);
 
       return {
         protocol: UNDERSTANDING_PROTOCOL_ID,
@@ -2496,7 +2501,8 @@ export async function handleReflectionTools(
       await contextManager.getContext(projectId);
 
       const store = getGraphStore();
-      const { nodes: allNodes, edges: allEdges } = store.getAll();
+      const { nodes: historicalNodes, edges: historicalEdges } =
+        store.getAllWithSuperseded();
       const reservedNodeIds = new Set(
         (
           sqlite
@@ -2511,26 +2517,20 @@ export async function handleReflectionTools(
           .filter(isReservedThinkingNode)
           .map((node) => node.id),
       );
-      // NOT applied here yet: excluding superseded nodes and edges from these
-      // live statistics, which is the stated intent but cannot be done from
-      // the current data model.
-      //
-      // "Superseded edges" are not the `supersedes` edges themselves — those
-      // are the mechanism, not a superseded thing. They are the ordinary edges
-      // that pointed at a node which has since been replaced, and the model
-      // has no mark for them: nothing distinguishes an edge onto a replaced
-      // node from any other edge, so they cannot be excluded without also
-      // excluding the record of the replacement.
-      //
-      // Dropping `supersedes` edges as a stand-in was tried and is wrong. It
-      // leaves every superseding node holding no edges at all, so the nodes
-      // that did the replacing are reported isolated — the same phantom-orphan
-      // defect just fixed in graph_analyze, reintroduced one tool over. The
-      // marking and automatic redraw has to exist first.
-      const nodes = allNodes.filter((node) => !reservedNodeIds.has(node.id));
-      const edges = allEdges.filter(
+      const ordinaryHistoricalNodes = historicalNodes.filter(
+        (node) => !reservedNodeIds.has(node.id),
+      );
+      const ordinaryHistoricalNodeIds = new Set(
+        ordinaryHistoricalNodes.map((node) => node.id),
+      );
+      const ordinaryHistoricalEdges = historicalEdges.filter(
         (edge) =>
-          !reservedNodeIds.has(edge.fromId) && !reservedNodeIds.has(edge.toId),
+          ordinaryHistoricalNodeIds.has(edge.fromId) &&
+          ordinaryHistoricalNodeIds.has(edge.toId),
+      );
+      const { nodes, edges } = AnalysisService.projectActiveGraph(
+        ordinaryHistoricalNodes,
+        ordinaryHistoricalEdges,
       );
 
       // Empty graph case
@@ -2566,7 +2566,7 @@ export async function handleReflectionTools(
       }).length;
 
       // 2. Supersession Count
-      const supersessionCount = edges.filter(
+      const supersessionCount = ordinaryHistoricalEdges.filter(
         (e) => e.type === 'supersedes',
       ).length;
 

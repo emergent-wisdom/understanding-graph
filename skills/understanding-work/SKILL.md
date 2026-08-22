@@ -1,6 +1,6 @@
 ---
 name: understanding-work
-description: Use an available Understanding Graph or Undergraph MCP as the persistent medium for substantive reading, research, writing, coding, design, diagnosis, decisions, and other knowledge work. Trigger whenever a user asks for meaningful work in a graph-backed project, even if they do not explicitly say “use the graph.” Let all communicable task understanding develop in the graph, choose a process suited to the task, and use graph state to provoke later attention and action.
+description: Use an available Understanding Graph or Undergraph MCP as the persistent medium for substantive reading, research, writing, coding, design, diagnosis, decisions, and other knowledge work. Trigger whenever a user asks for meaningful work in a graph-backed project, even if they do not explicitly say “use the graph.” Let all communicable, material understanding that could matter to the work or a future inquiry develop in the graph, choose a process suited to the task, and use graph state to provoke later attention and action.
 ---
 
 # Work through Understanding
@@ -37,9 +37,9 @@ Develop artifacts and understanding in the graph while they are alive.
 
 ## Preserve the understanding that exists
 
-Default to preserving all communicable, task-relevant understanding that a
-future instance could use—not only final conclusions or dramatic changes. This
-may include:
+Default to preserving all communicable, material understanding that could matter
+to the work or the Reader's future inquiry—not only final conclusions or dramatic
+changes. This may include:
 
 - what currently draws attention and why;
 - questions, hesitations, tensions, and uncertain interpretations;
@@ -62,7 +62,7 @@ This is not a request for hidden or token-level chain-of-thought. Never claim
 access to hidden model state, transcribe private token-by-token reasoning, or
 reconstruct a tidy rationale after completion. It is authored, inspectable
 understanding for continuity. Do not manufacture notes to demonstrate activity;
-if no communicable task understanding is present, add nothing.
+if no communicable, material understanding is present, add nothing.
 
 Ordinary work never creates the reserved `thinking` trigger. Use ordinary types
 such as `question`, `tension`, `surprise`, `hypothesis`, `model`, `analysis`,
@@ -104,7 +104,16 @@ from its neighbors. Do not split mechanically.
 Connect an artifact to cognition only when the relation is real. Use
 `inspired_by` when graph material genuinely shaped an artifact unit,
 `expresses` when the artifact renders a concept, and `learned_from` when an
-understanding came from evidence.
+understanding came from evidence. Use `implements` from an abstract decision or
+design to the exact concrete passage, function, class, or test that realizes it.
+Give each relation a local, truthful `why`.
+
+This makes the artifact queryable in both directions: from a decision or tension
+to the units it shaped, and from one exact unit back to its recorded purpose,
+origin commit, influences, and later revisions. Use
+`doc_read({ nodeId, showProvenance: true, showRevisions: true })` when asking why
+that unit exists or changed. The result is an authored provenance account, not
+verified causality; a missing relation means unrecorded, not uncaused.
 
 ## Invite emergence without surrendering judgment
 
