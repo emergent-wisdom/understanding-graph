@@ -179,7 +179,9 @@ describe('runtime instruction and tool contracts', () => {
     };
     const plugin = json('.claude-plugin/plugin.json') as {
       version: string;
-      mcpServers: { ug: { args: string[] } };
+      mcpServers: {
+        ug: { args: string[]; env: Record<string, string> };
+      };
     };
     const codexPlugin = json('.codex-plugin/plugin.json') as {
       version: string;
@@ -187,7 +189,9 @@ describe('runtime instruction and tool contracts', () => {
       mcpServers: string;
     };
     const codexMcp = json('.mcp.json') as {
-      mcpServers: { ug: { args: string[] } };
+      mcpServers: {
+        ug: { args: string[]; env: Record<string, string> };
+      };
     };
     const registry = json('server.json') as {
       version: string;
@@ -198,12 +202,16 @@ describe('runtime instruction and tool contracts', () => {
     expect(plugin.mcpServers.ug.args).toContain(
       `understanding-graph@${root.version}`,
     );
+    expect(plugin.mcpServers.ug.env.UG_SOURCE_ROOT).toBe(
+      `\${CLAUDE_PROJECT_DIR}`,
+    );
     expect(codexPlugin.version).toBe(root.version);
     expect(codexPlugin.skills).toBe('./skills/');
     expect(codexPlugin.mcpServers).toBe('./.mcp.json');
     expect(codexMcp.mcpServers.ug.args).toContain(
       `understanding-graph@${root.version}`,
     );
+    expect(codexMcp.mcpServers.ug.env.UG_SOURCE_ROOT).toBe('.');
     expect(registry.version).toBe(root.version);
     expect(registry.packages[0]?.version).toBe(root.version);
     expect(root.dependencies['@emergent-wisdom/understanding-graph-core']).toBe(

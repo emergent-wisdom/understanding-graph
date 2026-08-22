@@ -95,6 +95,8 @@ Environment variables:
   UG_WORKER_TOKEN
                 Required as Authorization: Bearer <token> when HOST is not loopback
   PROJECT_DIR   Where graph data lives (default: ./projects relative to cwd)
+  UG_SOURCE_ROOT
+                Directory source_load may read files from (default: current cwd)
   TOOL_MODE     MCP tool exposure: general | reading | research | coding |
                 collaborative_coding | writing | full | synthetic_reader
                 (default: general; full is explicit broad access;
@@ -185,12 +187,19 @@ function init() {
       const managedServer = existingClaudeServer ?? legacyClaudeServer ?? {
         command: 'npx',
         args: ['-y', `understanding-graph@${packageVersion}`, 'mcp'],
-        env: { PROJECT_DIR: '${CLAUDE_PROJECT_DIR:-.}/projects' },
+        env: {
+          PROJECT_DIR: '${CLAUDE_PROJECT_DIR:-.}/projects',
+          UG_SOURCE_ROOT: '${CLAUDE_PROJECT_DIR:-.}',
+        },
       };
       const packageArg = managedServer.args.findIndex((arg) =>
         /^understanding-graph@[^/\s]+$/.test(arg),
       );
       managedServer.args[packageArg] = `understanding-graph@${packageVersion}`;
+      if (!isJsonObject(managedServer.env)) managedServer.env = {};
+      if (!Object.hasOwn(managedServer.env, 'UG_SOURCE_ROOT')) {
+        managedServer.env.UG_SOURCE_ROOT = '${CLAUDE_PROJECT_DIR:-.}';
+      }
       servers[managedKey] = managedServer;
 
       const serialized = `${JSON.stringify(claudeMcp, null, 2)}\n`;
@@ -228,7 +237,8 @@ function init() {
   // 2. Create project-scoped Codex MCP configuration.
   const codexDir = path.join(cwd, '.codex');
   const codexConfigPath = path.join(codexDir, 'config.toml');
-  const codexSection = `[mcp_servers.understanding_graph]\ncommand = "npx"\nargs = ["-y", "understanding-graph@${packageVersion}", "mcp"]\nenv = { PROJECT_DIR = ${JSON.stringify(path.join(cwd, 'projects'))} }\n`;
+  const sourceRoot = fs.realpathSync(cwd);
+  const codexSection = `[mcp_servers.understanding_graph]\ncommand = "npx"\nargs = ["-y", "understanding-graph@${packageVersion}", "mcp"]\nenv = { PROJECT_DIR = ${JSON.stringify(path.join(cwd, 'projects'))}, UG_SOURCE_ROOT = ${JSON.stringify(sourceRoot)} }\n`;
   if (!fs.existsSync(codexDir)) {
     fs.mkdirSync(codexDir, { recursive: true });
   }
@@ -236,7 +246,11 @@ function init() {
     ? fs.readFileSync(codexConfigPath, 'utf8')
     : '';
   if (existingCodex.includes('[mcp_servers.understanding_graph]')) {
-    const updated = updateManagedCodexMcpVersion(existingCodex, packageVersion);
+    const updated = updateManagedCodexMcpVersion(
+      existingCodex,
+      packageVersion,
+      sourceRoot,
+    );
     if (updated === null) {
       skipped.push('.codex/config.toml (custom MCP server preserved)');
     } else if (updated === existingCodex) {
@@ -303,8 +317,8 @@ function init() {
     3. The agent should work in the graph, preserve material understanding as it
        emerges, and use weighted suggestions or re-entry at natural choice points
 
-  Both client configurations resolve this project's projects/ directory
-  regardless of the agent process's launch directory.
+  Both client configurations resolve this project's graph storage and source
+  root regardless of the agent process's launch directory.
 `);
 }
 
@@ -336,12 +350,16 @@ function readJsonObject(filePath) {
   }
 }
 
-function updateManagedCodexMcpVersion(content, packageVersion) {
+function updateManagedCodexMcpVersion(content, packageVersion, sourceRoot) {
   const start = content.indexOf('[mcp_servers.understanding_graph]');
   if (start < 0) return null;
+  if (/^\[mcp_servers\.understanding_graph\.env\]\s*$/m.test(content)) {
+    return null;
+  }
   const nextSection = content.indexOf('\n[', start + 1);
   const end = nextSection < 0 ? content.length : nextSection + 1;
   const section = content.slice(start, end);
+  if (/^env\s*\./m.test(section)) return null;
   if (
     !/^command\s*=\s*"npx"\s*$/m.test(section) ||
     !/understanding-graph@[^"\s,]+/.test(section) ||
@@ -349,10 +367,25 @@ function updateManagedCodexMcpVersion(content, packageVersion) {
   ) {
     return null;
   }
-  const updatedSection = section.replace(
+  let updatedSection = section.replace(
     /understanding-graph@[^"\s,]+/,
     `understanding-graph@${packageVersion}`,
   );
+  if (!/\bUG_SOURCE_ROOT\s*=/.test(updatedSection)) {
+    const inlineEnv = /^(env\s*=\s*\{)([^}\n]*)(\}\s*)$/m;
+    if (inlineEnv.test(updatedSection)) {
+      updatedSection = updatedSection.replace(
+        inlineEnv,
+        (_match, opening, entries, closing) => {
+          const existingEntries = entries.trim();
+          const prefix = existingEntries ? `${existingEntries}, ` : '';
+          return `${opening} ${prefix}UG_SOURCE_ROOT = ${JSON.stringify(sourceRoot)} ${closing}`;
+        },
+      );
+    } else {
+      updatedSection = `${updatedSection.trimEnd()}\nenv = { UG_SOURCE_ROOT = ${JSON.stringify(sourceRoot)} }\n`;
+    }
+  }
   return `${content.slice(0, start)}${updatedSection}${content.slice(end)}`;
 }
 
