@@ -18,7 +18,8 @@ Claude Desktop reads MCP server configuration from a JSON file. Add an
       "command": "npx",
       "args": ["-y", "understanding-graph@0.1.28", "mcp"],
       "env": {
-        "PROJECT_DIR": "/path/to/your/projects"
+        "PROJECT_DIR": "/path/to/your/projects",
+        "UG_SOURCE_ROOT": "/path/to/your/source-project"
       }
     }
   }
@@ -29,6 +30,8 @@ Claude Desktop reads MCP server configuration from a JSON file. Add an
 becomes a separate project. If you omit it, the server uses `./projects`
 relative to its working directory (which Claude Desktop sets to the user's
 home directory), which is usually not what you want — set it explicitly.
+`UG_SOURCE_ROOT` is the only directory from which `source_load.filePath` may
+read; use a project or source-library directory rather than your whole home.
 
 ## Verify
 

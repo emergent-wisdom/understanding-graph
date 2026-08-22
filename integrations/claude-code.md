@@ -34,6 +34,10 @@ This creates:
 - `projects/default/` — the SQLite-backed graph storage directory
 - Adds `projects/` to `.gitignore`
 
+The generated MCP config also limits `source_load.filePath` to this project
+root. Pass external text as `content`, or deliberately change
+`UG_SOURCE_ROOT` when broader file access is intended.
+
 ## Verify
 
 Ask Claude Code:

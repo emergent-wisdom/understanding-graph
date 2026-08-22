@@ -34,7 +34,7 @@ reader to continue from it.
 
 ## Setup
 
-1. Load the source: `source_load({ title: "...", content: "..." })` or `source_load({ title: "...", filePath: "..." })`
+1. Load the source: `source_load({ title: "...", content: "..." })` or `source_load({ title: "...", filePath: "..." })`. File paths stay within `UG_SOURCE_ROOT` (the server working directory by default); pass `content` directly or deliberately configure that root for material elsewhere.
 2. Check the current source position. The loaded source and its chronological
    position are authoritative.
 3. At the first real choice point, call

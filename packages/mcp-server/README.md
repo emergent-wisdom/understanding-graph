@@ -151,6 +151,10 @@ reserved `thinking` block.
 | `doc_generate` / `doc_generate_all` | Project document nodes into executable or readable files |
 | `graph_score` | Check structural integrity; not semantic correctness |
 
+`source_load.filePath` is limited to `UG_SOURCE_ROOT`, which defaults to the
+server working directory. Pass text as `content` or set that host-controlled
+root explicitly when sources live elsewhere.
+
 Synthesis is normally an operation, not a catch-all node type. Store its result
 as what it became: `analysis` for a stabilized integration, `model` for a
 general mechanism, `hypothesis` for a provisional unification, `decision` for

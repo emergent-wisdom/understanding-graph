@@ -13,6 +13,7 @@ import { handleToolCall } from '../tools/index.js';
 
 let tmpDir: string;
 let contextManager: ContextManager;
+const originalSourceRoot = process.env.UG_SOURCE_ROOT;
 
 beforeEach(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ug-source-reading-'));
@@ -38,9 +39,77 @@ afterEach(() => {
   }
   resetGraphStore();
   vi.restoreAllMocks();
+  if (originalSourceRoot === undefined) {
+    delete process.env.UG_SOURCE_ROOT;
+  } else {
+    process.env.UG_SOURCE_ROOT = originalSourceRoot;
+  }
   if (tmpDir && fs.existsSync(tmpDir)) {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+describe('source file containment', () => {
+  it('loads relative files within the configured source root', async () => {
+    const sourceRoot = path.join(tmpDir, 'source-root');
+    const sourcePath = path.join(sourceRoot, 'notes', 'inside.txt');
+    fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+    fs.writeFileSync(
+      sourcePath,
+      'A source intentionally placed in the project.',
+    );
+    process.env.UG_SOURCE_ROOT = sourceRoot;
+
+    const loaded = (await handleToolCall(
+      'source_load',
+      {
+        title: 'Inside Source',
+        filePath: 'notes/inside.txt',
+        sourceType: 'article',
+      },
+      contextManager,
+    )) as Record<string, unknown>;
+
+    expect(loaded.success).toBe(true);
+    expect(loaded.loadedFrom).toBe('file');
+    expect(loaded.message).toContain('inside.txt');
+    expect(getTextSource(loaded.sourceId as string)?.content).toBe(
+      'A source intentionally placed in the project.',
+    );
+  });
+
+  it('rejects files and symlinks that escape the configured source root', async () => {
+    const sourceRoot = path.join(tmpDir, 'source-root');
+    const outsidePath = path.join(tmpDir, 'outside.txt');
+    const linkedPath = path.join(sourceRoot, 'linked-outside.txt');
+    fs.mkdirSync(sourceRoot, { recursive: true });
+    fs.writeFileSync(outsidePath, 'This file is outside the allowed root.');
+    fs.symlinkSync(outsidePath, linkedPath);
+    process.env.UG_SOURCE_ROOT = sourceRoot;
+
+    await expect(
+      handleToolCall(
+        'source_load',
+        { title: 'Outside Source', filePath: outsidePath },
+        contextManager,
+      ),
+    ).rejects.toThrow('must stay within UG_SOURCE_ROOT');
+
+    await expect(
+      handleToolCall(
+        'source_load',
+        { title: 'Linked Source', filePath: 'linked-outside.txt' },
+        contextManager,
+      ),
+    ).rejects.toThrow('must stay within UG_SOURCE_ROOT');
+
+    const listed = (await handleToolCall(
+      'source_list',
+      {},
+      contextManager,
+    )) as Record<string, unknown>;
+    expect(listed.count).toBe(0);
+  });
 });
 
 describe('source reading bootstrap', () => {

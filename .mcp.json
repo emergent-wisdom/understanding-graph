@@ -9,6 +9,7 @@
       ],
       "env": {
         "PROJECT_DIR": "./projects",
+        "UG_SOURCE_ROOT": ".",
         "DEFAULT_PROJECT": "default"
       }
     }

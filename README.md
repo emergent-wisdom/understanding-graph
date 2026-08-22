@@ -130,12 +130,16 @@ Per-client setup guides: [Claude Code](https://github.com/emergent-wisdom/unders
       "command": "npx",
       "args": ["-y", "understanding-graph@0.1.28", "mcp"],
       "env": {
-        "PROJECT_DIR": "/path/to/your/projects"
+        "PROJECT_DIR": "/path/to/your/projects",
+        "UG_SOURCE_ROOT": "/path/to/your/source-project"
       }
     }
   }
 }
 ```
+
+`UG_SOURCE_ROOT` limits file-based source loading to that directory. The
+project initializer sets it to the project root automatically.
 
 ### Cursor / Windsurf
 
@@ -527,6 +531,7 @@ cd packages/frontend && npm run dev
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PROJECT_DIR` | `./projects` | Where to store project data |
+| `UG_SOURCE_ROOT` | current working directory | Directory that `source_load.filePath` may read from; provide `content` directly for files outside it |
 | `PORT` | `3000` | Web server port |
 | `HOST` | `127.0.0.1` | Web bind address; non-loopback requires `UG_WORKER_TOKEN` |
 | `UG_WORKER_TOKEN` | -- | Bearer secret required for remote worker API/admin requests |

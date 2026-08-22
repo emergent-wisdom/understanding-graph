@@ -1,5 +1,5 @@
 # --- Stage 1: Build ---
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Copy config files
@@ -24,7 +24,7 @@ RUN npm run build -w packages/web-server
 RUN npm run build -w packages/frontend
 
 # --- Stage 2: Runtime (The Product) ---
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000

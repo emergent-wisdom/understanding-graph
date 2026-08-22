@@ -46,7 +46,10 @@ describe('understanding-graph init', () => {
     ) as {
       mcpServers: Record<
         string,
-        { args: string[]; env: { PROJECT_DIR: string } }
+        {
+          args: string[];
+          env: { PROJECT_DIR: string; UG_SOURCE_ROOT: string };
+        }
       >;
     };
 
@@ -61,11 +64,17 @@ describe('understanding-graph init', () => {
     expect(codex).toContain('[mcp_servers.understanding_graph]');
     expect(codex).toContain(`understanding-graph@${packageVersion}`);
     expect(codex).toContain(path.join(canonicalDirectory, 'projects'));
+    expect(codex).toContain(
+      `UG_SOURCE_ROOT = ${JSON.stringify(canonicalDirectory)}`,
+    );
     expect(claudeMcp.mcpServers['understanding-graph'].args).toContain(
       `understanding-graph@${packageVersion}`,
     );
     expect(claudeMcp.mcpServers['understanding-graph'].env.PROJECT_DIR).toBe(
       `\${CLAUDE_PROJECT_DIR:-.}/projects`,
+    );
+    expect(claudeMcp.mcpServers['understanding-graph'].env.UG_SOURCE_ROOT).toBe(
+      `\${CLAUDE_PROJECT_DIR:-.}`,
     );
     expect(
       fs.existsSync(path.join(directory, '.claude/settings.local.json')),
@@ -129,7 +138,7 @@ describe('understanding-graph init', () => {
     );
     fs.writeFileSync(
       path.join(directory, '.codex/config.toml'),
-      `[model]\nname = "keep-me"\n\n[mcp_servers.understanding_graph]\ncommand = "npx"\nargs = ["-y", "understanding-graph@0.1.27", "mcp"]\nenv = { PROJECT_DIR = ${JSON.stringify(path.join(canonicalDirectory, 'projects'))} }\n\n[other]\nvalue = "survives"\n`,
+      `[model]\nname = "keep-me"\n\n[mcp_servers.understanding_graph]\ncommand = "npx"\nargs = ["-y", "understanding-graph@0.1.27", "mcp"]\nenv = { PROJECT_DIR = ${JSON.stringify(path.join(canonicalDirectory, 'projects'))}, CUSTOM_FLAG = "preserve-me" }\n\n[other]\nvalue = "survives"\n`,
     );
     const oldGenerated = `<!-- understanding-graph:fluid-understanding-v1 -->\n# Understanding Graph\n\nOld generated guidance.\n\n---\n\n*Generated from the bundled \`understanding-work\` skill by \`npx understanding-graph init\`. The graph workflow applies automatically to substantive work; the user does not need to name it.*\n`;
     fs.writeFileSync(
@@ -168,12 +177,19 @@ describe('understanding-graph init', () => {
     expect(claudeMcp.mcpServers['understanding-graph'].env.CUSTOM_FLAG).toBe(
       'preserve-me',
     );
+    expect(claudeMcp.mcpServers['understanding-graph'].env.UG_SOURCE_ROOT).toBe(
+      `\${CLAUDE_PROJECT_DIR:-.}`,
+    );
 
     const codex = fs.readFileSync(
       path.join(directory, '.codex/config.toml'),
       'utf8',
     );
     expect(codex).toContain(`understanding-graph@${packageVersion}`);
+    expect(codex).toContain('CUSTOM_FLAG = "preserve-me"');
+    expect(codex).toContain(
+      `UG_SOURCE_ROOT = ${JSON.stringify(canonicalDirectory)}`,
+    );
     expect(codex).toContain('name = "keep-me"');
     expect(codex).toContain('value = "survives"');
 
@@ -218,7 +234,7 @@ describe('understanding-graph init', () => {
       path.join(directory, '.mcp.json'),
       JSON.stringify(customClaude, null, 2),
     );
-    const customCodex = `[mcp_servers.understanding_graph]\ncommand = "/custom/ug-wrapper"\nargs = ["serve"]\n`;
+    const customCodex = `[mcp_servers.understanding_graph]\ncommand = "npx"\nargs = ["-y", "understanding-graph@0.1.27", "mcp"]\n\n[mcp_servers.understanding_graph.env]\nPROJECT_DIR = "/custom/projects"\nCUSTOM_FLAG = "preserve-me"\n`;
     fs.writeFileSync(path.join(directory, '.codex/config.toml'), customCodex);
 
     const run = spawnSync(process.execPath, [cli, 'init'], {
@@ -240,5 +256,26 @@ describe('understanding-graph init', () => {
     expect(
       fs.readFileSync(path.join(directory, '.codex/config.toml'), 'utf8'),
     ).toBe(customCodex);
+  });
+
+  it('preserves Codex configs that use dotted environment keys', () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'understanding-graph-dotted-env-'),
+    );
+    temporaryDirectories.push(directory);
+    const cli = path.resolve(import.meta.dirname, '../../../../bin/cli.js');
+    const codexDirectory = path.join(directory, '.codex');
+    fs.mkdirSync(codexDirectory, { recursive: true });
+    const customCodex = `[mcp_servers.understanding_graph]\ncommand = "npx"\nargs = ["-y", "understanding-graph@0.1.27", "mcp"]\nenv.PROJECT_DIR = "/custom/projects"\nenv.CUSTOM_FLAG = "preserve-me"\n`;
+    const configPath = path.join(codexDirectory, 'config.toml');
+    fs.writeFileSync(configPath, customCodex);
+
+    const run = spawnSync(process.execPath, [cli, 'init'], {
+      cwd: directory,
+      encoding: 'utf8',
+    });
+
+    expect(run.status, run.stderr).toBe(0);
+    expect(fs.readFileSync(configPath, 'utf8')).toBe(customCodex);
   });
 });

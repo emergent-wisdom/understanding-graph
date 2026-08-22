@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   createTextSource,
   deleteTextSource,
@@ -27,6 +29,51 @@ function generateSourceId(): string {
     id += chars[Math.floor(Math.random() * chars.length)];
   }
   return id;
+}
+
+function resolveSourceFilePath(filePath: string): string {
+  const configuredRoot = process.env.UG_SOURCE_ROOT?.trim() || process.cwd();
+  let sourceRoot: string;
+
+  try {
+    sourceRoot = fs.realpathSync(configuredRoot);
+  } catch {
+    throw new Error(
+      'UG_SOURCE_ROOT must point to an existing directory before source_load can read files.',
+    );
+  }
+
+  if (!fs.statSync(sourceRoot).isDirectory()) {
+    throw new Error('UG_SOURCE_ROOT must point to a directory.');
+  }
+
+  const requestedPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(sourceRoot, filePath);
+  let resolvedPath: string;
+
+  try {
+    resolvedPath = fs.realpathSync(requestedPath);
+  } catch {
+    throw new Error(`Source file not found: ${filePath}`);
+  }
+
+  const relativePath = path.relative(sourceRoot, resolvedPath);
+  const isOutsideRoot =
+    relativePath === '..' ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath);
+  if (isOutsideRoot) {
+    throw new Error(
+      'source_load filePath must stay within UG_SOURCE_ROOT (the server working directory by default). Supply content directly or configure UG_SOURCE_ROOT explicitly for another directory.',
+    );
+  }
+
+  if (!fs.statSync(resolvedPath).isFile()) {
+    throw new Error(`Source path is not a file: ${filePath}`);
+  }
+
+  return resolvedPath;
 }
 
 const ORDINARY_SYNTHETIC_VISIBILITY =
@@ -64,7 +111,7 @@ export const sourceTools: Tool[] = [
   {
     name: 'source_load',
     description:
-      'Load a text source for chronological reading when sequence matters: books, papers, articles, transcripts, or similar texts. The content is staged in SQLite and read portion by portion. This is not the graph-native coding workflow: code belongs in ordered document nodes, with generated files used only as executable projections. Accepts either content directly OR a filePath to read from (filePath is preferred to avoid context limits).',
+      'Load a text source for chronological reading when sequence matters: books, papers, articles, transcripts, or similar texts. The content is staged in SQLite and read portion by portion. This is not the graph-native coding workflow: code belongs in ordered document nodes, with generated files used only as executable projections. Accepts content directly or a filePath within UG_SOURCE_ROOT (the server working directory by default).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -81,7 +128,7 @@ export const sourceTools: Tool[] = [
         filePath: {
           type: 'string',
           description:
-            'Absolute path to a text file to load (preferred over content for large files)',
+            'Relative or absolute path to a text file within UG_SOURCE_ROOT (defaults to the server working directory)',
         },
         sourceType: {
           type: 'string',
@@ -272,11 +319,14 @@ export async function handleSourceTools(
   switch (name) {
     case 'source_load': {
       const id = generateSourceId();
+      const sourceFilePath = args.filePath
+        ? resolveSourceFilePath(args.filePath as string)
+        : undefined;
       const source = createTextSource({
         id,
         title: args.title as string,
         content: args.content as string | undefined,
-        filePath: args.filePath as string | undefined,
+        filePath: sourceFilePath,
         sourceType: args.sourceType as string | undefined,
         projectId,
       });
@@ -298,7 +348,7 @@ export async function handleSourceTools(
         sourceType: source.sourceType,
         totalLength: source.totalLength,
         loadedFrom: args.filePath ? 'file' : 'content',
-        message: `Loaded source "${source.title}" (${source.totalLength} chars)${args.filePath ? ` from ${args.filePath}` : ''}`,
+        message: `Loaded source "${source.title}" (${source.totalLength} chars)${sourceFilePath ? ` from ${path.basename(sourceFilePath)}` : ''}`,
         nextSteps: `1. Orient for this reading: graph_understand({ query: ${readingQuery}, workflow: "${understandingWorkflow}" })
 2. ${needsAnchor ? 'Choose a relevant existing node from that orientation; the tool will not guess one. Then begin reading' : 'Begin reading directly'}: ${readCall}`,
         protocol: MODE_PROTOCOLS.reading,
