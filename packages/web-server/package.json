@@ -3,6 +3,11 @@
   "version": "0.1.11",
   "description": "Web server for understanding graph visualization",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emergent-wisdom/understanding-graph.git",
+    "directory": "packages/web-server"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.0.0"

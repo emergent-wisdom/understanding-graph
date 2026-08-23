@@ -156,23 +156,27 @@ describe('runtime instruction and tool contracts', () => {
       version: string;
       dependencies: Record<string, string>;
       engines: { node: string };
+      repository: { url: string };
     };
     const core = json('packages/core/package.json') as {
       version: string;
       engines: { node: string };
       publishConfig: { access: string };
+      repository: { url: string; directory: string };
     };
     const mcp = json('packages/mcp-server/package.json') as {
       version: string;
       dependencies: Record<string, string>;
       engines: { node: string };
       publishConfig: { access: string };
+      repository: { url: string; directory: string };
     };
     const web = json('packages/web-server/package.json') as {
       version: string;
       dependencies: Record<string, string>;
       engines: { node: string };
       publishConfig: { access: string };
+      repository: { url: string; directory: string };
     };
     const lock = json('package-lock.json') as {
       packages: Record<string, { engines?: { node?: string } }>;
@@ -217,6 +221,24 @@ describe('runtime instruction and tool contracts', () => {
     expect(root.dependencies['@emergent-wisdom/understanding-graph-core']).toBe(
       core.version,
     );
+    const repositoryUrl =
+      'https://github.com/emergent-wisdom/understanding-graph.git';
+    expect(root.repository.url).toBe(repositoryUrl);
+    expect(core.repository).toEqual({
+      type: 'git',
+      url: repositoryUrl,
+      directory: 'packages/core',
+    });
+    expect(mcp.repository).toEqual({
+      type: 'git',
+      url: repositoryUrl,
+      directory: 'packages/mcp-server',
+    });
+    expect(web.repository).toEqual({
+      type: 'git',
+      url: repositoryUrl,
+      directory: 'packages/web-server',
+    });
     expect(
       root.dependencies['@emergent-wisdom/understanding-graph-mcp-server'],
     ).toBe(mcp.version);
