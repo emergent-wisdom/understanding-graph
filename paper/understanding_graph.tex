@@ -36,7 +36,7 @@ AI systems commonly retain source inputs, outputs, and user facts while discardi
 
 We present the Understanding Graph, an implemented architecture for a continuing Reader. Its persistent graph is the medium through which the Reader works: material shifts become typed and versioned, while competing and displaced views remain inspectable. The Reader may reject state-dependent provocations and re-enter prior state when useful. When a committed update conditions a later encounter and produces another material change, the recursion forms an \emph{understanding spiral}. Encountered passages and produced prose or code share an ordered document surface, linking understanding to exact units of work.
 
-The contribution is a fluid protocol combining self-addressed encounter, persistent interpretive change, agent-chosen re-entry, cross-instance continuity, and graph-native documents. Coding and creative-writing cases establish component feasibility, not improved performance. Controlled evaluation must separately test whether repeated re-entry changes the externalized trajectory beyond matched storage and rehearsal, and whether any change improves later work.
+The contribution is a fluid protocol combining self-addressed encounter, persistent interpretive change, agent-chosen re-entry, cross-instance continuity, and graph-native documents. The implementation makes this proposal concrete and inspectable, but does not establish improved understanding or downstream performance. Controlled evaluation must separately test whether repeated re-entry changes the externalized trajectory beyond matched storage and rehearsal, and whether any change improves later work.
 \end{abstract}
 
 \keywords{AI Memory, Understanding Graphs, Self-Directed Understanding, Recursive Memory, Interpretive State, Provenance, Graph-Native Artifacts}
@@ -280,7 +280,7 @@ N_A=\{n\in N\mid \ell(n)=1\ \land\ \nexists n':n'\succ n\}.
 \]
 Branching may leave multiple current successors, while the transitive closure $\succ^*$ preserves recorded history. The dedicated \texttt{graph\_supersede} operation atomically preserves and retires the displaced node; generic creation or mutation of a \texttt{supersedes} edge is rejected. Global acyclicity is nevertheless an intended lifecycle invariant rather than a property proved for every writable history. A Redis$\rightarrow$Postgres$\rightarrow$event-log chain can therefore record successive governing architectures while only the latest remains active. Each transition carries an authored \texttt{why}, creating a semantic changelog whose claims are inspectable but not mechanically verified. This is inspired by the bookkeeping problem in AGM belief revision~\cite{alchourron1985agm}, but it is not an AGM operator and does not enforce deductive closure, minimal change, or consistency restoration. Nor does explicit supersession solve the behavioral difficulty LLMs can have revising conclusions under counterevidence~\cite{xu2024belief}; it makes a proposed revision persistent and challengeable.
 
-\section{Implementation and Construction Evidence}
+\section{Implementation and Enforcement Status}
 \label{sec:implementation}
 
 The Understanding Graph is implemented as a standalone server exposing graph operations via a standardized protocol. This design decouples the graph engine from any specific LLM provider, enabling experimentation with different models. The complete implementation---including the graph engine, MCP server, React-based visualization frontend, and paper source---is available as open source at \url{https://github.com/emergent-wisdom/understanding-graph}. Multiple SQLite project stores can retain explicit cross-project references without merging their contents.
@@ -324,40 +324,12 @@ Proposed/unevaluated & Automatic semantic verifier; default spiral benefit; trai
 \label{tab:implementation-status}
 \end{table}
 
-\subsection{Construction Evidence}
-
-Two construction case studies test whether the substrate operates as claimed; they are reported as engineering evidence, and their result-level checks are re-runnable from the preserved artifacts even though agent generation itself is stochastic. In \emph{Pulse Ledger}, a small Python system was authored as 19 canonical document nodes and projected into seven files. The run split classes from a monolithic module, reordered function nodes, moved a parsing subtree between modules without copying it, generated the repository, and discovered an inclusive-range defect through execution. Revising the exact graph node changed the interval to half-open; all seven files then compiled and all eight tests passed. No companion concept nodes were manufactured merely to satisfy a graph quota.
-
-In \emph{The Lent Night}, a 1,569-word story was composed and revised in a document tree while ordinary typed craft testimony remained separate from generated prose. A process-separated continuation first retrieved the current graph packet and stopped; a later model response identified a conflict between the stored decision that a character's answer needed silence and the generated paragraph structure. A subsequent atomic mutation changed only the topology around the unchanged sentence ``No,'' regenerated the manuscript, and preserved the prior state and rationale. The graph contained no reserved synthetic nodes.
-
-These case studies demonstrate graph-native construction, projection, local revision, and inspectable provenance. The process-separated continuation in \emph{The Lent Night} shows only that a later instance could retrieve and use the state in one construction case; without a matched control it does not establish a continuity benefit. Neither case shows that the resulting code or prose is better than a file-based control, or that the recorded testimony was causally complete.
-
-The preserved projections, test results, diffs, and provenance notes accompany the source archive in its two case-study subdirectories. Artifact verification should cite the exact release tag and, where applicable, the version-specific Zenodo record rather than a moving branch; the archive is not a complete deterministic replay bundle.
-
 \section{Optional Extensions}
 \label{sec:extensions}
 
 The recursive contract does not require a particular agent roster. In multi-agent use, the graph can serve as a stigmergic medium: heterogeneous agents leave source-linked updates that others validate, challenge, or refine without relying only on direct messages. Collaborative-coding mode adds a persistent task queue, handoffs, and advisory subtree locks. This can preserve disagreement as first-class topology, but also adds contention, redundant work, and integration cost; a shared graph does not guarantee that more agents help.
 
 Within \emph{Entangled Alignment}, the graph also served as infrastructure for Chronological Metacognitive Pretraining (CMP)~\cite{westerberg2026entangled}. Three possible roles remain distinct: a Teacher-side scaffold, a serialization and audit surface for candidate training data, and an optional live deployment graph. CMP is a proposed reuse of source-adjacent testimony, not the definition of understanding. A dedicated \texttt{synthetic\_reader} mode can reconstruct chronological training blocks grounded in selected graph nodes. Only that mode can read or write reserved \texttt{Thinking} nodes; ordinary workflows see a projection that excludes them and their incident relations. Append-only operations preserve committed order, but part of the stop-and-commit rhythm remains prompt-governed, the validator checks only the opening anchor of the Reader Core---that proposal's longer stable Reader instruction and persona---and no downstream model has yet been trained on the corpus. Chronology and provenance are safeguards, not evidence of training utility or trace faithfulness.
-
-A historical companion pipeline provides larger construction traces (Table~\ref{tab:historical-traces}). The runs occurred in January 2026 with \texttt{gemini-3-flash-preview} and were later imported alongside a pre-release Understanding Graph snapshot identified by gitlink \texttt{c8ce5c7}. Public version 0.1.15 is a later compatibility environment, not established generation provenance, and the current workflow-separated implementation must not be read back into those results.
-
-\begin{table}[H]
-\centering
-\begin{tabularx}{\columnwidth}{lrrX}
-\toprule
-\textbf{Trace} & \textbf{Active nodes} & \textbf{Direct source links} & \textbf{Interpretation} \\
-\midrule
-Kafka, \emph{Metamorphosis} & 346 & 142/212 (67.0\%) & Narrative run under one hand-configured roster \\
-LLaDA technical paper~\cite{nie2025llada} & 285 & 94/182 (51.6\%) & Technical run under a different roster \\
-\bottomrule
-\end{tabularx}
-\caption{Historical pipeline summaries. The denominator is analysis-like ordinary testimony, not all nodes. Different domains and rosters prevent attribution of the observed structural differences to domain alone.}
-\label{tab:historical-traces}
-\end{table}
-
-Under the historical pipeline, every reserved \texttt{Thinking} block carried its required non-sequential concept link. Narrative reading allocated 24.3\% of nodes to \texttt{Tension}; technical reading allocated 23.9\% to \texttt{Analysis} and increased \texttt{Evaluation} density from 6.6\% to 9.8\%. Because no matched control, pre-read contamination probe, or common roster was used, the cases demonstrate that the legacy pipeline constructed source-linked graphs at scale; they do not show that the graph improved a future Reader, that testimony was faithful, or that training on those blocks would improve a model.
 
 Optional coaching can also perturb or evaluate a synthesis. PURE~\cite{westerberg2026ri} asks whether a proposal is parsimonious, unique, realizable, and expansive; stronger bisociation variants deliberately force distant concepts into contact. Temporal attention rankings separately expose nodes that are recently or frequently accessed, but decay is queried on demand rather than enforced in every retrieval. These are bypassable, unvalidated research instruments. They are extensions of the substrate, not premises of the core claim.
 
@@ -384,7 +356,7 @@ The ordinary \texttt{graph\_score} can support these experiments by checking bac
 
 A separate conduct report, \texttt{graph\_practice}, addresses the complementary blindness: a well-formed graph nobody re-enters is structurally indistinguishable from one that changes what its author does next. It reports how the graph was \emph{worked} rather than how it is shaped---writes per re-entry, the share of predictions that later received a verdict, attribution drift between early and recent commits, refusal rates on the write path, the share of edges that overturn earlier claims, fallback-edge share, and standing decisions that no artifact unit expresses. Each figure names its basis and is stated as a proxy with a hedged reading; where a reading has two bad directions, both are named, since a reading that names only one is an instruction to move the other way without limit. Absence is reported as absence rather than zero, and there is deliberately no aggregate: a single score becomes a target. These are process measures in the sense above. They can support the secondary endpoints without establishing quality---a diligent-looking conduct report can accompany poor understanding, and the readings say so.
 
-Controlled studies should preregister paired materials, model snapshots, token allocation, stopping rules, randomization, blinded judging, contamination probes, and effect sizes. They should retain failed passes and null results rather than selecting only attractive spirals. Construction traces in Section~\ref{sec:implementation} are engineering evidence, not substitutes for these controls.
+Controlled studies should preregister paired materials, model snapshots, token allocation, stopping rules, randomization, blinded judging, contamination probes, and effect sizes. They should retain failed passes and null results rather than selecting only attractive spirals. Runtime enforcement and structural diagnostics are engineering verification, not substitutes for these controls.
 
 \section{Limitations and Responsible Interpretation}
 \label{sec:limitations}
@@ -405,7 +377,7 @@ Finally, persistent testimony can be sensitive. It may retain abandoned beliefs,
 
 The Understanding Graph is a recursive medium for persistent, self-directed understanding. A model encounters material, externalizes a substantive interpretive change, and commits it as typed and revisable state. When it deliberately re-enters the changed graph, the return can bring an update into contact with an older question, tension, model, or artifact and make a further relation or revision salient. A later pass then begins from a state altered by the previous one. That is the proposed understanding spiral; it is an available pattern inside a fluid process, not a mandatory state machine.
 
-The system does not claim to capture hidden computation, every understanding a model has, or a continuous conscious self. It preserves authored testimony that future model instances can inspect, contest, and use. Graph-native documents and code make the same process consequential in produced work, while provenance and revision history make its claims auditable. The implementation and construction case studies show that this substrate can be built and used; they do not show that it improves understanding.
+The system does not claim to capture hidden computation, every understanding a model has, or a continuous conscious self. It preserves authored testimony that future model instances can inspect, contest, and use. Graph-native documents and code make the same process consequential in produced work, while provenance and revision history make its claims auditable. The implementation makes the proposed substrate concrete and auditable; it does not show that the graph improves understanding.
 
 The decisive experiment is therefore not whether the graph contains many nodes or sounds reflective. Under equal budgets, repeated re-entry should produce grounded second-order connections, appropriate corrections, delayed transfer, or artifact changes more often or with better support than summary, extracted facts, notebook, transcript, archival-graph, or no-memory controls; a separate utility test asks whether those changes improve later work. Evidence for both would support the stronger claim that the graph can participate in producing useful new understanding. A mechanism effect without utility would support only the narrower process claim; a null mechanism result would leave a possible provenance utility but reject the central recursive hypothesis.
 
@@ -609,11 +581,6 @@ Burgess, M. (2025).
 SSTorytime: Semantic Spacetime Story Graph Database.
 Software, NLnet ``Smart Lookup \& Inference for Semantic Data'' project.
 \url{https://github.com/markburgess/SSTorytime}.
-
-\bibitem{nie2025llada}
-Nie, S., Zhu, F., You, Z., et al. (2025).
-Large Language Diffusion Models.
-\textit{arXiv:2502.09992}.
 
 \end{thebibliography}
 

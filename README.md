@@ -588,9 +588,7 @@ runnable files with `doc_generate` or `doc_generate_all`, run the real build and
 tests, then revise or rearrange the source nodes and regenerate—never patch the
 generated projection directly.
 
-See [coding-inside-the-graph](https://github.com/emergent-wisdom/understanding-graph/blob/main/docs/coding-inside-the-graph.md) for the basic
-shape; the current case-study suite extends this pattern to multi-file projects,
-structural reordering, and debugging from executable evidence.
+See [coding-inside-the-graph](https://github.com/emergent-wisdom/understanding-graph/blob/main/docs/coding-inside-the-graph.md) for the full workflow.
 
 ---
 

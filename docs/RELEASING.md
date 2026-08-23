@@ -9,8 +9,8 @@ metadata, paper PDF, and archive agree.
 - Work from a clean commit on Node 22 or 24.
 - Confirm the root, Core, MCP, Web, plugin, `.mcp.json`, and `server.json`
   versions are synchronized by the instruction-contract test.
-- Keep the paper and case studies in the release commit. Do not include
-  `paper/tmp/` or local project databases.
+- Keep the paper in the release commit. Do not include `paper/tmp/`, ad hoc
+  experiment outputs, or local project databases.
 - Push the candidate and require a green Node 22/24 GitHub Actions run before
   publishing. A local green run is necessary but not sufficient.
 
