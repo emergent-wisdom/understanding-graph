@@ -23,7 +23,6 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.x'
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
       - name: Use an OIDC-capable npm CLI
@@ -52,13 +51,13 @@ jobs:
           publish_package() {
             local manifest="$1"
             local package_path="$2"
-            local name version spec lookup_output published_head
+            local name version spec lookup_output lookup_error published_head
 
             name="$(node -p "require('./$manifest').name")"
             version="$(node -p "require('./$manifest').version")"
             spec="$name@$version"
 
-            if lookup_output="$(npm view "$spec" gitHead 2>&1)"; then
+            if lookup_output="$(npm view "$spec" gitHead 2>"$RUNNER_TEMP/npm-view-error")"; then
               if [ "$lookup_output" != "$RELEASE_COMMIT" ]; then
                 echo "Refusing to skip $spec: registry gitHead does not match $RELEASE_COMMIT."
                 echo "Registry gitHead: ${lookup_output:-<missing>}"
@@ -66,8 +65,9 @@ jobs:
               fi
               echo "$spec is already published from this commit; continuing."
             else
-              if [[ "$lookup_output" != *E404* ]]; then
-                echo "$lookup_output"
+              lookup_error="$(<"$RUNNER_TEMP/npm-view-error")"
+              if [[ "$lookup_error" != *E404* ]]; then
+                echo "$lookup_error"
                 exit 1
               fi
               npm publish "$package_path" --access public
