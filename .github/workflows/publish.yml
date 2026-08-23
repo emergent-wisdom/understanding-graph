@@ -1,0 +1,92 @@
+name: Publish npm release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.x'
+          package-manager-cache: false
+
+      - name: Use an OIDC-capable npm CLI
+        run: npm install --global npm@11.12.1
+
+      - name: Verify tag matches package version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          test "$GITHUB_REF_NAME" = "v$VERSION"
+
+      - name: Install, verify, and build
+        run: |
+          npm ci
+          npm run build
+          npm run typecheck
+          npm test
+          npm run lint
+          npm audit --omit=dev
+          npm run smoke:mcp
+          npm run smoke:web-discovery
+
+      - name: Publish packages in dependency order
+        run: |
+          RELEASE_COMMIT="$(git rev-parse HEAD)"
+
+          publish_package() {
+            local manifest="$1"
+            local package_path="$2"
+            local name version spec lookup_output lookup_error published_head
+
+            name="$(node -p "require('./$manifest').name")"
+            version="$(node -p "require('./$manifest').version")"
+            spec="$name@$version"
+
+            if lookup_output="$(npm view "$spec" gitHead 2>"$RUNNER_TEMP/npm-view-error")"; then
+              if [ "$lookup_output" != "$RELEASE_COMMIT" ]; then
+                echo "Refusing to skip $spec: registry gitHead does not match $RELEASE_COMMIT."
+                echo "Registry gitHead: ${lookup_output:-<missing>}"
+                exit 1
+              fi
+              echo "$spec is already published from this commit; continuing."
+            else
+              lookup_error="$(<"$RUNNER_TEMP/npm-view-error")"
+              if [[ "$lookup_error" != *E404* ]]; then
+                echo "$lookup_error"
+                exit 1
+              fi
+              npm publish "$package_path" --access public
+            fi
+
+            for attempt in {1..30}; do
+              if published_head="$(npm view "$spec" gitHead 2>/dev/null)" &&
+                [ "$published_head" = "$RELEASE_COMMIT" ]; then
+                echo "$spec is visible from $RELEASE_COMMIT."
+                return
+              fi
+              sleep 2
+            done
+
+            echo "$spec did not become visible with the expected gitHead."
+            exit 1
+          }
+
+          publish_package packages/core/package.json ./packages/core
+          publish_package packages/mcp-server/package.json ./packages/mcp-server
+          publish_package packages/web-server/package.json ./packages/web-server
+          publish_package package.json .

@@ -43,29 +43,35 @@ verify:
 - no tests, local databases, paper build directories, or unrelated artifacts
   are packed.
 
-## 3. Publish in dependency order
+## 3. Publish from the release tag
 
-Authenticate with npm only at publish time. Publish and verify each package
-before advancing:
+Each npm package must trust the GitHub Actions workflow `publish.yml` for the
+`emergent-wisdom/understanding-graph` repository with `npm publish` permission.
+The workflow uses short-lived OIDC credentials; do not add an npm token to the
+repository.
+
+After the candidate is green and all four version numbers are still unused,
+create and push the annotated tag `v<root-version>` at the reviewed commit. The
+tag starts the trusted workflow, which publishes and verifies each package in
+dependency order:
 
 1. `@emergent-wisdom/understanding-graph-core`
 2. `@emergent-wisdom/understanding-graph-mcp-server`
 3. `@emergent-wisdom/understanding-graph-web-server`
 4. `understanding-graph`
 
-The scoped packages declare public access in their manifests. Do not publish
-MCP, Web, or root before their exact internal dependency versions are visible
-from the npm registry.
+The scoped packages declare public access in their manifests. The workflow
+waits for each exact internal dependency version to become visible before it
+advances. A normal merge never publishes; only a matching version tag does.
 
 Install the public root package from an empty npm cache and repeat the CLI/MCP
 smoke. Test `init` in a fresh directory and in a simulated 0.1.27 directory;
 Claude must receive a project `.mcp.json`, Codex a project
 `.codex/config.toml`, and user-authored configuration/instructions must survive.
 
-## 4. Name the immutable release
+## 4. Finish the immutable release
 
-- Create and push the annotated tag `v<root-version>` at the published commit.
-- Verify npm `gitHead` and the tag point to that commit.
+- Verify npm `gitHead`, provenance, and the tag point to the reviewed commit.
 - Publish `server.json` with `mcp-publisher` only after npm propagation, then
   verify the MCP Registry reports the same version and current description.
 - Deposit the PDF, source, and release archive as a new Zenodo version. The
