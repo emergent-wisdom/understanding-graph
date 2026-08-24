@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { reconcileHydratedProject } from './appStore'
+import { projectForHydration, reconcileHydratedProject } from './appStore'
 
 function response(ok: boolean, body: unknown = {}) {
   return { ok, json: async () => body }
@@ -57,5 +57,21 @@ describe('reconcileHydratedProject', () => {
         fetchProject,
       ),
     ).resolves.toBeNull()
+  })
+})
+
+describe('projectForHydration', () => {
+  it('prefers an explicit deep-linked project over persisted browser state', () => {
+    expect(
+      projectForHydration(
+        { id: 'metamorphosis', name: 'metamorphosis' },
+        '?project=llada',
+      ),
+    ).toEqual({ id: 'llada', name: 'llada' })
+  })
+
+  it('keeps persisted state when the URL does not name a project', () => {
+    const persisted = { id: 'metamorphosis', name: 'metamorphosis' }
+    expect(projectForHydration(persisted, '?node=n_example')).toBe(persisted)
   })
 })

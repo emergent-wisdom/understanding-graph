@@ -163,6 +163,16 @@ export async function reconcileHydratedProject(
   }
 }
 
+/** Prefer an explicit project deep link over stale persisted browser state. */
+export function projectForHydration(
+  persistedProject: Project | null,
+  locationSearch: string,
+): Project | null {
+  const requestedId = new URLSearchParams(locationSearch).get('project')?.trim()
+  if (!requestedId) return persistedProject
+  return { id: requestedId, name: requestedId }
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -307,9 +317,11 @@ export const useAppStore = create<AppState>()(
         }
         // Sync frontend project state with backend before enabling graph queries
         const sync = async () => {
-          const project = await reconcileHydratedProject(
+          const requestedProject = projectForHydration(
             state?.currentProject || null,
+            window.location.search,
           )
+          const project = await reconcileHydratedProject(requestedProject)
           useAppStore.getState().setCurrentProject(project)
           useAppStore.setState({ projectReady: true })
         }

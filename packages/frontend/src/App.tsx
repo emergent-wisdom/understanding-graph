@@ -31,53 +31,36 @@ function AppLayout() {
     selectedNodeId,
     selectedEdgeId,
     currentProject,
-    setCurrentProject,
+    projectReady,
   } = useAppStore()
 
   // Track if we've processed initial URL params
   const initialUrlProcessed = useRef(false)
 
-  // Handle URL parameters for deep linking to projects/nodes/edges (only on initial load)
+  // Project deep links are reconciled with the backend during persisted-store
+  // hydration. Wait for that handshake before processing node/edge links so a
+  // stale browser project cannot overwrite the project named in the URL.
   // Usage: http://localhost:5173/?project=myproject&node=n_abc123
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally only run on mount
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once after project hydration
   useEffect(() => {
-    if (initialUrlProcessed.current) return
+    if (!projectReady || initialUrlProcessed.current) return
     initialUrlProcessed.current = true
 
     const params = new URLSearchParams(window.location.search)
-    const projectId = params.get('project')
     const nodeId = params.get('node')
     const edgeId = params.get('edge')
 
-    // Load project from URL if specified and different from current
-    if (projectId && projectId !== currentProject?.id) {
-      // Load the project via API
-      fetch(`/api/projects/${projectId}/load`, { method: 'POST' })
-        .then((res) => {
-          if (res.ok) {
-            setCurrentProject({ id: projectId, name: projectId })
-            // After project loads, select node/edge
-            if (nodeId) {
-              setTimeout(() => selectAndFlyToNode(nodeId), 800)
-            } else if (edgeId) {
-              setTimeout(() => selectEdge(edgeId), 800)
-            }
-          }
-        })
-        .catch(console.error)
-      return
-    }
-
-    // If no project change needed, just select node/edge
     if (nodeId) {
       setTimeout(() => selectAndFlyToNode(nodeId), 500)
     } else if (edgeId) {
       setTimeout(() => selectEdge(edgeId), 500)
     }
-  }, [])
+  }, [projectReady])
 
   // Update URL when project or selection changes (for shareable links)
   useEffect(() => {
+    if (!projectReady || !initialUrlProcessed.current) return
+
     const params = new URLSearchParams(window.location.search)
     // Clear all first
     params.delete('project')
@@ -97,7 +80,7 @@ function AppLayout() {
       ? `${window.location.pathname}?${params.toString()}`
       : window.location.pathname
     window.history.replaceState({}, '', newUrl)
-  }, [selectedNodeId, selectedEdgeId, currentProject?.id])
+  }, [selectedNodeId, selectedEdgeId, currentProject?.id, projectReady])
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-bg-base">
