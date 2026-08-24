@@ -1,3 +1,4 @@
+import type { GuidanceMode } from './guidance.js';
 import {
   UNDERSTANDING_PROTOCOL_ID,
   UNDERSTANDING_PROTOCOL_LABEL,
@@ -9,47 +10,76 @@ create a descriptive, task-scoped project with \`project_switch\`; an empty list
 means create one. Ask rather than guess when several projects plausibly fit, and
 never create a generic catch-all project.`;
 
-export const SERVER_INSTRUCTIONS = `
+function guidanceInstructions(
+  mode: GuidanceMode,
+  suggestionsAvailable: boolean,
+): string {
+  if (!suggestionsAvailable) {
+    return `**Suggestion guidance is unavailable in this capability mode.** Follow the
+configured protocol directly; do not attempt to call \`graph_suggest_next\`.`;
+  }
+
+  if (mode === 'direct') {
+    return `**Guidance mode: direct.** Use \`graph_understand\` or any appropriate graph
+tool immediately. The server will not append automatic next-move calls.
+\`graph_suggest_next\` remains available on demand when a concrete choice point
+would benefit from suggestions; calling it does not create a persistent mode.
+No graph capability is lost: choose for yourself when to deepen, diversify,
+connect, test, revisit, disrupt, or pause.`;
+  }
+
+  return `**Guidance mode: guided.** At real choice points,
+\`graph_suggest_next\` can surface graph-specific routes to deepen or diversify
+understanding, recover neglected material, test the current view, or expose a
+connection. The suggestions are optional and carry no quality guarantee: choose,
+change, reject, skip, or work directly.`;
+}
+
+export function getServerInstructions(
+  guidanceMode: GuidanceMode = 'guided',
+  suggestionsAvailable = true,
+): string {
+  return `
 # Understanding Graph
 
 Use this graph as the canonical persistent workspace for substantive work: an
-active medium for **fluid, emergent understanding**, not a filing cabinet.
-Begin with \`graph_suggest_next\` and preserve with \`graph_batch\`.
+active medium for **fluid, emergent understanding**.
+Preserve with \`graph_batch\`. Suggestion guidance is optional.
 While Understanding mode is active, preserve **ALL
 COMMUNICABLE, MATERIAL UNDERSTANDING THAT COULD MATTER TO THE WORK OR THE
 READER'S FUTURE INQUIRY**, not only conclusions. Chat may report but never
-replace graph work. This is authored, user-visible testimony, not hidden
-chain-of-thought.
+replace graph work.
 
-**Medium-integrity invariant:** do not leave new artifact or
-understanding only in chat. Before completing a turn, write artifact units and genuine testimony
-with \`graph_batch\`; the final response may summarize that committed state.
-This is not a required thinking sequence; it makes the graph the medium.
+**Medium-integrity invariant:** do not leave new artifact or understanding only in chat.
+Before completing a turn, write artifact units and genuine testimony with
+\`graph_batch\`. This is authored, user-visible testimony, not a required
+thinking sequence or hidden chain-of-thought.
 
 Protocol: \`${UNDERSTANDING_PROTOCOL_ID}\`.
 
 **${UNDERSTANDING_PROTOCOL_LABEL}.** There is no required state machine. Choose
-the process the task needs and invent another loop when useful. Use
-\`graph_understand\` whenever prior or newly changed
-graph state could alter the next move, and \`graph_batch\` to preserve work and
-understanding atomically rather than filing a rationale after completion.
+the process the task needs. Re-enter with \`graph_understand\` when graph state
+could alter the next move; preserve related changes atomically with \`graph_batch\`.
 
 ${PROJECT_SELECTION_INSTRUCTIONS}
 
-At the start and each real choice point, call \`graph_suggest_next\` with the
-live task or uncertainty. It rolls weighted, possibly multi-step moves. Give
-higher weights stronger consideration, judge task fit, then choose, combine,
-modify, reject, or replace them. Engage in the choice, preserve the understanding
-it produces, and roll again at the next real choice point. The endpoint proposes;
-you choose.
+${guidanceInstructions(guidanceMode, suggestionsAvailable)}
 
-\`workflow\` says where the work lives and which native evidence matters. A rolled
-\`stance\` says what epistemic pressure to weight on re-entry: \`balanced\`,
-\`deepen\`, \`resist\`, \`connect\`, \`disrupt\`, \`revisit\`, or \`test\`. They are
-orthogonal. Preserve the stance from a selected route when calling
-\`graph_understand\`; it is guidance, not a mandate to accept the returned material.
+\`workflow\` says where the work lives; a rolled \`stance\` weights re-entry as
+\`balanced\`, \`deepen\`, \`resist\`, \`connect\`, \`disrupt\`, \`revisit\`, or
+\`test\`. They are orthogonal. Preserve a selected stance in
+\`graph_understand\`; it guides rather than dictates.
 
 If the selected graph is empty, begin without inventing a past.
+
+## Chronological source encounter
+
+For a sequential source, enter reader mode before inspecting its file. Select
+the project; \`source_load\` it without pre-reading, then encounter only bounded,
+cursor-ordered \`source_read\` passages. Attach warranted testimony to the
+passage with batch-only \`graph_note\`; it records \`learned_from\`; no update
+needs no note. Never use unread text. This is workflow \`reading\` in general
+mode, not \`synthetic_reader\`; never create the reserved \`thinking\` trigger.
 
 ## Work naturally
 
@@ -68,12 +98,17 @@ retrospective rationale.
 Preserve enough texture to recover the live understanding around a choice. The batch-only
 \`graph_note({ about, testimony, title?, trigger?, why?, status? })\` attaches an
 interpretation, alternative, surprise, question, prediction, evaluation, or
-correction to the exact graph material that occasioned it.
+other testimony to the exact graph material that occasioned it. Record a
+correction as an \`evaluation\`, not as a separate trigger.
 
-On re-entry, inspect resonance, conflict, gaps, or distant possibility.
+${
+  suggestionsAvailable
+    ? `On re-entry, inspect resonance, conflict, gaps, or distant possibility.
 \`graph_suggest_next\` may roll a grounded comparison or temporary Physics What-If
 through \`graph_random\`. Release the forced assumption, test it, and accept “no
-defensible connection” as valid.
+defensible connection” as valid.`
+    : ''
+}
 
 Do not transcribe token-level steps, manufacture notes, use trigger quotas, or
 reconstruct rationale; do not manufacture understanding to prove activity. Keep
@@ -124,6 +159,10 @@ graph_analyze({ include: ["gaps", "bridges", "questions"] })
 Structural scores are diagnostics, never targets. Do not add nodes, edge types,
 agents, or ceremony merely to improve graph shape.
 `;
+}
+
+// Compatibility export for callers that do not choose a guidance preference.
+export const SERVER_INSTRUCTIONS = getServerInstructions('guided');
 
 // Retained temporarily as a compatibility/reference export while the concise
 // live contract above is dogfooded. It is not sent to MCP clients.

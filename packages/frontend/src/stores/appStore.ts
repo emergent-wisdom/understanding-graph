@@ -131,6 +131,19 @@ function projectFromResponse(
   }
 }
 
+/**
+ * Adopt the first project created after an empty startup, but never guess when
+ * the user has more than one project to choose from.
+ */
+export function soleProjectToAutoSelect(
+  projectReady: boolean,
+  currentProject: Project | null,
+  projects: Project[],
+): Project | null {
+  if (!projectReady || currentProject || projects.length !== 1) return null
+  return projects[0]
+}
+
 /** Reconcile persisted browser state with the backend before queries resume. */
 export async function reconcileHydratedProject(
   persistedProject: Project | null,

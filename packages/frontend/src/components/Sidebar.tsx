@@ -1,22 +1,60 @@
 import { FileText, Monitor, Moon, Sun } from 'lucide-react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useDocumentRoots, useLoadProject, useProjects } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
-import { useAppStore } from '@/stores/appStore'
+import { soleProjectToAutoSelect, useAppStore } from '@/stores/appStore'
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const { data: projects = [], isLoading } = useProjects()
-  const loadProject = useLoadProject()
-  const { currentProject, theme, setTheme, openDocumentView } = useAppStore()
+  const { mutateAsync: loadProject, isPending: projectLoadPending } =
+    useLoadProject()
+  const autoSelectAttempt = useRef<string | null>(null)
+  const { currentProject, projectReady, theme, setTheme, openDocumentView } =
+    useAppStore()
   const { data: documentRoots = [] } = useDocumentRoots(!!currentProject)
 
   const sortedProjects = [...projects].sort((a, b) =>
     a.name.localeCompare(b.name),
   )
 
-  const handleSelectProject = async (id: string) => {
-    await loadProject.mutateAsync(id)
-    onNavigate?.()
-  }
+  const handleSelectProject = useCallback(
+    async (id: string, navigate = true) => {
+      await loadProject(id)
+      if (navigate) onNavigate?.()
+    },
+    [loadProject, onNavigate],
+  )
+
+  // A fresh install intentionally starts with no projects. If an MCP agent
+  // creates the first one while this page is already open, the project-list
+  // poll discovers it. Adopt that unambiguous sole project so graph polling
+  // starts without requiring a page reload. Multiple projects still require
+  // an explicit user choice.
+  useEffect(() => {
+    const project = soleProjectToAutoSelect(
+      projectReady,
+      currentProject,
+      projects,
+    )
+    if (
+      !project ||
+      projectLoadPending ||
+      autoSelectAttempt.current === project.id
+    ) {
+      return
+    }
+
+    autoSelectAttempt.current = project.id
+    void handleSelectProject(project.id, false).catch((error) => {
+      console.error('Failed to auto-select the first project', error)
+    })
+  }, [
+    currentProject,
+    handleSelectProject,
+    projectLoadPending,
+    projectReady,
+    projects,
+  ])
 
   return (
     <div className="flex flex-col h-full">
@@ -83,14 +121,14 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
                 type="button"
                 key={project.id}
                 onClick={() => handleSelectProject(project.id)}
-                disabled={loadProject.isPending}
+                disabled={projectLoadPending}
                 className={cn(
                   'group relative p-3 rounded-lg text-left border transition-all duration-150',
                   'noise-subtle',
                   currentProject?.id === project.id
                     ? 'bg-accent-muted border-accent shadow-sm'
                     : 'bg-bg-surface border-border-subtle hover:border-border-default hover:shadow-sm',
-                  loadProject.isPending && 'opacity-50 cursor-wait',
+                  projectLoadPending && 'opacity-50 cursor-wait',
                 )}
               >
                 <h3

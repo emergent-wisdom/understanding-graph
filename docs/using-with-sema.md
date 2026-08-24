@@ -120,7 +120,7 @@ Two agents working on a shared design problem:
 **Agent A (Architect)** — `CLAUDE.md`:
 
 ```markdown
-1. Ask graph_suggest_next({ task, workflow: "collaborative_coding" }) at the first real choice point; choose or reject its routes according to the task.
+1. If guided navigation would help at a real choice point, ask graph_suggest_next({ task, workflow: "collaborative_coding" }); otherwise choose the next graph operation directly.
 2. Before posting a design that depends on MechanisticDesignProposal#8cf7, run sema_handshake.
 3. If PROCEED, preserve the decision and its exact sema URI via graph_batch.
 4. If HALT, preserve the unresolved tension rather than silently continuing.

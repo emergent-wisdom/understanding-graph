@@ -26,7 +26,8 @@ merely because a graph exists.
    task-scoped project with `project_switch`. Select an exact existing match
    when there is one; ask when several projects are plausible. Never create a
    generic catch-all project.
-2. At the first substantive choice point, ask for concrete possibilities:
+2. If guided navigation would help at a substantive choice point, ask for
+   concrete possibilities:
 
 ```javascript
 graph_suggest_next({
@@ -37,7 +38,8 @@ graph_suggest_next({
 
 Use `reading`, `research`, `coding`, `collaborative_coding`, or `writing` when
 that is the actual work domain. The suggestions are non-binding. Choose,
-combine, modify, reject, or replace them.
+combine, modify, reject, or replace them. In direct mode, skip this call and
+choose the relevant inspection or re-entry operation yourself.
 
 3. If a useful route calls for re-entry, call `graph_understand` with its
    workflow, query, and proposed stance. Treat baseline, resistance, and

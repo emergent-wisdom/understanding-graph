@@ -32,9 +32,9 @@ if (command === 'start') {
   if (!fs.existsSync(webServer)) {
     console.error(
       "The 'start' command needs packages/web-server/dist/index.js, but it\n" +
-      "was not found in this install. This usually means you installed an\n" +
-      "older version of understanding-graph that did not ship the web UI.\n" +
-      "Upgrade with: npm install -g understanding-graph@latest\n"
+        'was not found in this install. This usually means you installed an\n' +
+        'older version of understanding-graph that did not ship the web UI.\n' +
+        'Upgrade with: npm install -g understanding-graph@latest\n',
     );
     process.exit(2);
   }
@@ -64,18 +64,14 @@ if (command === 'start') {
     stdio: 'inherit',
     env: { ...process.env, UG_FRONTEND_DIR: frontendDir },
   });
-
 } else if (command === 'mcp') {
   // Silent mode for MCP (stdio is used for JSON-RPC)
   runServer(resolveMcpServer(), { stdio: 'inherit' });
-
 } else if (command === 'init') {
   init();
-
 } else if (command === '--version' || command === '-v') {
   const pkg = require('../package.json');
   console.log(pkg.version);
-
 } else {
   // Print usage. If the user typed an unrecognized command (not just no
   // command and not --help/-h), surface that explicitly so they don't think
@@ -101,6 +97,9 @@ Environment variables:
                 collaborative_coding | writing | full | synthetic_reader
                 (default: general; full is explicit broad access;
                 synthetic_reader is reserved Reader/CMP production)
+  UG_GUIDANCE_MODE
+                Suggestion aid: guided | direct (default: guided).
+                Direct suppresses ambient prompts but keeps graph_suggest_next callable.
 
 Quick start with Claude Code:
   claude mcp add ug -- npx -y understanding-graph mcp
@@ -184,14 +183,15 @@ function init() {
     ) {
       skipped.push('.mcp.json (custom Understanding Graph server preserved)');
     } else {
-      const managedServer = existingClaudeServer ?? legacyClaudeServer ?? {
-        command: 'npx',
-        args: ['-y', `understanding-graph@${packageVersion}`, 'mcp'],
-        env: {
-          PROJECT_DIR: '${CLAUDE_PROJECT_DIR:-.}/projects',
-          UG_SOURCE_ROOT: '${CLAUDE_PROJECT_DIR:-.}',
-        },
-      };
+      const managedServer = existingClaudeServer ??
+        legacyClaudeServer ?? {
+          command: 'npx',
+          args: ['-y', `understanding-graph@${packageVersion}`, 'mcp'],
+          env: {
+            PROJECT_DIR: '${CLAUDE_PROJECT_DIR:-.}/projects',
+            UG_SOURCE_ROOT: '${CLAUDE_PROJECT_DIR:-.}',
+          },
+        };
       const packageArg = managedServer.args.findIndex((arg) =>
         /^understanding-graph@[^/\s]+$/.test(arg),
       );
@@ -267,16 +267,53 @@ function init() {
 
   // 3. Give both subscription clients the same canonical workflow skill.
   const ugSection = getUnderstandingWorkSection(packageVersion);
-  installInstructionFile(path.join(cwd, 'CLAUDE.md'), ugSection, created, skipped);
-  installInstructionFile(path.join(cwd, 'AGENTS.md'), ugSection, created, skipped);
+  installInstructionFile(
+    path.join(cwd, 'CLAUDE.md'),
+    ugSection,
+    created,
+    skipped,
+  );
+  installInstructionFile(
+    path.join(cwd, 'AGENTS.md'),
+    ugSection,
+    created,
+    skipped,
+  );
 
-  // 4. Keep graph data local. Do not create a starter project: the agent or
+  // 4. Install the explicit project-scoped reader workflow for both clients.
+  // The general harness also activates it from natural language; these files
+  // make $reading-mode (Codex) and /reading-mode (Claude Code) discoverable.
+  const readerSkillPath = path.join(
+    packageRoot,
+    'skills',
+    'reading-mode',
+    'SKILL.md',
+  );
+  installBundledSkill(
+    cwd,
+    path.join(cwd, '.agents', 'skills', 'reading-mode', 'SKILL.md'),
+    readerSkillPath,
+    created,
+    skipped,
+  );
+  installBundledSkill(
+    cwd,
+    path.join(cwd, '.claude', 'skills', 'reading-mode', 'SKILL.md'),
+    readerSkillPath,
+    created,
+    skipped,
+  );
+
+  // 5. Keep graph data local. Do not create a starter project: the agent or
   // user names the first real project deliberately through project_switch.
   const gitignorePath = path.join(cwd, '.gitignore');
   if (fs.existsSync(gitignorePath)) {
     const gitignore = fs.readFileSync(gitignorePath, 'utf-8');
     if (!gitignore.includes('projects/')) {
-      fs.appendFileSync(gitignorePath, '\n# Understanding Graph data\nprojects/\n');
+      fs.appendFileSync(
+        gitignorePath,
+        '\n# Understanding Graph data\nprojects/\n',
+      );
       created.push('.gitignore (added projects/)');
     }
   } else {
@@ -309,6 +346,11 @@ function init() {
        graph when real work begins, so no starter project is installed
     3. The agent should work in that graph, preserve material understanding as it
        emerges, and use weighted suggestions or re-entry at natural choice points
+
+  For a fresh chronological source encounter, ask to turn on reader mode and
+  provide a file path. Codex can also invoke $reading-mode; Claude Code can use
+  /reading-mode. The agent stages the file before encountering it passage by
+  passage through the graph.
 
   Both client configurations resolve this project's graph storage and source
   root regardless of the agent process's launch directory.
@@ -416,7 +458,9 @@ function installInstructionFile(filePath, section, created, skipped) {
 
   const existing = fs.readFileSync(filePath, 'utf8');
   if (existing.includes(section)) {
-    skipped.push(`${label} (current Understanding Graph protocol already present)`);
+    skipped.push(
+      `${label} (current Understanding Graph protocol already present)`,
+    );
     return;
   }
 
@@ -443,4 +487,23 @@ function installInstructionFile(filePath, section, created, skipped) {
 
   fs.appendFileSync(filePath, `\n${section}`);
   created.push(`${label} (appended Understanding Graph protocol)`);
+}
+
+function installBundledSkill(cwd, filePath, bundledPath, created, skipped) {
+  const label = path.relative(cwd, filePath);
+  const bundled = fs.readFileSync(bundledPath, 'utf8');
+  if (!fs.existsSync(filePath)) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, bundled);
+    created.push(label);
+    return;
+  }
+
+  const existing = fs.readFileSync(filePath, 'utf8');
+  if (existing === bundled) {
+    skipped.push(`${label} (current bundled reader skill already present)`);
+    return;
+  }
+
+  skipped.push(`${label} (custom reader skill preserved)`);
 }

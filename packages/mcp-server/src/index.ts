@@ -12,7 +12,8 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { ContextManager } from './context-manager.js';
-import { SERVER_INSTRUCTIONS } from './instructions.js';
+import { guidanceModeFromEnv } from './guidance.js';
+import { getServerInstructions } from './instructions.js';
 import { SerialTaskQueue } from './serial-task-queue.js';
 import {
   getToolDefinitions,
@@ -37,6 +38,7 @@ if (!TOOL_MODES.includes(configuredToolMode as ToolMode)) {
   );
 }
 const TOOL_MODE = configuredToolMode as ToolMode;
+const GUIDANCE_MODE = guidanceModeFromEnv(process.env);
 
 // Auto-log tool calls wrapper with two-phase logging for entity linking
 async function handleToolCallWithLogging(
@@ -45,7 +47,14 @@ async function handleToolCallWithLogging(
   contextManager: ContextManager,
 ): Promise<unknown> {
   // Simple pass-through - commits are tracked via graph_batch commit_message
-  return handleToolCall(name, args, contextManager, TOOL_MODE);
+  return handleToolCall(
+    name,
+    args,
+    contextManager,
+    TOOL_MODE,
+    false,
+    GUIDANCE_MODE,
+  );
 }
 
 /**
@@ -128,7 +137,10 @@ class UnderstandingGraphServer {
         capabilities: {
           tools: {},
         },
-        instructions: SERVER_INSTRUCTIONS,
+        instructions: getServerInstructions(
+          GUIDANCE_MODE,
+          TOOL_MODE !== 'synthetic_reader',
+        ),
       },
     );
 

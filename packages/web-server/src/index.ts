@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guidanceModeFromEnv } from '@emergent-wisdom/understanding-graph-mcp-server';
 import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -142,7 +143,13 @@ app.get('/messages', (_req, res) => res.redirect('/api/messages-ui'));
 app.use(createRestMutationFirewall());
 
 // Routes
-app.use('/api/mcp', createMcpGatewayRouter({ projectDir: PROJECT_DIR }));
+app.use(
+  '/api/mcp',
+  createMcpGatewayRouter({
+    projectDir: PROJECT_DIR,
+    guidanceMode: guidanceModeFromEnv(process.env),
+  }),
+);
 app.use('/api/projects', projectRouter);
 app.use('/api', (req, res, next) => {
   if (!req.projectId) {

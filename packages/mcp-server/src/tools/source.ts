@@ -16,6 +16,7 @@ import {
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
 import type { ContextManager } from '../context-manager.js';
+import { ambientGuidanceEnabled, type GuidanceMode } from '../guidance.js';
 import { MODE_PROTOCOLS } from '../instructions.js';
 import { understandingMode } from '../protocol.js';
 import { handleBatchTools } from './batch.js';
@@ -111,7 +112,7 @@ export const sourceTools: Tool[] = [
   {
     name: 'source_load',
     description:
-      'Load a text source for chronological reading when sequence matters: books, papers, articles, transcripts, or similar texts. The content is staged in SQLite and read portion by portion. This is not the graph-native coding workflow: code belongs in ordered document nodes, with generated files used only as executable projections. Accepts content directly or a filePath within UG_SOURCE_ROOT (the server working directory by default).',
+      'Stage a text source for chronological reading when sequence matters: books, papers, articles, transcripts, or similar texts. The source body is stored in SQLite but NOT returned by this call; encounter it portion by portion with source_read. For a filePath, do not inspect or sample the file first. This is not the graph-native coding workflow: code belongs in ordered document nodes, with generated files used only as executable projections. Accepts content directly or a filePath within UG_SOURCE_ROOT (the server working directory by default).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -294,6 +295,7 @@ export async function handleSourceTools(
   args: Record<string, unknown>,
   contextManager: ContextManager,
   mode: ToolMode = 'full',
+  guidanceMode: GuidanceMode = 'guided',
 ): Promise<unknown> {
   const projectId =
     (args.project as string) || contextManager.getCurrentProjectId();
@@ -532,6 +534,7 @@ export async function handleSourceTools(
             },
             contextManager,
             sourceMutationMode,
+            guidanceMode,
           )) as {
             success?: boolean;
             results?: Array<{ id?: string }>;
@@ -579,6 +582,7 @@ export async function handleSourceTools(
             },
             contextManager,
             sourceMutationMode,
+            guidanceMode,
           )) as {
             success?: boolean;
             results?: Array<{ id?: string }>;
@@ -604,6 +608,13 @@ export async function handleSourceTools(
         // Build a directly usable hint. Ordinary reading captures rich typed
         // testimony in graph_batch; reserved synthetic thinking is a separate
         // pretraining-production mode.
+        const optionalGuidance = ambientGuidanceEnabled(guidanceMode)
+          ? `
+OPTIONAL GUIDANCE AT A REAL CHOICE POINT:
+  graph_suggest_next({ task: ${JSON.stringify(`Continue understanding ${sourceBeforeRead.title} after this passage`)}, workflow: "${understandingWorkflow}", focusNodeIds: ["${contentNodeId}"] })
+  Judge, modify, reject, or skip the returned routes. Suggestions are not a reading phase.
+`
+          : '';
         const hint = `Content node created: ${contentNodeId}
 
 PRESERVE THE COMMUNICABLE UNDERSTANDING THIS PASSAGE PRODUCED:
@@ -612,9 +623,7 @@ PRESERVE THE COMMUNICABLE UNDERSTANDING THIS PASSAGE PRODUCED:
   alternatives, evidence, uncertainty, and what later reading could test. Do not
   manufacture content merely to demonstrate activity.
 
-AT THE NEXT REAL CHOICE POINT, ROLL POSSIBLE MOVES:
-  graph_suggest_next({ task: ${JSON.stringify(`Continue understanding ${sourceBeforeRead.title} after this passage`)}, workflow: "${understandingWorkflow}", focusNodeIds: ["${contentNodeId}"] })
-
+${optionalGuidance}
 ${
   result.done
     ? `READING COMPLETE: Use source_export to reconstruct the exact visible source. ${sourceVisibilityHint()}`
@@ -647,14 +656,18 @@ ${sourceVisibilityHint()}`;
             : {}),
           navigation: {
             focusNodeIds: [contentNodeId],
-            suggestedCall: {
-              tool: 'graph_suggest_next',
-              arguments: {
-                task: `Continue understanding ${sourceBeforeRead.title} after this passage`,
-                workflow: understandingWorkflow,
-                focusNodeIds: [contentNodeId],
-              },
-            },
+            ...(ambientGuidanceEnabled(guidanceMode)
+              ? {
+                  suggestedCall: {
+                    tool: 'graph_suggest_next',
+                    arguments: {
+                      task: `Continue understanding ${sourceBeforeRead.title} after this passage`,
+                      workflow: understandingWorkflow,
+                      focusNodeIds: [contentNodeId],
+                    },
+                  },
+                }
+              : {}),
           },
           understandingMode: understandingMode('encountered', {
             sourceId,

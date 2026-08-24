@@ -52,6 +52,25 @@ describe('understanding-graph init', () => {
         }
       >;
     };
+    const bundledReadingSkill = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../../../../skills/reading-mode/SKILL.md',
+      ),
+      'utf8',
+    );
+    const agentsReadingSkillPath = path.join(
+      directory,
+      '.agents/skills/reading-mode/SKILL.md',
+    );
+    const claudeReadingSkillPath = path.join(
+      directory,
+      '.claude/skills/reading-mode/SKILL.md',
+    );
+    expect(fs.existsSync(agentsReadingSkillPath)).toBe(true);
+    expect(fs.existsSync(claudeReadingSkillPath)).toBe(true);
+    const agentsReadingSkill = fs.readFileSync(agentsReadingSkillPath, 'utf8');
+    const claudeReadingSkill = fs.readFileSync(claudeReadingSkillPath, 'utf8');
 
     for (const instructions of [agents, claude]) {
       expect(instructions).toContain(
@@ -76,6 +95,8 @@ describe('understanding-graph init', () => {
     expect(claudeMcp.mcpServers['understanding-graph'].env.UG_SOURCE_ROOT).toBe(
       `\${CLAUDE_PROJECT_DIR:-.}`,
     );
+    expect(agentsReadingSkill).toBe(bundledReadingSkill);
+    expect(claudeReadingSkill).toBe(bundledReadingSkill);
     expect(
       fs.existsSync(path.join(directory, '.claude/settings.local.json')),
     ).toBe(false);
@@ -98,7 +119,59 @@ describe('understanding-graph init', () => {
     expect(fs.readFileSync(path.join(directory, '.mcp.json'), 'utf8')).toBe(
       `${JSON.stringify(claudeMcp, null, 2)}\n`,
     );
+    expect(fs.readFileSync(agentsReadingSkillPath, 'utf8')).toBe(
+      agentsReadingSkill,
+    );
+    expect(fs.readFileSync(claudeReadingSkillPath, 'utf8')).toBe(
+      claudeReadingSkill,
+    );
     expect(fs.existsSync(path.join(directory, 'projects'))).toBe(false);
+  });
+
+  it('preserves custom project skills while installing missing reader guidance', () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'understanding-graph-custom-skill-'),
+    );
+    temporaryDirectories.push(directory);
+    const cli = path.resolve(import.meta.dirname, '../../../../bin/cli.js');
+    const customReadingSkillPath = path.join(
+      directory,
+      '.agents/skills/reading-mode/SKILL.md',
+    );
+    const customWorkflowPath = path.join(
+      directory,
+      '.claude/skills/my-workflow/SKILL.md',
+    );
+    const claudeReadingSkillPath = path.join(
+      directory,
+      '.claude/skills/reading-mode/SKILL.md',
+    );
+    const customReadingSkill = `---\nname: reading-mode\n---\n\n# My custom reader\n`;
+    const customWorkflow = `---\nname: my-workflow\n---\n\n# Keep me\n`;
+    fs.mkdirSync(path.dirname(customReadingSkillPath), { recursive: true });
+    fs.mkdirSync(path.dirname(customWorkflowPath), { recursive: true });
+    fs.writeFileSync(customReadingSkillPath, customReadingSkill);
+    fs.writeFileSync(customWorkflowPath, customWorkflow);
+
+    const run = spawnSync(process.execPath, [cli, 'init'], {
+      cwd: directory,
+      encoding: 'utf8',
+    });
+
+    expect(run.status, run.stderr).toBe(0);
+    expect(fs.readFileSync(customReadingSkillPath, 'utf8')).toBe(
+      customReadingSkill,
+    );
+    expect(fs.readFileSync(customWorkflowPath, 'utf8')).toBe(customWorkflow);
+    expect(fs.readFileSync(claudeReadingSkillPath, 'utf8')).toBe(
+      fs.readFileSync(
+        path.resolve(
+          import.meta.dirname,
+          '../../../../skills/reading-mode/SKILL.md',
+        ),
+        'utf8',
+      ),
+    );
   });
 
   it('upgrades managed 0.1.27 clients and bounded guidance without touching user content', () => {

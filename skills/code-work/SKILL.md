@@ -54,8 +54,8 @@ raw code in document order. Node titles are graph metadata, not emitted code.
 
 ## Enter the work
 
-At the first real implementation choice, ask the graph for several concrete
-possibilities:
+If guided navigation would help at a real implementation choice, ask the graph
+for several concrete possibilities:
 
 ```javascript
 graph_suggest_next({
@@ -66,7 +66,9 @@ graph_suggest_next({
 
 Consider higher-weighted routes seriously, then choose, combine, modify, or
 reject them according to the actual task. The suggestions are provocations,
-not a state machine or exhaustive menu. If the useful route requires prior
+not a state machine or exhaustive menu. In direct mode, choose these moves
+yourself and use the graph tools immediately; no coding capability is lost.
+If the useful route requires prior
 context, follow it with `graph_understand`, carrying the suggested stance and
 focus. If the task is already locally clear, make the next coherent graph-native
 code move instead.
@@ -78,9 +80,10 @@ material. Do not perform all of these as an orientation ritual. Reuse or revise
 an existing cognitive thread when it is genuinely the same; do not compress a
 distinct live alternative merely because it shares vocabulary.
 
-Return to `graph_suggest_next` at a genuine design fork, a stubborn failure, or
-when repeated local moves stop producing new understanding. It is not a turn
-counter: the model remains free to pursue a better move that the roll omitted.
+When using guided navigation, return to `graph_suggest_next` at a genuine design
+fork, a stubborn failure, or when repeated local moves stop producing new
+understanding. It is not a turn counter: the model remains free to pursue a
+better move that the roll omitted.
 
 ## Code with open attention
 

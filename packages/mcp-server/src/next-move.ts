@@ -23,6 +23,7 @@ export type NextMoveNode = {
   title: string;
   trigger?: string | null;
   excerpt?: string;
+  isDocRoot?: boolean;
 };
 
 export type NextMoveRelation = {
@@ -87,6 +88,11 @@ export function rollNextMoves(
   const focus = pickMany(input.focusNodes ?? [], 3, random);
   const question = pickOne((input.openQuestions ?? []).slice(0, 4), random);
   const artifact = pickOne((input.documentNodes ?? []).slice(0, 4), random);
+  const wholeArtifact =
+    pickOne(
+      (input.documentNodes ?? []).filter((node) => node.isDocRoot).slice(0, 4),
+      random,
+    ) ?? artifact;
   const isolated = pickMany(input.isolatedNodes ?? [], 2, random);
   const randomSubjects = pickMany(input.randomNodes ?? [], 3, random);
   const central = pickOne((input.centralNodes ?? []).slice(0, 4), random);
@@ -381,8 +387,13 @@ export function rollNextMoves(
       steps: [
         {
           description:
-            'Locate the current document roots and exact local unit.',
-          call: { tool: 'doc_list_roots', arguments: {} },
+            'Read the exact local unit as a bounded fresh encounter.',
+          call: artifact
+            ? {
+                tool: 'doc_read',
+                arguments: { nodeId: artifact.id, offset: 0, limit: 8 },
+              }
+            : { tool: 'doc_list_roots', arguments: {} },
         },
         {
           description:
@@ -401,23 +412,23 @@ export function rollNextMoves(
       // — so the diagnostics that would have caught it have to arrive
       // without being asked for. An agent that has to think of calling this
       // is an agent that already suspects the answer.
-      whyNow: `${input.nodeCount} nodes exist and nothing here has asked whether they are re-entered or only written to, whether artifact units carry the understanding that shaped them, or whether any prediction was ever scored.`,
+      whyNow: `${input.nodeCount} nodes exist; an occasional conduct check may show whether the graph is being re-entered and whether artifact units retain links to the understanding that shaped them. It is a mirror, not a missing-work checklist.`,
       steps: [
         {
           description:
-            'Read the diagnostics and what each one indicates. None is a target.',
+            'Read only the diagnostics that bear on the current work. None is a target, and an absent node type is not work to manufacture.',
           call: { tool: 'graph_practice', arguments: {} },
         },
         {
           description:
-            'Change one thing about how you are working, or record why the reading is misleading in this project. A diagnostic nothing acts on is decoration.',
+            'Change practice only when a finding matters to the user task; otherwise ignore the report and continue or pause.',
         },
       ],
     },
     {
       action: 'read-artifact-whole',
-      label: artifact
-        ? `Read “${artifact.title}” end to end, in order`
+      label: wholeArtifact
+        ? `Read “${wholeArtifact.title}” end to end, in order`
         : 'Read the current artifact end to end, in order',
       available: input.documentCount >= 3,
       // Faults that belong to the SEQUENCE are invisible to every node-level
@@ -431,16 +442,21 @@ export function rollNextMoves(
       // writing-streak proxy — prose has accumulated, and has outpaced live
       // thinking.
       whyNow: `${input.documentCount} document node(s) exist and nothing has read along their order. A fault that belongs to the sequence rather than to any single passage is invisible to node-level rereads.`,
-      subjects: artifact ? [artifact] : undefined,
+      subjects: wholeArtifact ? [wholeArtifact] : undefined,
       steps: [
         {
           description:
-            'List the document roots, then walk the contains and next chain in order.',
-          call: { tool: 'doc_list_roots', arguments: {} },
+            'Read the first bounded page of exact document units in order.',
+          call: wholeArtifact
+            ? {
+                tool: 'doc_read',
+                arguments: { nodeId: wholeArtifact.id, offset: 0, limit: 8 },
+              }
+            : { tool: 'doc_list_roots', arguments: {} },
         },
         {
           description:
-            'Read the units in sequence rather than sampling them, and preserve what the whole changes that no passage did.',
+            'Follow pagination.nextOffset until the root is complete; preserve only what the sequence changes that no individual unit did.',
         },
       ],
     },
@@ -672,6 +688,7 @@ function actionPressure(action: string, input: RollNextMovesInput): number {
   } else if (input.workflow === 'research' || input.workflow === 'reading') {
     if (action === 'read-source' || action === 'search') pressure *= 1.4;
     if (action === 'integrate') pressure *= 1.25;
+    if (action === 'read-artifact-whole') pressure *= 0.65;
   }
 
   const recentIndex = (input.recentActions ?? []).indexOf(action);
