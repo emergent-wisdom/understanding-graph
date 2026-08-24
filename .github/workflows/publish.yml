@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Exact release tag to resume (for example v0.1.30)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
           persist-credentials: false
 
       - name: Reject tracked project and database data
@@ -38,9 +45,14 @@ jobs:
         run: npm install --global npm@11.12.1
 
       - name: Verify tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          test "$GITHUB_REF_NAME" = "v$VERSION"
+          test "$RELEASE_TAG" = "v$VERSION"
+          test "$(git describe --tags --exact-match)" = "$RELEASE_TAG"
+          test "$(node -p "require('./server.json').version")" = "$VERSION"
+          test "$(node -p "require('./server.json').packages[0].version")" = "$VERSION"
 
       - name: Install, verify, and build
         run: |
@@ -99,3 +111,17 @@ jobs:
           publish_package packages/mcp-server/package.json ./packages/mcp-server
           publish_package packages/web-server/package.json ./packages/web-server
           publish_package package.json .
+
+      - name: Install MCP Publisher 1.8.1
+        run: |
+          curl -fsSL \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz \
+            -o "$RUNNER_TEMP/mcp-publisher.tgz"
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  $RUNNER_TEMP/mcp-publisher.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/mcp-publisher.tgz" -C "$RUNNER_TEMP" mcp-publisher
+          chmod +x "$RUNNER_TEMP/mcp-publisher"
+
+      - name: Publish MCP Registry record
+        run: |
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish server.json
