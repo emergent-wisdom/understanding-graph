@@ -23,8 +23,10 @@ Add the server to an MCP client:
 }
 ```
 
-`PROJECT_DIR` contains one SQLite-backed graph per project. The server creates
-and activates `DEFAULT_PROJECT` (`default` unless configured) when necessary.
+`PROJECT_DIR` contains one SQLite-backed graph per project. A fresh directory
+stays empty until `project_switch` creates a deliberately named project. Set
+`DEFAULT_PROJECT` only when the host explicitly wants to load or create that
+named project at startup.
 
 ## Understanding, not transcription
 

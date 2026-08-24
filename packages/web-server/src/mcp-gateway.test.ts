@@ -92,6 +92,7 @@ describe('graph-scoped cloud MCP gateway', () => {
     );
     expect(catalog.instructions).not.toContain('project_switch');
     expect(catalog.instructions).not.toContain('project_list');
+    expect(catalog.instructions).not.toContain('If none is active');
     expect(names.has('graph_understand')).toBe(true);
     expect(names.has('graph_suggest_next')).toBe(true);
     expect(names.has('graph_practice')).toBe(true);

@@ -92,6 +92,16 @@ export function setCurrentProject(projectId: string): void {
   currentProjectId = projectId;
 }
 
+/**
+ * Clear the active project without closing any loaded databases.
+ *
+ * Cross-project discovery can keep databases open, but current-project reads
+ * and writes must wait until the caller deliberately selects their target.
+ */
+export function clearCurrentProject(): void {
+  currentProjectId = null;
+}
+
 // Initialize SQLite for a specific project.
 //
 // IDEMPOTENT: if a connection for this project already exists in the

@@ -9,7 +9,7 @@ The graph is your externalized memory. You are contributing to understanding
 that persists beyond this conversation.
 
 SETUP:
-mcp__understanding-graph__project_switch("[PROJECT]")
+mcp__understanding-graph__project_switch({ project: "[PROJECT]" })
 mcp__understanding-graph__solver_claim_task()
 
 REMEMBER BEFORE THINKING:

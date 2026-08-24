@@ -6,6 +6,7 @@ import {
   ContextManager,
   getToolDefinitions,
   handleToolCall,
+  PROJECT_SELECTION_INSTRUCTIONS,
   SERVER_INSTRUCTIONS,
   SerialTaskQueue,
   UNDERSTANDING_PROTOCOL_ID,
@@ -35,12 +36,14 @@ const CLOUD_DISPATCH_MODE = 'full' as const;
 const CLOUD_INSTRUCTIONS = [
   'CLOUD GRAPH SCOPE: This connection is already bound to one authorized graph. Do not list, select, create, or switch projects. Use the advertised tools only.',
   '',
-  ...SERVER_INSTRUCTIONS.split('\n').filter(
-    (line) =>
-      !line.includes('project_list') &&
-      !line.includes('project_switch') &&
-      !line.includes('solver_claim_task'),
-  ),
+  ...SERVER_INSTRUCTIONS.replace(PROJECT_SELECTION_INSTRUCTIONS, '')
+    .split('\n')
+    .filter(
+      (line) =>
+        !line.includes('project_list') &&
+        !line.includes('project_switch') &&
+        !line.includes('solver_claim_task'),
+    ),
 ].join('\n');
 
 // Cloud exposure is an explicit capability list, not the complement of a small

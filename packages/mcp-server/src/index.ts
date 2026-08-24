@@ -225,75 +225,69 @@ class UnderstandingGraphServer {
     sqlite.initAllDatabases(projectDir);
     let loadedProjects = sqlite.getLoadedProjectIds();
 
-    // Project activation is deliberately conditional.
-    //
-    // Auto-activating a project unconditionally removed the only forcing
-    // function that made an agent CHOOSE where its work belongs: with a
-    // project already live, `graph_understand` succeeds immediately and
-    // everything lands in `default`, so unrelated work accumulates in one
-    // store and retrieval gets noisier over time. The guidance to call
-    // project_list() sits ~350 lines into the contract and does not survive
-    // that convenience.
-    //
-    // But we must not reintroduce the original bug either: on a fresh
-    // install the first call crashed with "no active project", making
-    // project_switch a hidden prerequisite.
-    //
-    // So: activate when there is no real choice to make (explicit
-    // DEFAULT_PROJECT, or zero/one project on disk), and stay unset when
-    // several projects exist — there the "No active project" error is the
-    // correct behavior, because it names the decision and how to make it.
+    // The host owns PROJECT_DIR. A fresh install stays empty until an agent or
+    // user deliberately names a project with project_switch. Re-open the sole
+    // existing project automatically; with several, require a choice. An
+    // explicit DEFAULT_PROJECT remains an opt-in request to load or create it.
     const explicitDefault = Boolean(process.env.DEFAULT_PROJECT);
-    const defaultProject = process.env.DEFAULT_PROJECT || 'default';
-    const shouldAutoActivate = explicitDefault || loadedProjects.length <= 1;
+    const selectedProject = explicitDefault
+      ? process.env.DEFAULT_PROJECT
+      : loadedProjects.length === 1
+        ? loadedProjects[0]
+        : undefined;
 
-    if (!shouldAutoActivate) {
+    // initAllDatabases opens each store in turn, and initDatabase selects the
+    // store it opens. With zero or several projects that implementation detail
+    // must not become an implicit choice: keep every database available for
+    // discovery while requiring project_switch before graph work begins.
+    if (!selectedProject) {
+      sqlite.clearCurrentProject();
+    }
+
+    if (selectedProject && !/^[a-zA-Z0-9_-]+$/.test(selectedProject)) {
+      throw new Error(
+        `Invalid DEFAULT_PROJECT: "${selectedProject}". Use only letters, numbers, underscores, and hyphens.`,
+      );
+    }
+
+    if (!selectedProject && loadedProjects.length > 1) {
       console.error(
         `Multiple projects present (${loadedProjects.join(', ')}). ` +
           'Not auto-activating one — call project_switch to choose where ' +
           'this work belongs.',
       );
-    } else if (!loadedProjects.includes(defaultProject)) {
-      const defaultPath = `${projectDir}/${defaultProject}`;
+    } else if (selectedProject && !loadedProjects.includes(selectedProject)) {
+      const selectedPath = `${projectDir}/${selectedProject}`;
       try {
-        sqlite.initDatabase(defaultPath);
+        sqlite.initDatabase(selectedPath);
         loadedProjects = sqlite.getLoadedProjectIds();
         console.error(
-          `Bootstrapped default project: ${defaultProject} at ${defaultPath}`,
+          `Created explicitly requested project: ${selectedProject} at ${selectedPath}`,
         );
       } catch (e) {
         console.error(
-          `Failed to bootstrap default project at ${defaultPath}:`,
+          `Failed to load requested project at ${selectedPath}:`,
           e,
         );
       }
-    } else {
+    } else if (selectedProject) {
       // Already loaded — just make sure it's the current project so the
       // first tool call has a target.
       try {
-        sqlite.setCurrentProject(defaultProject);
+        sqlite.setCurrentProject(selectedProject);
       } catch {
         // setCurrentProject throws if not loaded; we already checked, so
         // any failure here is benign.
       }
     }
 
-    // CRITICAL: also tell ContextManager about the active project, otherwise
-    // its currentContext stays null and getCurrentProjectId() returns the
-    // literal string 'default' regardless of what DEFAULT_PROJECT was set
-    // to. The two project-state machines (sqlite's currentProjectId and
-    // ContextManager's currentContext.projectId) need to agree at startup,
-    // not just after the first project_switch call. Without this, every
-    // tool call routed through contextManager.getCurrentProjectId() lands
-    // in 'default' even when the agent set DEFAULT_PROJECT=foo or when
-    // initAllDatabases loaded a non-default project as the only one
-    // present.
-    if (shouldAutoActivate) {
+    // Keep ContextManager and SQLite on the same selected project.
+    if (selectedProject) {
       try {
-        await this.contextManager.switchProject(defaultProject);
+        await this.contextManager.switchProject(selectedProject);
       } catch (e) {
         console.error(
-          `Failed to set ContextManager active project to ${defaultProject}:`,
+          `Failed to set ContextManager active project to ${selectedProject}:`,
           e,
         );
       }

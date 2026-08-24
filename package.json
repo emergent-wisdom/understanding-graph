@@ -1,6 +1,6 @@
 {
   "name": "understanding-graph",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "mcpName": "io.github.emergent-wisdom/understanding-graph",
   "description": "A recursive medium for persistent, revisable agent understanding",
   "author": "Henrik Westerberg",
@@ -80,8 +80,8 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "@emergent-wisdom/understanding-graph-core": "0.1.12",
-    "@emergent-wisdom/understanding-graph-mcp-server": "0.1.12",
-    "@emergent-wisdom/understanding-graph-web-server": "0.1.11"
+    "@emergent-wisdom/understanding-graph-core": "0.1.13",
+    "@emergent-wisdom/understanding-graph-mcp-server": "0.1.13",
+    "@emergent-wisdom/understanding-graph-web-server": "0.1.12"
   }
 }

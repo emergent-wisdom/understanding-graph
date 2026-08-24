@@ -107,6 +107,62 @@ function applyTheme(theme: Theme) {
   }
 }
 
+type ProjectFetch = (
+  input: string,
+  init?: RequestInit,
+) => Promise<{ ok: boolean; json: () => Promise<unknown> }>
+
+function projectFromResponse(
+  value: unknown,
+  fallback?: Project | null,
+): Project | null {
+  if (!value || typeof value !== 'object') return fallback || null
+  const candidate = value as { id?: unknown; name?: unknown; goal?: unknown }
+  if (typeof candidate.id !== 'string' || !candidate.id) {
+    return fallback || null
+  }
+  return {
+    id: candidate.id,
+    name:
+      typeof candidate.name === 'string' && candidate.name
+        ? candidate.name
+        : candidate.id,
+    goal: typeof candidate.goal === 'string' ? candidate.goal : undefined,
+  }
+}
+
+/** Reconcile persisted browser state with the backend before queries resume. */
+export async function reconcileHydratedProject(
+  persistedProject: Project | null,
+  fetchProject: ProjectFetch = (input, init) => fetch(input, init),
+): Promise<Project | null> {
+  if (persistedProject?.id) {
+    try {
+      const loaded = await fetchProject(
+        `/api/projects/${encodeURIComponent(persistedProject.id)}/load`,
+        { method: 'POST' },
+      )
+      if (loaded.ok) {
+        try {
+          return projectFromResponse(await loaded.json(), persistedProject)
+        } catch {
+          return persistedProject
+        }
+      }
+    } catch {
+      // The persisted project is not usable. Reconcile with backend state below.
+    }
+  }
+
+  try {
+    const current = await fetchProject('/api/projects/current')
+    if (!current.ok) return null
+    return projectFromResponse(await current.json())
+  } catch {
+    return null
+  }
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
@@ -251,26 +307,15 @@ export const useAppStore = create<AppState>()(
         }
         // Sync frontend project state with backend before enabling graph queries
         const sync = async () => {
-          if (state?.currentProject?.id) {
-            // Returning user — tell backend to load their project
-            await fetch(`/api/projects/${state.currentProject.id}/load`, {
-              method: 'POST',
-            })
-          } else {
-            // New user — ask backend which project is active and adopt it
-            const res = await fetch('/api/projects/current')
-            if (res.ok) {
-              const data = await res.json()
-              useAppStore
-                .getState()
-                .setCurrentProject({ id: data.id, name: data.name })
-            }
-          }
+          const project = await reconcileHydratedProject(
+            state?.currentProject || null,
+          )
+          useAppStore.getState().setCurrentProject(project)
           useAppStore.setState({ projectReady: true })
         }
         sync().catch(() => {
-          // Even on error, unblock the UI so polling can recover
-          useAppStore.setState({ projectReady: true })
+          // Never let stale persisted state enable requests after a sync error.
+          useAppStore.setState({ currentProject: null, projectReady: true })
         })
       },
     },

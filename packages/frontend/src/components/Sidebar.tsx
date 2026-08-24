@@ -15,16 +15,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   } = useAppStore()
   const { data: documentRoots = [] } = useDocumentRoots(!!currentProject)
 
-  // Sort with "default" (Home) first, then alphabetically
-  const sortedProjects = [...projects].sort((a, b) => {
-    if (a.id === 'default') return -1
-    if (b.id === 'default') return 1
-    return a.name.localeCompare(b.name)
-  })
-
-  // Map display names (show "default" as "Home")
-  const displayName = (project: { id: string; name: string }) =>
-    project.id === 'default' ? 'Home' : project.name
+  const sortedProjects = [...projects].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )
 
   const handleSelectProject = async (id: string) => {
     const result = await loadProject.mutateAsync(id)
@@ -92,7 +85,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
               No projects yet.
               <br />
               <span className="text-text-muted/70">
-                Use an MCP client to create one.
+                Ask your MCP agent to create a descriptive project for the task.
               </span>
             </div>
           ) : (
@@ -119,12 +112,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
                       : 'text-text-primary',
                   )}
                 >
-                  {displayName(project)}
+                  {project.name}
                 </h3>
                 <p className="text-xs text-text-muted mt-1 line-clamp-2">
-                  {project.id === 'default'
-                    ? 'Shared references & documents'
-                    : project.goal || 'No goal set'}
+                  {project.goal || 'No goal set'}
                 </p>
               </button>
             ))

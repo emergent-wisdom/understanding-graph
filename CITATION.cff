@@ -4,7 +4,7 @@ message: >-
   preprint below. The software metadata at the top of this file is
   also valid as a standalone software citation.
 title: "Understanding Graph: A Recursive Medium for Persistent Understanding"
-version: 0.1.28
+version: 0.1.29
 abstract: >-
   Understanding Graph is an MCP server for structured, persistent,
   revisable understanding. Agents externalize material questions,

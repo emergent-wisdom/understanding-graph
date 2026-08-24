@@ -95,7 +95,10 @@ export function GraphCanvas() {
     setTimelineSpan,
   } = useAppStore()
   const projectReady = useAppStore((s) => s.projectReady)
-  const { data: apiData, isLoading } = useGraph(projectReady, showSuperseded)
+  const { data: apiData, isLoading } = useGraph(
+    projectReady && Boolean(currentProject),
+    showSuperseded,
+  )
 
   // Hovered state (for tooltips and visual highlighting)
   const [hoveredEdge, setHoveredEdge] = useState<GraphEdge | null>(null)
@@ -675,10 +678,11 @@ export function GraphCanvas() {
       <div className="absolute inset-0 bg-bg-base flex items-center justify-center">
         <div className="text-center">
           <p className="text-base text-text-secondary mb-3">
-            Select a project to view its graph
+            No project selected
           </p>
           <p className="text-sm text-text-muted bg-bg-surface px-4 py-2 rounded-lg border border-border-subtle">
-            Use Claude Code in your terminal
+            Choose one in the sidebar, or ask your MCP agent to create a named
+            project
           </p>
         </div>
       </div>

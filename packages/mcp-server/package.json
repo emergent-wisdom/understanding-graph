@@ -1,6 +1,6 @@
 {
   "name": "@emergent-wisdom/understanding-graph-mcp-server",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "MCP server for persistent, revisable understanding graphs",
   "type": "module",
   "main": "dist/library.js",
@@ -58,7 +58,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@emergent-wisdom/understanding-graph-core": "0.1.12",
+    "@emergent-wisdom/understanding-graph-core": "0.1.13",
     "uuid": "^11.1.1",
     "zod": "^3.22.0"
   },

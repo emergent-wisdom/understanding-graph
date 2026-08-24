@@ -25,7 +25,13 @@ the medium, not a mandatory sequence for how understanding must unfold.
 
 ## Enter the medium
 
-Call `graph_suggest_next` with the concrete task and the appropriate workflow:
+Call `project_list` before substantive graph work and confirm the active project
+matches the task. If none is active, select an existing match or create a
+descriptive, task-scoped one with `project_switch`; an empty list means create
+one. If several existing projects are plausible, ask rather than guess. Never
+create a generic catch-all project.
+
+Then call `graph_suggest_next` with the concrete task and appropriate workflow:
 `reading`, `research`, `coding`, `collaborative_coding`, `writing`, or `general`.
 Inspect its weighted routes and choose freely. A route may call
 `graph_understand` to bring task-relevant graph material into view. Treat any

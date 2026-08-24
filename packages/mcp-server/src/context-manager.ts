@@ -35,8 +35,19 @@ export class ContextManager {
     projectId?: string,
     allowCreate: boolean = false,
   ): Promise<ConversationContext> {
-    const targetProject =
-      projectId || this.currentContext?.projectId || 'default';
+    const targetProject = projectId || this.currentContext?.projectId;
+
+    if (!targetProject) {
+      const existingProjects = this.listProjects();
+      const available = existingProjects.length
+        ? ` Available projects: [${existingProjects.join(', ')}].`
+        : '';
+      throw new Error(
+        `No active project.${available} Choose where this work belongs with ` +
+          `project_switch({ project: "<id>" }); that call creates the project ` +
+          `when the id does not exist yet.`,
+      );
+    }
 
     // If switching projects or no context, initialize
     if (
@@ -54,7 +65,7 @@ export class ContextManager {
 
   // Get current project ID (or default)
   getCurrentProjectId(): string {
-    return this.currentContext?.projectId || 'default';
+    return this.currentContext?.projectId || '';
   }
 
   // Get current conversation ID for linking to nodes/edges
@@ -89,7 +100,7 @@ export class ContextManager {
 
     // Ensure project directory exists and SQLite is initialized
     const projectPath = path.join(this.projectDir, actualProjectId);
-    const isNewProject = !fs.existsSync(projectPath);
+    const isNewProject = !fs.existsSync(path.join(projectPath, 'store.db'));
 
     // CRITICAL: Reject unknown projects unless allowCreate is true
     // This prevents agents from accidentally creating projects by passing wrong project IDs
@@ -165,14 +176,18 @@ export class ContextManager {
     return this.currentContext;
   }
 
-  // List available projects (includes "default" which is shown as "Home" in UI)
+  // List real projects only. Scratch directories are not projects until they
+  // contain an initialized SQLite store.
   listProjects(): string[] {
     if (!fs.existsSync(this.projectDir)) {
       return [];
     }
     return fs.readdirSync(this.projectDir).filter((name) => {
       const projectPath = path.join(this.projectDir, name);
-      return fs.statSync(projectPath).isDirectory();
+      return (
+        fs.statSync(projectPath).isDirectory() &&
+        fs.existsSync(path.join(projectPath, 'store.db'))
+      );
     });
   }
 

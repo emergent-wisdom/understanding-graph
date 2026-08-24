@@ -4,6 +4,7 @@ import {
   invalidateProjectQueries,
   PROJECT_SCOPED_QUERY_KEYS,
   queryKeys,
+  shouldFetchSemanticSearch,
 } from './useApi'
 
 describe('invalidateProjectQueries', () => {
@@ -25,5 +26,13 @@ describe('invalidateProjectQueries', () => {
     expect(queryClient.getQueryState(queryKeys.projects)?.isInvalidated).toBe(
       false,
     )
+  })
+})
+
+describe('shouldFetchSemanticSearch', () => {
+  it('requires both a useful query and an active project', () => {
+    expect(shouldFetchSemanticSearch('ab', true)).toBe(true)
+    expect(shouldFetchSemanticSearch('a', true)).toBe(false)
+    expect(shouldFetchSemanticSearch('ab', false)).toBe(false)
   })
 })

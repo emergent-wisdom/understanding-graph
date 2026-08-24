@@ -16,7 +16,7 @@ edit directly:
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.1.28", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.29", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }
@@ -40,9 +40,11 @@ Use the exact same JSON as above. Restart Windsurf after saving.
 
 Ask the assistant:
 
-> "Use graph_skeleton to orient yourself, then tell me what's in the graph"
+> "Call project_list and tell me whether Understanding Graph is connected. Do not create a project yet."
 
-It should call the tool and return the orientation summary.
+A fresh data directory should report an empty list. When real work begins, the
+assistant should select or create a descriptive project with `project_switch`
+before calling other graph tools.
 
 ## Tool modes
 

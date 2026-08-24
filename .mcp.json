@@ -4,13 +4,12 @@
       "command": "npx",
       "args": [
         "-y",
-        "understanding-graph@0.1.28",
+        "understanding-graph@0.1.29",
         "mcp"
       ],
       "env": {
         "PROJECT_DIR": "./projects",
-        "UG_SOURCE_ROOT": ".",
-        "DEFAULT_PROJECT": "default"
+        "UG_SOURCE_ROOT": "."
       }
     }
   }

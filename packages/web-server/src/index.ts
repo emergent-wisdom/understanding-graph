@@ -9,7 +9,10 @@ const __dirname = path.dirname(__filename);
 // Load .env from project root (3 levels up from dist/index.js)
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
-import { sqlite } from '@emergent-wisdom/understanding-graph-core';
+import {
+  resetGraphStore,
+  sqlite,
+} from '@emergent-wisdom/understanding-graph-core';
 import express from 'express';
 import { createApiSerializationMiddleware } from './api-serialization.js';
 import { createBrowserOriginGuard } from './browser-origin.js';
@@ -20,7 +23,7 @@ import { conversationRouter } from './routes/conversations.js';
 import { databaseRouter } from './routes/database.js';
 import { graphRouter } from './routes/graph.js';
 import { createMessagesRouter, MESSAGES_WIDGET } from './routes/messages.js';
-import { projectRouter } from './routes/projects.js';
+import { projectRouter, resolveProjectPath } from './routes/projects.js';
 import { createWorkerAuthMiddleware } from './worker-auth.js';
 
 const app = express();
@@ -65,39 +68,65 @@ const FRONTEND_DIR =
 // directly and the panel never reaches the page.
 app.use(express.static(FRONTEND_DIR, { index: false }));
 
-// Store current project in app.locals
-app.locals.projectId = 'default';
+// A fresh data directory has no privileged starter project.
+app.locals.projectId = null;
 app.locals.projectDir = PROJECT_DIR;
 
 // Project middleware - extract project from an API request and switch database.
 // Keeping this under /api ensures SPA and discovery requests cannot mutate the
 // process-global active project outside the serialization lease above.
 app.use('/api', (req, res, next) => {
-  // Allow project override via header or query param
-  const projectId =
-    (req.headers['x-project-id'] as string) ||
-    (req.query.project as string) ||
-    app.locals.projectId;
-  req.projectId = projectId;
+  const headerProject = req.headers['x-project-id'];
+  const queryProject = req.query.project;
+  const requestedProject =
+    typeof headerProject === 'string' && headerProject
+      ? headerProject
+      : typeof queryProject === 'string' && queryProject
+        ? queryProject
+        : '';
+  const projectId = requestedProject || app.locals.projectId || '';
 
   // Validate projectId to prevent path traversal
   if (projectId && !/^[a-zA-Z0-9_-]+$/.test(projectId)) {
     return res.status(400).json({ error: 'Invalid project ID' });
   }
 
-  // Switch database to the requested project (skip if already active)
-  if (projectId !== app.locals.projectId) {
-    const projectPath = path.join(PROJECT_DIR, projectId);
-    if (
+  if (projectId) {
+    const projectPath = resolveProjectPath(PROJECT_DIR, projectId);
+    const projectExists =
+      projectPath !== null &&
       fs.existsSync(projectPath) &&
-      fs.existsSync(path.join(projectPath, 'store.db'))
-    ) {
+      fs.existsSync(path.join(projectPath, 'store.db'));
+
+    // Never fall through to the process-global current database when a caller
+    // explicitly asks for an unknown project. Doing so exposes the previous
+    // project's data under the requested project's label.
+    if (requestedProject && !projectExists) {
+      return res.status(404).json({
+        error: 'Project not found',
+        project: requestedProject,
+      });
+    }
+
+    if (!projectExists || !projectPath) {
+      app.locals.projectId = null;
+      sqlite.clearCurrentProject();
+      resetGraphStore();
+      req.projectId = '';
+      return next();
+    }
+
+    if (sqlite.getCurrentProjectId() !== projectId) {
       sqlite.initDatabase(projectPath);
       sqlite.setCurrentProject(projectId);
+      resetGraphStore();
+    }
+    if (requestedProject) {
       app.locals.projectId = projectId;
     }
   }
 
+  req.projectId = projectId;
   next();
 });
 
@@ -115,6 +144,16 @@ app.use(createRestMutationFirewall());
 // Routes
 app.use('/api/mcp', createMcpGatewayRouter({ projectDir: PROJECT_DIR }));
 app.use('/api/projects', projectRouter);
+app.use('/api', (req, res, next) => {
+  if (!req.projectId) {
+    return res.status(409).json({
+      error: 'No active project',
+      code: 'PROJECT_REQUIRED',
+      hint: 'Create or load a project before using graph endpoints.',
+    });
+  }
+  next();
+});
 app.use('/api', graphRouter);
 app.use('/api', databaseRouter);
 app.use('/api', conversationRouter);
@@ -168,54 +207,42 @@ app.use(
 
 // Start server
 function start() {
-  // Initialize default project on startup
-  const defaultProject = process.env.DEFAULT_PROJECT || 'default';
-  const projectPath = path.join(PROJECT_DIR, defaultProject);
-
   try {
-    // The viewer always opens on something. Unlike the MCP server — which
-    // deliberately declines to pick when an agent must choose where its work
-    // belongs — a human here is reading, not writing (REST mutations are
-    // firewalled), so an empty screen is only ever a failure.
-    //
-    // The trap is bootstrapping an empty `default` while real projects sit
-    // next to it: the UI then shows a blank canvas over a populated store,
-    // which reads as "the tool is broken". Prefer a project with data.
-    let activeProject = defaultProject;
-    let activePath = projectPath;
+    fs.mkdirSync(PROJECT_DIR, { recursive: true });
+    const populated = fs
+      .readdirSync(PROJECT_DIR, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          fs.existsSync(path.join(PROJECT_DIR, entry.name, 'store.db')),
+      )
+      .map((entry) => entry.name)
+      .sort();
+    const requestedProject = process.env.DEFAULT_PROJECT;
+    const activeProject = requestedProject || populated[0];
 
-    if (!fs.existsSync(path.join(projectPath, 'store.db'))) {
-      const populated = fs
-        .readdirSync(PROJECT_DIR, { withFileTypes: true })
-        .filter(
-          (d) =>
-            d.isDirectory() &&
-            fs.existsSync(path.join(PROJECT_DIR, d.name, 'store.db')),
-        )
-        .map((d) => d.name)
-        .sort();
-
-      if (populated.length > 0) {
-        activeProject = populated[0];
-        activePath = path.join(PROJECT_DIR, activeProject);
-        console.log(
-          `No "${defaultProject}" store found; opening "${activeProject}" ` +
-            `(${populated.length} project(s) with data).`,
+    if (activeProject) {
+      if (!/^[a-zA-Z0-9_-]+$/.test(activeProject)) {
+        throw new Error(
+          `Invalid DEFAULT_PROJECT: "${activeProject}". Use only letters, numbers, underscores, and hyphens.`,
         );
-      } else if (!fs.existsSync(projectPath)) {
-        console.log(
-          `Default project not found. Bootstrapping at: ${projectPath}`,
-        );
-        fs.mkdirSync(projectPath, { recursive: true });
       }
+      const activePath = path.join(PROJECT_DIR, activeProject);
+      if (requestedProject && !fs.existsSync(activePath)) {
+        fs.mkdirSync(activePath, { recursive: true });
+      }
+      sqlite.initDatabase(activePath);
+      sqlite.setCurrentProject(activeProject);
+      app.locals.projectId = activeProject;
+      console.log(`Loaded project: ${activeProject}`);
+    } else {
+      app.locals.projectId = null;
+      console.log(
+        'No projects found. The UI will remain empty until an MCP client creates one.',
+      );
     }
-
-    sqlite.initDatabase(activePath);
-    sqlite.setCurrentProject(activeProject);
-    app.locals.projectId = activeProject;
-    console.log(`Loaded project: ${activeProject}`);
   } catch (e) {
-    console.log('Failed to load/bootstrap project:', e);
+    console.log('Failed to load project:', e);
   }
 
   app.listen(PORT, HOST, () => {

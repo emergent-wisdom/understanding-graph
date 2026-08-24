@@ -549,7 +549,7 @@ export const reflectionTools: Tool[] = [
       properties: {
         project: {
           type: 'string',
-          description: 'Project ID to switch to',
+          description: 'Descriptive project ID to switch to or create',
         },
         goal: {
           type: 'string',
@@ -577,7 +577,7 @@ export const reflectionTools: Tool[] = [
       properties: {
         project: {
           type: 'string',
-          description: 'Project ID to look up from (e.g., "default")',
+          description: 'Project ID to look up from (e.g., "research-library")',
         },
         nodeId: {
           type: 'string',
@@ -596,7 +596,7 @@ export const reflectionTools: Tool[] = [
       properties: {
         project: {
           type: 'string',
-          description: 'Project ID to list from (e.g., "default")',
+          description: 'Project ID to list from (e.g., "research-library")',
         },
         limit: {
           type: 'number',
@@ -1611,10 +1611,11 @@ export async function handleReflectionTools(
 
     case 'project_list': {
       const projects = contextManager.listProjects();
+      const activeProject = contextManager.getCurrentProjectId();
 
       return {
         projects,
-        current: contextManager.getCurrentProjectId(),
+        current: projects.includes(activeProject) ? activeProject : null,
         count: projects.length,
         debug_project_dir: contextManager.getProjectDir(),
         debug_cwd: process.cwd(),

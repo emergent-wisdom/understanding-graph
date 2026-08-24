@@ -25,6 +25,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Reject tracked project and database data
+        run: |
+          tracked_data="$(git ls-files | grep -E '(^|/)(projects|case-studies)/|(^|/)[^/]+\.(db|sqlite|sqlite3)(-.+)?$' || true)"
+          if [ -n "$tracked_data" ]; then
+            echo "Tracked project or database data is forbidden:"
+            echo "$tracked_data"
+            exit 1
+          fi
+
       - name: Build
         run: npm run build
 

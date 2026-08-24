@@ -16,7 +16,7 @@ Claude Desktop reads MCP server configuration from a JSON file. Add an
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.1.28", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.29", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects",
         "UG_SOURCE_ROOT": "/path/to/your/source-project"
@@ -37,7 +37,11 @@ read; use a project or source-library directory rather than your whole home.
 
 1. Restart Claude Desktop.
 2. Open a new conversation.
-3. Type: *"Call graph_skeleton() and summarize what you see"*.
+3. Type: *"Call project_list and tell me whether Understanding Graph is connected. Do not create a project yet."*
+
+A fresh data directory should report an empty list. When real work begins, the
+agent should select or create a descriptive project with `project_switch`
+before calling other graph tools.
 
 If the tool isn't available, check the log file:
 
@@ -51,11 +55,12 @@ The log will show startup errors (missing project dir, bad permissions, etc).
 To work in multiple isolated graphs, run `project_switch` from the chat:
 
 ```
-project_switch({ projectId: "my-other-project" })
+project_switch({ project: "my-other-project" })
 ```
 
-Or set `DEFAULT_PROJECT` in the `env` block to load a specific project at
-startup.
+Or set `DEFAULT_PROJECT` in the `env` block to explicitly load or create one
+specific project at startup. When it is unset, an empty data directory stays
+empty.
 
 ## Also works with
 

@@ -24,7 +24,6 @@ The web server MUST read the same database as the MCP server. The MCP server res
 Run this exactly from the user's current working directory:
 
 ```bash
-mkdir -p projects/default
 lsof -ti:3030 | xargs kill 2>/dev/null
 PROJECT_DIR="$(pwd)/projects" PORT=3030 npx -y understanding-graph start &
 ```

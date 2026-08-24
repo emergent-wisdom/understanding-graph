@@ -1,5 +1,8 @@
 export { ContextManager } from './context-manager.js';
-export { SERVER_INSTRUCTIONS } from './instructions.js';
+export {
+  PROJECT_SELECTION_INSTRUCTIONS,
+  SERVER_INSTRUCTIONS,
+} from './instructions.js';
 export {
   UNDERSTANDING_PROTOCOL_ID,
   UNDERSTANDING_PROTOCOL_LABEL,

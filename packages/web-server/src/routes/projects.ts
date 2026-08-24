@@ -57,7 +57,11 @@ projectRouter.get('/', (req, res, next) => {
       .readdirSync(projectDir)
       .filter((name) => {
         const projectPath = resolveProjectPath(projectDir, name);
-        return projectPath !== null && fs.statSync(projectPath).isDirectory();
+        return (
+          projectPath !== null &&
+          fs.statSync(projectPath).isDirectory() &&
+          fs.existsSync(path.join(projectPath, 'store.db'))
+        );
       })
       .map((name) => {
         const metaPath = path.join(projectDir, name, 'meta.json');
@@ -136,7 +140,10 @@ projectRouter.post('/:id/load', (req, res, next) => {
       return res.status(400).json({ error: 'Invalid project ID' });
     }
 
-    if (!fs.existsSync(projectPath)) {
+    if (
+      !fs.existsSync(projectPath) ||
+      !fs.existsSync(path.join(projectPath, 'store.db'))
+    ) {
       return res.status(404).json({ error: 'Project not found' });
     }
 

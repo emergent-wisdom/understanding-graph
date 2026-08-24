@@ -270,16 +270,8 @@ function init() {
   installInstructionFile(path.join(cwd, 'CLAUDE.md'), ugSection, created, skipped);
   installInstructionFile(path.join(cwd, 'AGENTS.md'), ugSection, created, skipped);
 
-  // 4. Create projects/default/ directory
-  const projectsDir = path.join(cwd, 'projects', 'default');
-  if (fs.existsSync(projectsDir)) {
-    skipped.push('projects/default/ (already exists)');
-  } else {
-    fs.mkdirSync(projectsDir, { recursive: true });
-    created.push('projects/default/');
-  }
-
-  // 5. Ensure projects/ is in .gitignore
+  // 4. Keep graph data local. Do not create a starter project: the agent or
+  // user names the first real project deliberately through project_switch.
   const gitignorePath = path.join(cwd, '.gitignore');
   if (fs.existsSync(gitignorePath)) {
     const gitignore = fs.readFileSync(gitignorePath, 'utf-8');
@@ -313,8 +305,9 @@ function init() {
   Next steps:
     1. Open Codex or Claude Code in this directory and sign in with your normal
        ChatGPT or Claude subscription
-    2. Ask naturally for substantive work; you do not need to say "use the graph"
-    3. The agent should work in the graph, preserve material understanding as it
+    2. Ask naturally for substantive work; the agent will create a task-scoped
+       graph when real work begins, so no starter project is installed
+    3. The agent should work in that graph, preserve material understanding as it
        emerges, and use weighted suggestions or re-entry at natural choice points
 
   Both client configurations resolve this project's graph storage and source

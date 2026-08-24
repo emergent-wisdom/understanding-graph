@@ -3,35 +3,38 @@ import {
   UNDERSTANDING_PROTOCOL_LABEL,
 } from './protocol.js';
 
+export const PROJECT_SELECTION_INSTRUCTIONS = `Before substantive graph work, call \`project_list\` and confirm the active
+project matches the task. If none is active, select an exact existing match or
+create a descriptive, task-scoped project with \`project_switch\`; an empty list
+means create one. Ask rather than guess when several projects plausibly fit, and
+never create a generic catch-all project.`;
+
 export const SERVER_INSTRUCTIONS = `
 # Understanding Graph
 
 Use this graph as the canonical persistent workspace for substantive work: an
 active medium for **fluid, emergent understanding**, not a filing cabinet.
-Begin with \`graph_suggest_next\`; preserve with \`graph_batch\`.
-While Understanding mode is active, develop the work here and preserve **ALL
+Begin with \`graph_suggest_next\` and preserve with \`graph_batch\`.
+While Understanding mode is active, preserve **ALL
 COMMUNICABLE, MATERIAL UNDERSTANDING THAT COULD MATTER TO THE WORK OR THE
 READER'S FUTURE INQUIRY**, not only conclusions. Chat may report but never
-replace graph work. Persist questions, interpretations,
-alternatives, relations, evidence, reasons, uncertainty, decisions, and revisions
-that could help a later instance continue. It is authored, user-visible
-testimony, not hidden chain-of-thought.
+replace graph work. This is authored, user-visible testimony, not hidden
+chain-of-thought.
 
 **Medium-integrity invariant:** do not leave new artifact or
 understanding only in chat. Before completing a turn, write artifact units and genuine testimony
-to the graph with \`graph_batch\`;
-the final response may mirror, summarize, or link to that committed state. This
-is not a required thinking sequence. It is what makes the graph the medium rather
-than optional context.
+with \`graph_batch\`; the final response may summarize that committed state.
+This is not a required thinking sequence; it makes the graph the medium.
 
 Protocol: \`${UNDERSTANDING_PROTOCOL_ID}\`.
 
 **${UNDERSTANDING_PROTOCOL_LABEL}.** There is no required state machine. Choose
-the process the task needs: orient, read, search, make, preserve, connect, test,
-revise, disrupt, re-enter, reconsider, or pause in any useful order. You may
-invent another loop. Use \`graph_understand\` whenever prior or newly changed
+the process the task needs and invent another loop when useful. Use
+\`graph_understand\` whenever prior or newly changed
 graph state could alter the next move, and \`graph_batch\` to preserve work and
 understanding atomically rather than filing a rationale after completion.
+
+${PROJECT_SELECTION_INSTRUCTIONS}
 
 At the start and each real choice point, call \`graph_suggest_next\` with the
 live task or uncertainty. It rolls weighted, possibly multi-step moves. Give
@@ -46,7 +49,7 @@ you choose.
 orthogonal. Preserve the stance from a selected route when calling
 \`graph_understand\`; it is guidance, not a mandate to accept the returned material.
 
-If the graph is empty, begin real work without inventing a past.
+If the selected graph is empty, begin without inventing a past.
 
 ## Work naturally
 

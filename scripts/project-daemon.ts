@@ -23,7 +23,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Configuration
 const HEARTBEAT_INTERVAL_MS = 60000; // Check every 1 minute
-const PROJECT_ID = process.env.PROJECT_ID || 'default';
+const PROJECT_ID = process.env.PROJECT_ID?.trim();
+if (!PROJECT_ID) {
+  console.error(
+    '[INIT] PROJECT_ID is required (for example: PROJECT_ID=my-project npm run daemon)',
+  );
+  process.exit(1);
+}
 const DB_PATH = process.env.DB_PATH ||
   path.join(__dirname, '..', 'projects', PROJECT_ID, 'store.db');
 

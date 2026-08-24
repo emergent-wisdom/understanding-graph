@@ -1,6 +1,6 @@
 {
   "name": "@emergent-wisdom/understanding-graph-web-server",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Web server for understanding graph visualization",
   "license": "MIT",
   "repository": {
@@ -31,8 +31,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@emergent-wisdom/understanding-graph-core": "0.1.12",
-    "@emergent-wisdom/understanding-graph-mcp-server": "0.1.12",
+    "@emergent-wisdom/understanding-graph-core": "0.1.13",
+    "@emergent-wisdom/understanding-graph-mcp-server": "0.1.13",
     "dotenv": "^17.2.3",
     "express": "^4.22.2"
   },

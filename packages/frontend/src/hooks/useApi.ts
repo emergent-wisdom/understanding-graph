@@ -260,7 +260,11 @@ interface SearchResponse {
   embeddingCoverage?: string
 }
 
-export function useSemanticSearch(query: string, limit = 10) {
+export function shouldFetchSemanticSearch(query: string, enabled = true) {
+  return enabled && query.length >= 2
+}
+
+export function useSemanticSearch(query: string, limit = 10, enabled = true) {
   return useQuery({
     queryKey: [...queryKeys.search, query, limit],
     queryFn: async () => {
@@ -269,7 +273,7 @@ export function useSemanticSearch(query: string, limit = 10) {
       )
       return response.results
     },
-    enabled: query.length >= 2, // Only search with 2+ chars
+    enabled: shouldFetchSemanticSearch(query, enabled),
     staleTime: 30000, // Cache results for 30 seconds
   })
 }
@@ -373,13 +377,14 @@ export interface Commit {
   createdAt: string
 }
 
-export function useCommits(limit = 500) {
+export function useCommits(limit = 500, enabled = true) {
   return useQuery({
     queryKey: [...queryKeys.commits, limit],
     queryFn: async () => {
       // API returns array directly (not wrapped)
       return fetchJsonCamel<Commit[]>(`/commits?limit=${limit}`)
     },
+    enabled,
     refetchInterval: pollInterval(5000),
     staleTime: DISPLAY_ONLY ? Infinity : 2000,
   })

@@ -169,7 +169,7 @@ function CrossProjectReference({
     }
   }
 
-  const displayProject = project === 'default' ? 'Home' : project
+  const displayProject = project
 
   return (
     <div className="flex items-start gap-2">
@@ -1128,7 +1128,7 @@ function CommitCard({
 }
 
 function CommitsTab({ enabled }: { enabled: boolean }) {
-  const { data: commits = [], isLoading } = useCommits()
+  const { data: commits = [], isLoading } = useCommits(500, enabled)
   const { data: graphData } = useGraph(enabled)
 
   // Build lookup maps for node/edge names
@@ -1197,9 +1197,11 @@ function NodeTab() {
     clearPendingDocumentView,
     closeDocumentModalSignal,
   } = useAppStore()
+  const currentProject = useAppStore((state) => state.currentProject)
+  const projectReady = useAppStore((state) => state.projectReady)
   const { data: node, isLoading: nodeLoading } = useNode(selectedNodeId)
   const { data: edge, isLoading: edgeLoading } = useEdge(selectedEdgeId)
-  const { data: graphData } = useGraph()
+  const { data: graphData } = useGraph(projectReady && Boolean(currentProject))
 
   // Compute visible node IDs based on timeline filter
   const visibleNodeIds = useMemo(() => {

@@ -21,10 +21,11 @@ Orientation has one purpose: bring forward graph state that could change the
 next move. Do not dump the graph, perform maintenance, or delay a simple task
 merely because a graph exists.
 
-1. If the current project is unclear, or the request may belong to another
-   existing project, inspect `project_list` and select deliberately. Do not
-   create or switch projects automatically when the user's scope is already
-   clear.
+1. Inspect `project_list` when no current project is established or the request
+   may belong elsewhere. If the list is empty, create a descriptive,
+   task-scoped project with `project_switch`. Select an exact existing match
+   when there is one; ask when several projects are plausible. Never create a
+   generic catch-all project.
 2. At the first substantive choice point, ask for concrete possibilities:
 
 ```javascript

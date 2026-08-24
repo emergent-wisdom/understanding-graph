@@ -79,6 +79,7 @@ describe('understanding-graph init', () => {
     expect(
       fs.existsSync(path.join(directory, '.claude/settings.local.json')),
     ).toBe(false);
+    expect(fs.existsSync(path.join(directory, 'projects'))).toBe(false);
 
     const second = spawnSync(process.execPath, [cli, 'init'], {
       cwd: directory,
@@ -97,6 +98,7 @@ describe('understanding-graph init', () => {
     expect(fs.readFileSync(path.join(directory, '.mcp.json'), 'utf8')).toBe(
       `${JSON.stringify(claudeMcp, null, 2)}\n`,
     );
+    expect(fs.existsSync(path.join(directory, 'projects'))).toBe(false);
   });
 
   it('upgrades managed 0.1.27 clients and bounded guidance without touching user content', () => {

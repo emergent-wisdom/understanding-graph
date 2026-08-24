@@ -494,6 +494,25 @@ async function handleToolCallInVisibility(
     );
   }
 
+  // A loaded SQLite connection is not consent to use that project. In a root
+  // containing several graphs, startup opens them for cross-project discovery
+  // but leaves selection unset. Only the two project-navigation tools are safe
+  // before the caller deliberately chooses where the work belongs.
+  if (
+    !internal &&
+    name !== 'project_list' &&
+    name !== 'project_switch' &&
+    !contextManager.getCurrentProjectId()
+  ) {
+    const available = contextManager.listProjects();
+    const options = available.length
+      ? ` Available projects: [${available.join(', ')}].`
+      : '';
+    throw new Error(
+      `No active project.${options} Call project_switch({ project: "<id>" }) before using graph tools. That call creates the project when the id does not exist yet.`,
+    );
+  }
+
   if (name === 'graph_understand') {
     return handleUnderstandingTools(name, args, contextManager);
   }

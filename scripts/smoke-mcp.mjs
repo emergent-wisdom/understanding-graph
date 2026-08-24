@@ -8,7 +8,9 @@ import { pathToFileURL } from 'node:url';
 
 const cliPath = path.resolve(process.env.UG_CLI_PATH || 'bin/cli.js');
 const packageRoot = path.resolve(process.env.UG_PACKAGE_ROOT || process.cwd());
-const requireFromPackage = createRequire(path.join(packageRoot, 'package.json'));
+const requireFromPackage = createRequire(
+  path.join(packageRoot, 'package.json'),
+);
 const libraryPath = requireFromPackage.resolve(
   '@emergent-wisdom/understanding-graph-mcp-server',
 );
@@ -21,11 +23,12 @@ const { TOOL_MODE: _discardedToolMode, ...cleanEnvironment } = process.env;
 const temporaryDirectory = fs.mkdtempSync(
   path.join(os.tmpdir(), 'understanding-graph-mcp-smoke-'),
 );
+const projectDirectory = path.join(temporaryDirectory, 'projects');
 const child = spawn(process.execPath, [cliPath, 'mcp'], {
   cwd: process.cwd(),
   env: {
     ...cleanEnvironment,
-    PROJECT_DIR: path.join(temporaryDirectory, 'projects'),
+    PROJECT_DIR: projectDirectory,
   },
   stdio: ['pipe', 'pipe', 'pipe'],
 });
@@ -61,7 +64,9 @@ try {
 
   const response = await waitForResponse(1);
   if (response.result?.serverInfo?.name !== 'understanding-graph') {
-    throw new Error(`Unexpected MCP initialize response: ${JSON.stringify(response)}`);
+    throw new Error(
+      `Unexpected MCP initialize response: ${JSON.stringify(response)}`,
+    );
   }
 
   child.stdin.write(
@@ -82,8 +87,14 @@ try {
       `Default MCP catalog differs from general mode.\nExpected: ${JSON.stringify(expectedToolNames)}\nActual: ${JSON.stringify(actualToolNames)}`,
     );
   }
+  const projectEntries = fs.readdirSync(projectDirectory);
+  if (projectEntries.length !== 0) {
+    throw new Error(
+      `Fresh MCP startup created project data: ${JSON.stringify(projectEntries)}`,
+    );
+  }
   console.log(
-    `MCP initialize and general catalog smoke passed (${response.result.serverInfo.name} ${response.result.serverInfo.version}, ${actualToolNames.length} tools).`,
+    `MCP initialize, empty-store, and general catalog smoke passed (${response.result.serverInfo.name} ${response.result.serverInfo.version}, ${actualToolNames.length} tools).`,
   );
 } finally {
   clearTimeout(timeout);

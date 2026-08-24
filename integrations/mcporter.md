@@ -10,7 +10,7 @@ tools.
 npm install -g mcporter
 mcporter config add ug \
   --command npx \
-  --arg -y --arg understanding-graph@0.1.28 --arg mcp \
+  --arg -y --arg understanding-graph@0.1.29 --arg mcp \
   --scope home \
   --description "Understanding Graph: a persistent medium for agent understanding"
 ```
@@ -26,7 +26,7 @@ Most agents want a persistent project dir outside the cwd. Pass it via
 ```bash
 mcporter config add ug \
   --command npx \
-  --arg -y --arg understanding-graph@0.1.28 --arg mcp \
+  --arg -y --arg understanding-graph@0.1.29 --arg mcp \
   --env PROJECT_DIR=/Users/you/.ug/projects \
   --scope home
 ```
@@ -35,11 +35,10 @@ mcporter config add ug \
 
 ```bash
 mcporter list ug --schema     # inspect the current safe general catalog
-mcporter call ug.graph_skeleton
+mcporter call ug.project_list # verify the connection without creating data
 ```
 
-The second call should return a JSON blob with the graph's structural
-summary.
+On a fresh data directory, the second call should return an empty project list.
 
 ## Using from an OpenClaw agent
 
@@ -47,6 +46,8 @@ Any OpenClaw agent with the `mcporter` skill can now call any understanding
 graph tool:
 
 ```
+mcporter call ug.project_list
+mcporter call ug.project_switch project=auth-review goal="Review the auth flow"
 mcporter call ug.graph_skeleton
 mcporter call ug.graph_semantic_search query="auth flow"
 mcporter call ug.graph_batch operations='[...]' commit_message="Agent: ..."
@@ -62,7 +63,11 @@ Add a section to your agent's `AGENTS.md` or `SOUL.md`:
 This agent uses Understanding Graph (via mcporter `ug`) as the canonical
 medium for persistent, shared understanding and substantive artifact work.
 
-At the start of substantive work and at natural choice points, call:
+Before the first graph operation, call `mcporter call ug.project_list`. If no
+project is active, select an exact existing match or create a descriptive,
+task-scoped project with `mcporter call ug.project_switch project=<name>`.
+
+At the start of substantive work and at natural choice points after that, call:
 
 `mcporter call ug.graph_suggest_next task="<user task>" workflow="<reading|research|coding|collaborative_coding|writing|general>"`
 

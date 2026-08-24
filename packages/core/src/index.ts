@@ -6,6 +6,7 @@ export * as sqlite from './database/sqlite.js';
 export {
   // Commits - "Git for Cognition"
   type Commit,
+  clearCurrentProject,
   closeProjectDatabase,
   createCommit,
   // Cross-project

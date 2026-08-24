@@ -1,38 +1,40 @@
 # Understanding Graph + Claude Code
 
 Give every Claude Code session and agent team persistent, shared understanding.
-One command to connect, one command to bootstrap a project.
+One command to connect, one command to install the local graph workflow.
 
 ## Setup
 
 ### Fastest: zero-install via npx
 
 ```bash
-claude mcp add ug -- npx -y understanding-graph@0.1.28 mcp
+claude mcp add ug -- npx -y understanding-graph@0.1.29 mcp
 ```
 
 `npx -y` downloads, caches, and runs `understanding-graph` on first
 invocation. No global install, no clone, no build step. Claude's default MCP
 scope is local to the current project. Use `--scope user` only if you
-deliberately want the server available from every directory; project bootstrap
+deliberately want the server available from every directory; project setup
 below is recommended because it also installs the understanding protocol.
 
-### One-command project bootstrap
+### One-command project setup
 
 If you want the graph to live inside your project — so agent teams share it
 automatically — run the init flow inside the project directory:
 
 ```bash
 cd your-project
-npx -y understanding-graph@0.1.28 init
+npx -y understanding-graph@0.1.29 init
 ```
 
 This creates:
 
 - `.mcp.json` — Claude Code project MCP config (mergeable and shareable)
 - `CLAUDE.md` — instructions that every agent and teammate loads automatically
-- `projects/default/` — the SQLite-backed graph storage directory
-- Adds `projects/` to `.gitignore`
+- Adds `projects/` to `.gitignore`; no starter graph is installed
+
+When substantive work begins, the agent creates a descriptively named project
+through `project_switch`. Until then the project list is genuinely empty.
 
 The generated MCP config also limits `source_load.filePath` to this project
 root. Pass external text as `content`, or deliberately change
@@ -51,8 +53,8 @@ listed.
 ## Using with agent teams
 
 Understanding Graph is designed as a shared medium for Claude Code Agent Teams.
-After `npx -y understanding-graph@0.1.28 init`, every teammate shares the same
-graph automatically — stigmergy out of the box.
+After `npx -y understanding-graph@0.1.29 init`, the lead creates or selects a
+named graph. Every teammate working in that project root can then share it.
 
 ```
 You: "Create an agent team to research and implement auth for this app"
@@ -92,4 +94,4 @@ the generated projection directly.
 - **Cursor / Windsurf** — see [cursor.md](cursor.md)
 - **OpenClaw via mcporter** — see [mcporter.md](mcporter.md)
 - **Any MCP client** — Understanding Graph exposes a standard stdio server
-  (`npx -y understanding-graph@0.1.28 mcp`)
+  (`npx -y understanding-graph@0.1.29 mcp`)

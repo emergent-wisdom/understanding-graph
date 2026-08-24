@@ -14,7 +14,8 @@ export function SearchBar({
   const [isOpen, setIsOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { selectAndFlyToNode } = useAppStore()
+  const { selectAndFlyToNode, currentProject, projectReady } = useAppStore()
+  const projectSearchEnabled = projectReady && Boolean(currentProject)
 
   // Debounce the search query
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -23,7 +24,11 @@ export function SearchBar({
     return () => clearTimeout(timer)
   }, [query])
 
-  const { data: results, isLoading } = useSemanticSearch(debouncedQuery, 8)
+  const { data: results, isLoading } = useSemanticSearch(
+    debouncedQuery,
+    8,
+    projectSearchEnabled,
+  )
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
@@ -87,7 +92,7 @@ export function SearchBar({
     setSelectedIndex(0)
   }, [results])
 
-  const showDropdown = isOpen && query.length >= 2
+  const showDropdown = projectSearchEnabled && isOpen && query.length >= 2
 
   return (
     <div className={cn('relative', compact && 'min-w-0 flex-1')}>
