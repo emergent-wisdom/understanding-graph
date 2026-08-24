@@ -5,9 +5,17 @@ node_modules/
 build/
 packages/*/dist/
 packages/frontend/dist/
+/tmp/
+coverage/
+.vitest/
+.nyc_output/
+*.tgz
+*.zip
 
 # User data (projects contain graphs, documents, conversations)
 projects/
+case-studies/
+demo-projects/
 
 # Local settings
 .claude/
@@ -36,7 +44,11 @@ responses.jsonl
 
 # SQLite databases (if any stray ones)
 *.sqlite
+*.sqlite3
 *.db
+*.db-*
+*.sqlite-*
+*.sqlite3-*
 
 # Material (reference files, PDFs, etc.)
 material/

@@ -55,14 +55,16 @@ alternatives, relations, evidence, reasons, uncertainty, decisions, revisions,
 and artifact intent—not only conclusions. This is authored, user-visible
 testimony, never hidden token-level chain-of-thought.
 
-At the start and each real choice point, call
-`graph_suggest_next({ task, workflow, focusNodeIds? })`. The server computes
-state- and workflow-dependent pressure, down-weights recently suggested action
-kinds, samples a small set without replacement, and returns only those concrete
-routes with weights and reasons. The model gives higher weights stronger
-consideration, judges fit to the user task, then chooses, combines, modifies,
-rejects, or replaces them. After acting, preserve the resulting understanding
-with exact provenance and ask again only at the next real choice point.
+Models may work directly with `graph_understand`, `graph_batch`, and the other
+tools, or optionally call
+`graph_suggest_next({ task, workflow, focusNodeIds? })` when graph-specific
+pointers could deepen or diversify understanding, recover neglected material,
+test the current view, or expose a useful connection. The server computes state-
+and workflow-dependent pressure, down-weights recently suggested action kinds,
+samples a small set without replacement, and returns only those concrete routes
+with weights and reasons. The model judges task fit and may choose, combine,
+modify, reject, replace, or skip every route. Set `UG_GUIDANCE_MODE=direct` to
+suppress automatic next-move prompts while keeping the endpoint callable.
 
 There is no required cognitive state machine. The model may read, search, make,
 test, connect, disrupt, re-enter, revise, preserve, or pause in whatever order
@@ -139,7 +141,7 @@ reserved `thinking` block.
 
 | Tool | Purpose |
 |---|---|
-| `graph_suggest_next` | Sample state-dependent concrete provocations for the model to judge |
+| `graph_suggest_next` | Optional aid that samples state-dependent concrete provocations for the model to judge |
 | `graph_understand` | Build a deterministic task-conditioned re-entry packet |
 | `graph_batch` | Apply a committed, atomic set of graph mutations |
 | `graph_skeleton` / `graph_context` | Inspect graph structure and local state |

@@ -4,10 +4,11 @@ import {
 } from '@emergent-wisdom/understanding-graph-core';
 import {
   ContextManager,
+  type GuidanceMode,
+  getServerInstructions,
   getToolDefinitions,
   handleToolCall,
   PROJECT_SELECTION_INSTRUCTIONS,
-  SERVER_INSTRUCTIONS,
   SerialTaskQueue,
   UNDERSTANDING_PROTOCOL_ID,
 } from '@emergent-wisdom/understanding-graph-mcp-server';
@@ -33,18 +34,21 @@ const CLOUD_CATALOG_MODES = [
 ] as const;
 const CLOUD_DISPATCH_MODE = 'full' as const;
 
-const CLOUD_INSTRUCTIONS = [
-  'CLOUD GRAPH SCOPE: This connection is already bound to one authorized graph. Do not list, select, create, or switch projects. Use the advertised tools only.',
-  '',
-  ...SERVER_INSTRUCTIONS.replace(PROJECT_SELECTION_INSTRUCTIONS, '')
-    .split('\n')
-    .filter(
-      (line) =>
-        !line.includes('project_list') &&
-        !line.includes('project_switch') &&
-        !line.includes('solver_claim_task'),
-    ),
-].join('\n');
+function cloudInstructions(guidanceMode: GuidanceMode): string {
+  return [
+    'CLOUD GRAPH SCOPE: This connection is already bound to one authorized graph. Do not list, select, create, or switch projects. Use the advertised tools only.',
+    '',
+    ...getServerInstructions(guidanceMode)
+      .replace(PROJECT_SELECTION_INSTRUCTIONS, '')
+      .split('\n')
+      .filter(
+        (line) =>
+          !line.includes('project_list') &&
+          !line.includes('project_switch') &&
+          !line.includes('solver_claim_task'),
+      ),
+  ].join('\n');
+}
 
 // Cloud exposure is an explicit capability list, not the complement of a small
 // denylist. New local/admin/solver tools must be reviewed before they can reach
@@ -203,6 +207,7 @@ function redactCloudResult(name: string, result: unknown): unknown {
 
 export interface McpGatewayOptions {
   projectDir: string;
+  guidanceMode?: GuidanceMode;
 }
 
 /**
@@ -212,7 +217,10 @@ export interface McpGatewayOptions {
  * caller that mounts/proxies this router. Every call is rebound to the
  * authorized req.projectId inside one process-wide queue before dispatch.
  */
-export function createMcpGatewayRouter({ projectDir }: McpGatewayOptions) {
+export function createMcpGatewayRouter({
+  projectDir,
+  guidanceMode = 'guided',
+}: McpGatewayOptions) {
   const router = Router();
   const queue = new SerialTaskQueue();
   const contextManager = new ContextManager();
@@ -224,7 +232,7 @@ export function createMcpGatewayRouter({ projectDir }: McpGatewayOptions) {
   router.get('/tools', (_req, res) => {
     res.json({
       protocol: UNDERSTANDING_PROTOCOL_ID,
-      instructions: CLOUD_INSTRUCTIONS,
+      instructions: cloudInstructions(guidanceMode),
       tools,
     });
   });
@@ -292,6 +300,8 @@ export function createMcpGatewayRouter({ projectDir }: McpGatewayOptions) {
           rawArgs,
           contextManager,
           CLOUD_DISPATCH_MODE,
+          false,
+          guidanceMode,
         );
         return res.json(toMcpResult(redactCloudResult(name, result)));
       } catch (error) {

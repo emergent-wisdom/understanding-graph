@@ -113,6 +113,8 @@ describe('graph_batch thinking authorization', () => {
     )) as Record<string, unknown>;
 
     expect(synthesized.success).toBe(true);
+    expect(synthesized.navigation).not.toHaveProperty('suggestedCall');
+    expect(synthesized.navigation).not.toHaveProperty('guidance');
     const graph = withReservedThinkingVisibility(true, () =>
       getGraphStore().getAll(),
     );

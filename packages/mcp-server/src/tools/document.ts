@@ -14,6 +14,7 @@ import {
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
 import type { ContextManager } from '../context-manager.js';
+import type { GuidanceMode } from '../guidance.js';
 import { handleBatchTools } from './batch.js';
 import { ATOMIC_DOCUMENT_REWIRE } from './document-rewire-capability.js';
 import type { ToolMode } from './index.js';
@@ -528,7 +529,7 @@ export const documentTools: Tool[] = [
   {
     name: 'doc_read',
     description:
-      'Read document content starting from any node. Pass a document root to read the whole document, or an exact passage/function/test node to inspect that unit. Returns content, structure, and compact open attention. Add showRevisions: true for edit history and showProvenance: true for the recorded purpose, origin commit, and typed rationale relations that answer why this unit exists or changed.',
+      'Read exact document content starting from any node. Pass a document root to read the whole document, or an exact passage/function/test node to inspect that unit. A root read without pagination is unbounded and intended only for small documents. For a bounded end-to-end reread, pass offset and limit, then continue with pagination.nextOffset until hasMore is false. Returns content, structure, and compact open attention. Add showRevisions: true for edit history and showProvenance: true for the recorded purpose, origin commit, and typed rationale relations that answer why this unit exists or changed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -546,6 +547,19 @@ export const documentTools: Tool[] = [
           type: 'boolean',
           description:
             "If true, include each unit's recorded purpose, origin commit, and all non-structural incoming/outgoing relations with their exact why. These are authored provenance claims, not verified causes.",
+        },
+        offset: {
+          type: 'integer',
+          minimum: 0,
+          description:
+            'Zero-based document-unit offset in depth-first reading order. Supplying offset or limit enables bounded pagination.',
+        },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 50,
+          description:
+            'Maximum exact document units to return. Supplying offset or limit enables bounded pagination; default 10 in paginated mode.',
         },
         project: {
           type: 'string',
@@ -1244,6 +1258,7 @@ export async function handleDocumentTools(
   args: Record<string, unknown>,
   contextManager: ContextManager,
   mode: ToolMode = 'full',
+  guidanceMode: GuidanceMode = 'guided',
 ): Promise<unknown> {
   const projectId =
     (args.project as string) || contextManager.getCurrentProjectId();
@@ -1676,19 +1691,52 @@ export async function handleDocumentTools(
         };
       }
 
-      // Get flattened tree starting from this node
-      const flattened = store.flattenDocument(nodeId);
+      // Get the exact reading order, then optionally take a bounded page. The
+      // unpaginated behavior remains available for compatibility and for small
+      // local units; agents rereading a root should page to avoid an unbounded
+      // context dump.
+      const completeDocument = store.flattenDocument(nodeId);
+      const paginationRequested =
+        args.offset !== undefined || args.limit !== undefined;
+      const offset = paginationRequested ? Number(args.offset ?? 0) : 0;
+      const limit = paginationRequested
+        ? Number(args.limit ?? 10)
+        : completeDocument.length;
+      if (!Number.isInteger(offset) || offset < 0) {
+        return {
+          success: false,
+          error: 'INVALID_DOCUMENT_OFFSET',
+          message: 'doc_read offset must be a non-negative integer.',
+        };
+      }
+      if (
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        (paginationRequested && limit > 50)
+      ) {
+        return {
+          success: false,
+          error: 'INVALID_DOCUMENT_LIMIT',
+          message: 'doc_read limit must be an integer from 1 to 50.',
+        };
+      }
+      const flattened = paginationRequested
+        ? completeDocument.slice(offset, offset + limit)
+        : completeDocument;
 
       // Get all edges to show relationships
       const { nodes, edges } = store.getAll();
-      const nodeIds = new Set(flattened.map((f) => f.node.id));
+      const completeNodeIds = new Set(
+        completeDocument.map((entry) => entry.node.id),
+      );
+      const nodeIds = new Set(flattened.map((entry) => entry.node.id));
       const nodeById = new Map(nodes.map((node) => [node.id, node]));
 
       // Find contains and next edges within this document
       const docEdges = edges.filter(
         (e) =>
-          nodeIds.has(e.fromId) &&
-          nodeIds.has(e.toId) &&
+          completeNodeIds.has(e.fromId) &&
+          completeNodeIds.has(e.toId) &&
           (e.type === 'contains' || e.type === 'next'),
       );
 
@@ -1718,6 +1766,15 @@ export async function handleDocumentTools(
 
       const showRevisions = args.showRevisions as boolean;
       const showProvenance = args.showProvenance as boolean;
+      const hasMore = offset + flattened.length < completeDocument.length;
+      const pagination = {
+        offset,
+        limit,
+        returned: flattened.length,
+        total: completeDocument.length,
+        hasMore,
+        nextOffset: hasMore ? offset + flattened.length : null,
+      };
 
       // Build annotated content with node boundaries and relationships
       interface SectionInfo {
@@ -1902,6 +1959,8 @@ export async function handleDocumentTools(
         isDocRoot: startNode.isDocRoot || false,
         fileType: startNode.fileType || 'md',
         nodeCount: flattened.length,
+        totalNodeCount: completeDocument.length,
+        pagination,
         structure: sections,
         content: annotatedContent,
         edgeTypes: {
@@ -1925,8 +1984,11 @@ export async function handleDocumentTools(
           : {}),
         openAttention: getOpenArtifactAttention(nodeIds),
         granularityReviews: getProseGranularityReviews(nodeIds, mode),
-        hint:
-          showRevisions || showProvenance
+        hint: paginationRequested
+          ? hasMore
+            ? `Showing exact units ${offset}-${offset + flattened.length - 1} of ${completeDocument.length}. Continue with doc_read({ nodeId: "${nodeId}", offset: ${pagination.nextOffset}, limit: ${limit} }).`
+            : `Showing the final ${flattened.length} exact unit(s); the bounded reread is complete.`
+          : showRevisions || showProvenance
             ? `Showing${showRevisions ? ' revision history' : ''}${showRevisions && showProvenance ? ' and' : ''}${showProvenance ? ' recorded provenance' : ''}. Missing provenance means unrecorded, not uncaused.`
             : 'Each section shows [node_id] v[version] and relationships. Revise through graph_batch with doc_revise({ nodeId, content, why }). Add showRevisions or showProvenance to inspect how and why the exact unit changed.',
       };
@@ -3330,6 +3392,7 @@ export async function handleDocumentTools(
         },
         contextManager,
         mode,
+        guidanceMode,
       )) as {
         success?: boolean;
         results?: Array<{ id?: string }>;
@@ -3567,6 +3630,7 @@ export async function handleDocumentTools(
         },
         contextManager,
         mode,
+        guidanceMode,
       )) as {
         success?: boolean;
         results?: Array<{ id?: string }>;

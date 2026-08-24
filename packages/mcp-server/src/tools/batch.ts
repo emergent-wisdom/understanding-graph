@@ -9,6 +9,7 @@ import {
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
 import type { ContextManager } from '../context-manager.js';
+import { ambientGuidanceEnabled, type GuidanceMode } from '../guidance.js';
 import { understandingMode } from '../protocol.js';
 import { handleToolCall, type ToolMode } from './index.js';
 
@@ -848,6 +849,7 @@ export async function handleBatchTools(
   args: Record<string, unknown>,
   contextManager: ContextManager,
   mode: ToolMode = 'full',
+  guidanceMode: GuidanceMode = 'guided',
 ): Promise<unknown> {
   if (name !== 'graph_batch') {
     throw new Error(`Unknown batch tool: ${name}`);
@@ -1136,6 +1138,7 @@ export async function handleBatchTools(
           contextManager,
           mode,
           true,
+          guidanceMode,
         );
 
         // Tool handlers may report validation/runtime failures as structured
@@ -1510,16 +1513,20 @@ export async function handleBatchTools(
               0,
               reentryNodes.length - reentryFocusNodeIds.length,
             ),
-            suggestedCall: {
-              tool: 'graph_suggest_next',
-              arguments: {
-                task: 'Continue the current task after this encounter. What changed, conflicts, connects, or becomes newly possible?',
-                workflow: reentryWorkflow,
-                focusNodeIds: reentryFocusNodeIds,
-              },
-            },
-            guidance:
-              'Roll several weighted routes, judge them against the user task, then choose, combine, modify, reject, or replace them. The endpoint proposes; the agent chooses.',
+            ...(ambientGuidanceEnabled(guidanceMode)
+              ? {
+                  suggestedCall: {
+                    tool: 'graph_suggest_next',
+                    arguments: {
+                      task: 'Continue the current task after this encounter. What changed, conflicts, connects, or becomes newly possible?',
+                      workflow: reentryWorkflow,
+                      focusNodeIds: reentryFocusNodeIds,
+                    },
+                  },
+                  guidance:
+                    'Optional guidance is available: roll several weighted routes, judge them against the user task, then choose, combine, modify, reject, replace, or skip them.',
+                }
+              : {}),
           }
         : undefined,
     understandingMode: commit

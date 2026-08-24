@@ -53,8 +53,8 @@ The integration owner must:
 1. Inspect the artifact roots or subtrees that bear on the requested change and
    check active locks. Read broader topology or history only when it affects
    partitioning; do not run a fixed orientation ritual.
-2. At the first consequential partition or design choice, ask for concrete
-   graph-sensitive possibilities:
+2. If guided navigation would help at a consequential partition or design
+   choice, ask for concrete graph-sensitive possibilities:
 
 ```javascript
 graph_suggest_next({
@@ -64,7 +64,8 @@ graph_suggest_next({
 ```
 
    Consider the weights, then choose, combine, modify, or reject the routes for
-   this task. If a selected route needs re-entry, call `graph_understand` with
+   this task. In direct mode, partition and coordinate through the graph without
+   this call. If a selected route needs re-entry, call `graph_understand` with
    its stance and focus. The roll is guidance, not a coordination state machine.
 3. Assign one owner per document root or disjoint subtree. Avoid two active
    writers on the same node or sibling-order chain.

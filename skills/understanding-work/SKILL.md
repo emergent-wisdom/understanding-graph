@@ -31,15 +31,49 @@ descriptive, task-scoped one with `project_switch`; an empty list means create
 one. If several existing projects are plausible, ask rather than guess. Never
 create a generic catch-all project.
 
-Then call `graph_suggest_next` with the concrete task and appropriate workflow:
-`reading`, `research`, `coding`, `collaborative_coding`, `writing`, or `general`.
-Inspect its weighted routes and choose freely. A route may call
+Choose the amount of navigation aid that suits the model and task:
+
+- **Direct:** call `graph_understand`, `graph_batch`, or another appropriate
+  graph tool immediately and choose for yourself when to deepen, connect,
+  test, revisit, disrupt, or pause.
+- **Guided:** call `graph_suggest_next` when graph-specific pointers could
+  deepen or diversify understanding, recover neglected material, test the
+  current view, or make a useful connection visible.
+
+The live server may provide guided prompts automatically or run in direct mode.
+Either way, `graph_suggest_next` remains optional and callable on demand. Its
+weighted routes are provocations, not quality guarantees or required phases;
+choose, combine, modify, reject, replace, or skip them. A route may call
 `graph_understand` to bring task-relevant graph material into view. Treat any
 returned material as provisional prior understanding, not authority. If the
 graph is empty, begin honestly without inventing a past.
 
 Do not privately complete the task and later deposit a polished rationale.
 Develop artifacts and understanding in the graph while they are alive.
+
+## Encounter supplied sources chronologically
+
+When the user supplies a book, paper, article, transcript, or other sequential
+text to understand, enter reader mode before inspecting the source itself.
+Select or create the task-scoped project, then stage a file or attachment with
+`source_load` without opening, shell-reading, searching, sampling, or
+summarizing it first. `source_load` returns metadata, not the source body.
+
+Encounter the text only through successive `source_read` results, normally in
+bounded 2,000-character passages, and preserve their order. Attend to the
+current passage before requesting the next one. When it produces communicable,
+material understanding that may help continuation, attach ordinary typed
+testimony to that exact content node with `graph_note`; its `learned_from`
+provenance is created automatically. A passage that produces no durable update
+needs no note. Continue from the persisted source cursor, never from an unread
+part of the source or generic recall.
+
+This is ordinary reading through the graph. It uses workflow `reading` in the
+normal `general` tool mode; it never activates `synthetic_reader` or creates the
+reserved `thinking` trigger. If an attachment lies outside `UG_SOURCE_ROOT`, a
+capable host may copy it byte-for-byte into the project root without inspecting
+it; otherwise ask the user to place it there. Do not weaken the source-root
+boundary.
 
 ## Preserve the understanding that exists
 
@@ -53,7 +87,7 @@ changes. This may include:
 - relations noticed between sources, artifacts, and prior understanding;
 - reasons a choice seems promising, risky, or premature;
 - evidence, tests, and encounters that strengthen or weaken a view;
-- predictions, decisions, evaluations, corrections, and consequences;
+- predictions, decisions, evaluations that record corrections, and consequences;
 - what an artifact unit is trying to do and how that intention changes;
 - a possible synthesis, including why it might fail;
 - what remains open for the next instance.
@@ -123,8 +157,8 @@ verified causality; a missing relation means unrecorded, not uncaused.
 
 ## Invite emergence without surrendering judgment
 
-Use this lightweight chooser loop at the start and whenever the current route
-reaches a real choice point:
+When optional guidance would help, use this lightweight chooser loop at a real
+choice point:
 
 1. Call `graph_suggest_next` with the live user task or local uncertainty. It
    rolls several weighted options. An option may contain a multi-step route and
@@ -137,8 +171,10 @@ reaches a real choice point:
    shape what happens. Preserve the communicable understanding produced, then
    ask again at the next real choice point.
 
-The endpoint proposes; the agent chooses. The chooser loop guides navigation
-without prescribing the internal sequence of understanding.
+The endpoint proposes; the agent chooses. Stop calling it whenever direct work
+is more natural. Turning off the aid removes no graph capability and does not
+excuse the agent from noticing when the work needs deeper, broader, resistant,
+or revisional attention.
 
 Workflow and stance are separate. `workflow` identifies the work domain and its
 native evidence. A rolled `stance`—`balanced`, `deepen`, `resist`, `connect`,

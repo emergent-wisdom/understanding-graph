@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SERVER_INSTRUCTIONS } from '../instructions.js';
+import { guidanceModeFromEnv } from '../guidance.js';
+import { getServerInstructions, SERVER_INSTRUCTIONS } from '../instructions.js';
 import {
   UNDERSTANDING_PROTOCOL_ID,
   UNDERSTANDING_PROTOCOL_LABEL,
@@ -26,6 +27,22 @@ const UNDERSTANDING_WORKFLOWS = [
   'writing',
   'general',
 ];
+
+function expectChronologicalReaderActivation(contract: string): void {
+  expect(contract).toContain('source_load');
+  expect(contract).toContain('source_read');
+  expect(contract).toContain('graph_note');
+  expect(contract).toMatch(
+    /(?:before|without)[^.]{0,160}(?:opening|reading|inspecting|sampling|summarizing)[^.]{0,160}(?:source|file)/i,
+  );
+  expect(contract).toMatch(
+    /(?:unread\s+(?:text|material|source|part)|read\s+ahead)/i,
+  );
+  expect(contract).toMatch(/workflow `reading`/i);
+  expect(contract).toMatch(/(?:ordinary|general) (?:mode|tool mode|reading)/i);
+  expect(contract).toContain('synthetic_reader');
+  expect(contract).toMatch(/reserved `thinking` trigger/i);
+}
 
 describe('runtime instruction and tool contracts', () => {
   it('uses one canonical fluid-understanding protocol', () => {
@@ -68,9 +85,33 @@ describe('runtime instruction and tool contracts', () => {
 
     const bootContract = SERVER_INSTRUCTIONS.trim().slice(0, 512);
     expect(bootContract).toContain('canonical persistent workspace');
-    expect(bootContract).toContain('graph_suggest_next');
+    expect(bootContract).toContain('Suggestion guidance is optional');
     expect(bootContract).toContain('graph_batch');
     expect(bootContract).toContain('Chat may report');
+  });
+
+  it('offers guided and direct use without removing graph capabilities', () => {
+    const guided = getServerInstructions('guided');
+    const direct = getServerInstructions('direct');
+    const synthetic = getServerInstructions('guided', false);
+
+    expect(guided).toContain('Guidance mode: guided');
+    expect(guided).toMatch(/deepen or\s+diversify\s+understanding/i);
+    expect(guided).toContain('no quality guarantee');
+    expect(direct).toContain('Guidance mode: direct');
+    expect(direct).toContain('No graph capability is lost');
+    expect(direct).toContain('graph_suggest_next');
+    expect(direct).not.toMatch(/At the start and each real choice point, call/);
+    expect(synthetic).toContain('Suggestion guidance is unavailable');
+    expect(synthetic).toContain('do not attempt to call `graph_suggest_next`');
+
+    expect(guidanceModeFromEnv({})).toBe('guided');
+    expect(guidanceModeFromEnv({ UG_GUIDANCE_MODE: ' DIRECT ' })).toBe(
+      'direct',
+    );
+    expect(() =>
+      guidanceModeFromEnv({ UG_GUIDANCE_MODE: 'sometimes' }),
+    ).toThrow(/Invalid UG_GUIDANCE_MODE/);
   });
 
   it('keeps the installable workflow skill aligned with the runtime protocol', () => {
@@ -93,6 +134,32 @@ describe('runtime instruction and tool contracts', () => {
     expect(skill).toContain('There is no mandatory loop or state machine');
     expect(skill).toContain('Maintain medium integrity');
     expect(skill).toContain('Workflow and stance are separate');
+  });
+
+  it('activates chronological reader mode before the source is inspected', () => {
+    const repo = path.resolve(import.meta.dirname, '../../../..');
+    const skill = fs.readFileSync(
+      path.join(repo, 'skills/understanding-work/SKILL.md'),
+      'utf8',
+    );
+
+    for (const contract of [SERVER_INSTRUCTIONS, skill]) {
+      expectChronologicalReaderActivation(contract);
+    }
+  });
+
+  it('teaches corrections as evaluation testimony rather than an invalid trigger', () => {
+    const note = conceptTools.find((tool) => tool.name === 'graph_note');
+    const trigger = note?.inputSchema.properties?.trigger as {
+      enum?: string[];
+    };
+
+    expect(trigger.enum).toContain('evaluation');
+    expect(trigger.enum).not.toContain('correction');
+    expect(note?.description).toContain('evaluations that record corrections');
+    expect(SERVER_INSTRUCTIONS).toContain(
+      'Record a\ncorrection as an `evaluation`',
+    );
   });
 
   it('only advertises graph_analyze include values supported by its schema', () => {
@@ -330,6 +397,10 @@ describe('runtime instruction and tool contracts', () => {
     );
     expect(create?.inputSchema.properties).toHaveProperty('purpose');
     expect(read?.inputSchema.properties).toHaveProperty('showProvenance');
+    expect(read?.inputSchema.properties).toHaveProperty('offset');
+    expect(read?.inputSchema.properties).toHaveProperty('limit');
+    expect(read?.description).toContain('without pagination is unbounded');
+    expect(read?.description).toContain('pagination.nextOffset');
     expect(read?.description).toContain('why this unit exists or changed');
     expect(revise?.description).toContain('independently revisable');
     expect(revise?.description).toContain(

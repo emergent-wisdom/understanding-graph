@@ -13,6 +13,7 @@ import {
   assessArtifactCognitionBalance,
 } from '../artifact-cognition-balance.js';
 import type { ContextManager } from '../context-manager.js';
+import type { GuidanceMode } from '../guidance.js';
 import {
   UNDERSTANDING_PROTOCOL_LABEL,
   UNDERSTANDING_STANCES,
@@ -85,7 +86,7 @@ const UNDERSTANDING_WORKFLOWS = [
   'writing',
   'general',
 ] as const;
-export const UNDERSTANDING_PROMPT_CONTRACT_VERSION = 'fluid-understanding-v10';
+export const UNDERSTANDING_PROMPT_CONTRACT_VERSION = 'fluid-understanding-v11';
 type UnderstandingWorkflow = (typeof UNDERSTANDING_WORKFLOWS)[number];
 type ResolvedWorkflow = Exclude<UnderstandingWorkflow, 'auto'>;
 
@@ -310,7 +311,9 @@ export const understandingTools: Tool[] = [
     name: 'graph_understand',
     description: [
       'CONTEXTUAL RE-ENTRY TOOL. Usually enter Understanding mode through',
-      'graph_suggest_next; call this when a selected route or fresh encounter',
+      'this tool directly. In ordinary modes, a separately advertised graph_suggest_next',
+      'is an optional aid when a choice',
+      'point would benefit from concrete provocations. Call this when a route or fresh encounter',
       'could be changed by prior graph state. It composes a read-only,',
       'graph-conditioned prompt for the concrete task instead of leaving',
       'continuation only in transient chat or a final artifact.',
@@ -1129,6 +1132,7 @@ function buildPrompt(
   workflow: ResolvedWorkflow,
   stance: UnderstandingStance,
   syntheticReader: boolean,
+  guidanceMode: GuidanceMode,
 ) {
   return [
     syntheticReader
@@ -1223,9 +1227,17 @@ function buildPrompt(
           'Before completing this turn, compare what you intend to present with graph',
           'state. Commit any new artifact passage and any communicable interpretation,',
           'alternative, relation, or uncertainty that would otherwise exist only in chat.',
-          'At the next real choice point, graph_suggest_next can roll weighted routes.',
-          'Give higher weights stronger consideration, judge task fit, and freely choose,',
-          'combine, modify, reject, or replace them. The endpoint proposes; you choose.',
+          ...(guidanceMode === 'guided'
+            ? [
+                'Direct graph work is always valid. At a real choice point, graph_suggest_next',
+                'can optionally roll weighted routes; simply skip it when the aid is not useful.',
+                'Give higher weights stronger consideration, judge task fit, and freely choose,',
+                'combine, modify, reject, or replace them. The endpoint proposes; you choose.',
+              ]
+            : [
+                'Choose the next graph move yourself; no graph capability depends on suggestion guidance.',
+                'Deepen, diversify, connect, test, revisit, disrupt, or pause only when the work warrants it.',
+              ]),
         ]),
   ].join('\n');
 }
@@ -1234,6 +1246,7 @@ export async function handleUnderstandingTools(
   name: string,
   args: Record<string, unknown>,
   contextManager: ContextManager,
+  guidanceMode: GuidanceMode = 'guided',
 ): Promise<unknown> {
   if (name !== 'graph_understand') {
     throw new Error(`Unknown understanding tool: ${name}`);
@@ -1971,6 +1984,7 @@ export async function handleUnderstandingTools(
       workflow.resolved,
       stance,
       syntheticReader,
+      guidanceMode,
     ),
   };
 }

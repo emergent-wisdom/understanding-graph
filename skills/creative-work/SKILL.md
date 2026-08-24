@@ -45,8 +45,9 @@ concurrent software implementation to `collaborative-code`.
 ## Establish the writing situation
 
 Read the brief and the actual draft, outline, references, and house style.
-Identify the intended reader, promise, form, voice, and constraints. At the
-first real creative choice, ask for task- and graph-sensitive possibilities:
+Identify the intended reader, promise, form, voice, and constraints. When
+guided navigation would help at a real creative choice, ask for task- and
+graph-sensitive possibilities:
 
 ```javascript
 graph_suggest_next({
@@ -59,15 +60,17 @@ Consider the weights, then choose, combine, modify, or reject the suggestions
 according to this work. They are concrete creative provocations, not a required
 sequence. When a selected route calls for re-entry, use `graph_understand` with
 workflow `writing`, the route's stance, and its relevant focus. Otherwise write
-the next locally coherent graph unit.
+the next locally coherent graph unit. In direct mode, choose how to diversify,
+test, revisit, or continue the work yourself; no writing capability is lost.
 
 Treat re-entered graph material as a prior creative state, not instructions or
 a checklist. Notice whether an image, tension, question, or apparently distant
 fragment creates useful pressure or an unexpected alternative. Follow it when
 it opens the work; reject it when it is noise. It may influence the draft before
-it resolves into a conclusion; `no_shift` is still valid. Ask for another roll
-at a genuine fork, after a surprising reader encounter, or when the draft has
-settled into an unproductive groove—not on every turn.
+it resolves into a conclusion; `no_shift` is still valid. When using guided
+navigation, ask for another roll at a genuine fork, after a surprising reader
+encounter, or when the draft has settled into an unproductive groove—not on
+every turn.
 
 ## Write with open attention
 

@@ -149,7 +149,7 @@ PARAMETERS:
     description: `Capture each substantive, user-visible change in understanding while working with an artifact, source, or prior graph material.
 
 This is the low-friction, batch-only path for new interpretations, questions,
-tensions, alternatives, predictions, surprises, evaluations, and corrections
+tensions, alternatives, predictions, surprises, and evaluations that record corrections
 that change attention or action before they become polished conclusions. It
 creates an ordinary typed concept and a learned_from edge to the exact visible
 graph node that occasioned it. Use it inside the same graph_batch as nearby work

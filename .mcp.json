@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "understanding-graph@0.1.29",
+        "understanding-graph@0.1.30",
         "mcp"
       ],
       "env": {

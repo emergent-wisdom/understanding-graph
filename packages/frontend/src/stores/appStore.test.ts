@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { projectForHydration, reconcileHydratedProject } from './appStore'
+import {
+  projectForHydration,
+  reconcileHydratedProject,
+  soleProjectToAutoSelect,
+} from './appStore'
 
 function response(ok: boolean, body: unknown = {}) {
   return { ok, json: async () => body }
@@ -73,5 +77,27 @@ describe('projectForHydration', () => {
   it('keeps persisted state when the URL does not name a project', () => {
     const persisted = { id: 'metamorphosis', name: 'metamorphosis' }
     expect(projectForHydration(persisted, '?node=n_example')).toBe(persisted)
+  })
+})
+
+describe('soleProjectToAutoSelect', () => {
+  const first = { id: 'first', name: 'First project' }
+  const second = { id: 'second', name: 'Second project' }
+
+  it('selects the sole project discovered after empty startup', () => {
+    expect(soleProjectToAutoSelect(true, null, [first])).toBe(first)
+  })
+
+  it('waits until initial project reconciliation is complete', () => {
+    expect(soleProjectToAutoSelect(false, null, [first])).toBeNull()
+  })
+
+  it('does not replace a selected project', () => {
+    expect(soleProjectToAutoSelect(true, second, [first])).toBeNull()
+  })
+
+  it('does not guess when there are zero or multiple projects', () => {
+    expect(soleProjectToAutoSelect(true, null, [])).toBeNull()
+    expect(soleProjectToAutoSelect(true, null, [first, second])).toBeNull()
   })
 })

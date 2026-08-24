@@ -279,6 +279,47 @@ describe('graph_batch provenance footprint', () => {
     });
   });
 
+  it('returns re-entry focus without ambient next-move aid in direct mode', async () => {
+    const result = (await handleToolCall(
+      'graph_batch',
+      {
+        workflow: 'general',
+        agent_name: 'direct-mode-test',
+        commit_message: 'Create a directly navigable graph artifact',
+        operations: [
+          {
+            tool: 'doc_create',
+            params: {
+              title: 'Direct artifact',
+              content: 'The agent chose this operation without a chooser.',
+              isDocRoot: true,
+              level: 'document',
+            },
+          },
+        ],
+      },
+      contextManager,
+      'full',
+      false,
+      'direct',
+    )) as {
+      success: boolean;
+      navigation?: Record<string, unknown>;
+      understandingMode?: Record<string, unknown>;
+    };
+
+    expect(result.success).toBe(true);
+    expect(result.navigation?.focusNodeIds).toEqual([
+      expect.stringMatching(/^n_/),
+    ]);
+    expect(result.navigation).not.toHaveProperty('suggestedCall');
+    expect(result.navigation).not.toHaveProperty('guidance');
+    expect(result.understandingMode).toMatchObject({
+      mode: 'understanding',
+      moment: 'committed',
+    });
+  });
+
   it('rejects an unknown re-entry workflow before changing the graph', async () => {
     const result = (await handleToolCall(
       'graph_batch',

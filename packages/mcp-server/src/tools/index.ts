@@ -4,6 +4,7 @@ import {
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
+import type { GuidanceMode } from '../guidance.js';
 // Import tool handlers
 import { batchTools, handleBatchTools } from './batch.js';
 import { conceptTools, handleConceptTools } from './concept.js';
@@ -373,13 +374,21 @@ export async function handleToolCall(
   contextManager: ContextManager,
   mode: ToolMode = 'general',
   internal = false,
+  guidanceMode: GuidanceMode = 'guided',
 ): Promise<unknown> {
   const startedAt = Date.now();
   try {
     const result = await withReservedThinkingVisibility(
       mode === 'synthetic_reader',
       () =>
-        handleToolCallInVisibility(name, args, contextManager, mode, internal),
+        handleToolCallInVisibility(
+          name,
+          args,
+          contextManager,
+          mode,
+          internal,
+          guidanceMode,
+        ),
     );
     recordToolCall(name, internal, startedAt, refusalIn(result));
     return result;
@@ -482,8 +491,11 @@ async function handleToolCallInVisibility(
   contextManager: ContextManager,
   mode: ToolMode,
   internal: boolean,
+  guidanceMode: GuidanceMode,
 ): Promise<unknown> {
   assertSyntheticThinkingAccess(name, args, mode);
+  const effectiveGuidanceMode: GuidanceMode =
+    mode === 'synthetic_reader' ? 'direct' : guidanceMode;
 
   if (
     !internal &&
@@ -514,7 +526,12 @@ async function handleToolCallInVisibility(
   }
 
   if (name === 'graph_understand') {
-    return handleUnderstandingTools(name, args, contextManager);
+    return handleUnderstandingTools(
+      name,
+      args,
+      contextManager,
+      effectiveGuidanceMode,
+    );
   }
 
   // Keep internal graph_batch dispatch in exact parity with conceptTools.
@@ -587,12 +604,24 @@ async function handleToolCallInVisibility(
 
   // Document tools (including translate_thinking macro)
   if (name.startsWith('doc_') || name === 'translate_thinking') {
-    return handleDocumentTools(name, args, contextManager, mode);
+    return handleDocumentTools(
+      name,
+      args,
+      contextManager,
+      mode,
+      effectiveGuidanceMode,
+    );
   }
 
   // Batch tools
   if (name === 'graph_batch') {
-    return handleBatchTools(name, args, contextManager, mode);
+    return handleBatchTools(
+      name,
+      args,
+      contextManager,
+      mode,
+      effectiveGuidanceMode,
+    );
   }
 
   // Thematic system tools
@@ -614,7 +643,13 @@ async function handleToolCallInVisibility(
 
   // Source tools (chronological reading)
   if (name.startsWith('source_')) {
-    return handleSourceTools(name, args, contextManager, mode);
+    return handleSourceTools(
+      name,
+      args,
+      contextManager,
+      mode,
+      effectiveGuidanceMode,
+    );
   }
 
   throw new Error(`Unknown tool: ${name}`);

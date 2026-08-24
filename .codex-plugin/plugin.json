@@ -1,6 +1,6 @@
 {
   "name": "understanding-graph",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "description": "Develop persistent, fluid understanding through a local graph.",
   "author": {
     "name": "Henrik Westerberg"
@@ -32,6 +32,7 @@
     "websiteURL": "https://github.com/emergent-wisdom/understanding-graph",
     "defaultPrompt": [
       "Help me investigate this question through the graph",
+      "Read this source chronologically through the graph",
       "Develop this draft through repeated graph re-entry",
       "Build this software in graph-native units"
     ]

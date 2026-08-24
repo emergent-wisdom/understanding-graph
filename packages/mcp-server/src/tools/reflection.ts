@@ -759,7 +759,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_suggest_next',
     description:
-      'PRIMARY UNDERSTANDING-MODE ENTRY. Call at the start of a substantive graph-backed task and at natural choice points. It rolls several graph-state-, task-, and workflow-weighted concrete possibilities. Every option carries an epistemic stance—balanced, deepen, resist, connect, disrupt, revisit, or test—that can shape the next graph_understand packet independently of the work domain. Each may contain multiple steps and may deepen, search, connect, force a temporary bisociation, disrupt, make, test, preserve, or pause. Higher weights deserve stronger consideration, but the agent judges fit to the user task and may combine, modify, reject, or replace every suggestion. Medium integrity still applies: commit new artifact work and communicable understanding before presenting it as the completed result.',
+      'OPTIONAL UNDERSTANDING AID. Call when a substantive graph-backed task reaches a choice point where graph-specific pointers could deepen or diversify understanding, recover neglected material, test the current view, or make a useful connection newly visible. Direct use of graph_understand, graph_batch, and other graph tools is equally valid and loses no capability. This endpoint rolls several graph-state-, task-, and workflow-weighted concrete possibilities. Every option carries an epistemic stance—balanced, deepen, resist, connect, disrupt, revisit, or test—that can shape the next graph_understand packet independently of the work domain. Each may contain multiple steps and may deepen, search, connect, force a temporary bisociation, disrupt, make, test, preserve, or pause. Higher weights deserve stronger consideration, but the agent judges fit to the user task and may combine, modify, reject, replace, or skip every suggestion. Suggestions do not guarantee better understanding, and calling this endpoint does not activate a persistent mode. Medium integrity still applies: commit new artifact work and communicable understanding before presenting it as the completed result.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -885,7 +885,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_practice',
     description:
-      "Report how this graph has been WORKED, as distinct from how it is shaped: whether it is re-entered or only written to, whether artifact units carry links to the understanding that shaped them, whether practices present early have since decayed, whether predictions were ever scored, and whether anything has been overturned. graph_analyze and graph_score answer whether a graph is well formed and cannot answer whether it is doing anything — a graph nobody re-enters scores exactly like one that changes someone's mind. Each figure arrives with what it is computed from and what it might indicate. Every one is a proxy for conduct, not a measure of quality, and there is deliberately no total, because a single score becomes a target.",
+      "Report how this graph has been WORKED, as distinct from how it is shaped: whether it is re-entered or only written to, whether artifact units carry links to the understanding that shaped them, whether practices present early have since decayed, whether existing predictions were later scored, and whether anything has been overturned. Absent node types are omitted rather than presented as missing work. graph_analyze and graph_score answer whether a graph is well formed and cannot answer whether it is doing anything — a graph nobody re-enters scores exactly like one that changes someone's mind. Each figure arrives with what it is computed from and what it might indicate. Every one is a proxy for conduct, not a measure of quality, and there is deliberately no total, because a single score becomes a target.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -2212,6 +2212,7 @@ export async function handleReflectionTools(
         id: node.id,
         title: node.title,
         trigger: node.trigger,
+        isDocRoot: Boolean(node.isDocRoot),
         excerpt: String(node.understanding || node.content || '')
           .replace(/\s+/g, ' ')
           .trim()
@@ -2300,19 +2301,19 @@ export async function handleReflectionTools(
         focusNodeIds,
         roll: {
           distribution:
-            'state- and workflow-weighted server-side sampling without replacement',
+            'state- and workflow-weighted server-side sampling without replacement within this roll',
           hiddenActionSpace: true,
           shuffleBag: {
             recentActionsDownWeighted: recentActions.slice(0, 3),
             purpose:
-              'Vary kinds of provocation without eliminating moves that have not recently paid off.',
+              'Vary kinds of provocation by temporarily down-weighting recently suggested action kinds; the server does not observe which option the model chose or whether it helped.',
           },
           interpretation:
-            'Weights summarize graph/task pressure among the sampled options. Higher weights deserve stronger consideration; task fit remains decisive.',
+            'Weights summarize graph/task pressure among the sampled options. They are not obligations, confidence scores, or coverage debts. Task fit remains decisive, and a low-weight pause or unlisted move may be correct.',
         },
         options,
         choice:
-          'Choose an option, combine or modify options, invent a better move, or reject all. Carry it out in the graph. Before completing the turn, commit new artifact work and communicable understanding; chat may mirror the committed result. Roll again at the next real choice point.',
+          'Choose an option, combine or modify options, invent a better move, reject all, or continue directly. Carry the chosen work out in the graph. Before completing the turn, commit new artifact work and communicable understanding; chat may mirror the committed result. Call this aid again only when another real choice point would benefit from it.',
       };
     }
 

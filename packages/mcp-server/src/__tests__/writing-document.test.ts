@@ -420,6 +420,124 @@ describe('writing document revisions', () => {
     expect(codeRoot).not.toHaveProperty('granularityReview');
   });
 
+  it('rereads a document in bounded exact pages without gaps or previews', async () => {
+    const root = await createRoot('ROOT CONTENT');
+    const firstContent = `${'a'.repeat(240)} FIRST_TAIL_SENTINEL`;
+    const secondContent = `${'b'.repeat(240)} SECOND_TAIL_SENTINEL`;
+    const thirdContent = `${'c'.repeat(240)} THIRD_TAIL_SENTINEL`;
+    const first = (await docCall(
+      'doc_create',
+      {
+        title: 'First passage',
+        content: firstContent,
+        level: 'paragraph',
+        parentId: root.id,
+      },
+      contextManager,
+    )) as { id: string };
+    const second = (await docCall(
+      'doc_create',
+      {
+        title: 'Second passage',
+        content: secondContent,
+        level: 'paragraph',
+        parentId: root.id,
+        afterId: first.id,
+      },
+      contextManager,
+    )) as { id: string };
+    const third = (await docCall(
+      'doc_create',
+      {
+        title: 'Third passage',
+        content: thirdContent,
+        level: 'paragraph',
+        parentId: root.id,
+        afterId: second.id,
+      },
+      contextManager,
+    )) as { id: string };
+
+    const firstPage = (await handleToolCall(
+      'doc_read',
+      { nodeId: root.id, offset: 1, limit: 2 },
+      contextManager,
+      'writing',
+    )) as {
+      success: boolean;
+      nodeCount: number;
+      totalNodeCount: number;
+      structure: Array<{ id: string }>;
+      content: string;
+      pagination: {
+        offset: number;
+        returned: number;
+        total: number;
+        hasMore: boolean;
+        nextOffset: number | null;
+      };
+      hint: string;
+    };
+
+    expect(firstPage.success).toBe(true);
+    expect(firstPage.nodeCount).toBe(2);
+    expect(firstPage.totalNodeCount).toBe(4);
+    expect(firstPage.structure.map((section) => section.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    expect(firstPage.content).toContain(firstContent);
+    expect(firstPage.content).toContain(secondContent);
+    expect(firstPage.content).not.toContain('THIRD_TAIL_SENTINEL');
+    expect(firstPage.pagination).toEqual({
+      offset: 1,
+      limit: 2,
+      returned: 2,
+      total: 4,
+      hasMore: true,
+      nextOffset: 3,
+    });
+    expect(firstPage.hint).toContain('offset: 3');
+
+    const finalPage = (await handleToolCall(
+      'doc_read',
+      {
+        nodeId: root.id,
+        offset: firstPage.pagination.nextOffset,
+        limit: 2,
+      },
+      contextManager,
+      'writing',
+    )) as {
+      structure: Array<{ id: string }>;
+      content: string;
+      pagination: { hasMore: boolean; nextOffset: number | null };
+    };
+
+    expect(finalPage.structure.map((section) => section.id)).toEqual([
+      third.id,
+    ]);
+    expect(finalPage.content).toContain(thirdContent);
+    expect(finalPage.content).not.toContain('FIRST_TAIL_SENTINEL');
+    expect(finalPage.pagination).toMatchObject({
+      hasMore: false,
+      nextOffset: null,
+    });
+
+    const invalid = (await handleToolCall(
+      'doc_read',
+      { nodeId: root.id, offset: 0, limit: 51 },
+      contextManager,
+      'writing',
+    )) as { success: boolean; error: string };
+    expect(invalid).toEqual(
+      expect.objectContaining({
+        success: false,
+        error: 'INVALID_DOCUMENT_LIMIT',
+      }),
+    );
+  });
+
   it('persists and renders the prior prose and summary', async () => {
     const root = await createRoot(
       'The city became a set of promises.',

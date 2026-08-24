@@ -17,7 +17,7 @@ import { getGraphStore } from './GraphStore.js';
  * So these diagnostics measure conduct rather than structure: whether the
  * graph is re-entered or only written to, whether artifacts carry the
  * understanding that produced them, whether practices adopted early survived, whether
- * predictions were ever scored, whether anything was ever overturned.
+ * existing predictions were later scored, whether anything was ever overturned.
  *
  * Three rules hold throughout.
  *
@@ -25,10 +25,12 @@ import { getGraphStore } from './GraphStore.js';
  * thinking was any good; they see whether the machinery was used as designed,
  * and those come apart.
  *
- * A diagnostic with no data reports that it has no data. It never reports
- * zero. Silence and absence look identical in a number, and treating an
- * unrecorded quantity as a measured zero is the specific failure that let a
- * graph of unconsidered prose report a clean bill.
+ * A conduct diagnostic with no observations reports that it has no data. It
+ * never reports zero. A diagnostic tied to an optional cognitive node type is
+ * omitted when that type does not exist, so absence does not become a prompt
+ * to manufacture it. Silence and absence look identical in a number, and
+ * treating an unrecorded quantity as a measured zero is the specific failure
+ * that let a graph of unconsidered prose report a clean bill.
  *
  * There is deliberately no total. A single score becomes a target, and the
  * contract already says structural scores are diagnostics and never targets.
@@ -357,7 +359,7 @@ export function assessPractice(): PracticeReport {
       reading:
         unbuilt.length === 0
           ? 'Every standing decision has something in the artifact answering to it.'
-          : 'These are usually the newest thinking, and the most likely candidates for what to build next. Some will be about the work rather than in it, and belong here unexpressed — a residue that is entirely `evaluation` is usually verdicts scoring predictions, which the artifact has no way to express and which you should not try to make it express. A `model` or `decision` sitting in this list is the one worth acting on: it means the artifact has not caught up with what you know.',
+          : 'This is a list to inspect, not a backlog. Some entries may be new commitments the artifact has not caught up with; others are judgments about the work rather than content that belongs in it. A residue made entirely of `evaluation` usually belongs here unexpressed, and should not be forced into the artifact. Act only when a specific `model` or `decision` genuinely changes what the artifact should do.',
     });
 
     worked.push({
@@ -412,25 +414,23 @@ export function assessPractice(): PracticeReport {
       'A practice that was present early and is absent now has decayed, and re-adopting it mid-project historically does not take. A practice absent from the start rarely arrives later.',
   });
 
-  // 7. Scored predictions. Staking a claim before looking is only worth
-  //    anything if the verdict is recorded afterwards, and an unscored
-  //    prediction is indistinguishable from one that was quietly abandoned.
+  // 7. Scored predictions. This diagnostic exists only when the work already
+  //    contains a prediction. Reporting that none were made turns a descriptive
+  //    node type into a missing-work prompt, even when prediction would make no
+  //    sense for the task.
   const predictions = nodes.filter((n) => n.trigger === 'prediction');
-  const scored = predictions.filter((p) =>
-    edges.some((e) => e.toId === p.id && VERDICT.has(e.type)),
-  );
-  worked.push({
-    key: 'scored_predictions',
-    value:
-      predictions.length === 0
-        ? 'no predictions made'
-        : `${scored.length} of ${predictions.length} predictions carry a verdict`,
-    basis: 'prediction nodes with an inbound validates or invalidates edge',
-    reading:
-      predictions.length === 0
-        ? 'Nothing has been staked before looking, so nothing can have been wrong in a way the graph records.'
-        : 'Unscored predictions accumulate as debt. A prediction whose verdict is never written cannot correct anything, and the graph keeps the confident half while losing the outcome.',
-  });
+  if (predictions.length > 0) {
+    const scored = predictions.filter((p) =>
+      edges.some((e) => e.toId === p.id && VERDICT.has(e.type)),
+    );
+    worked.push({
+      key: 'scored_predictions',
+      value: `${scored.length} of ${predictions.length} predictions carry a verdict`,
+      basis: 'prediction nodes with an inbound validates or invalidates edge',
+      reading:
+        'A prediction is worth revisiting after relevant evidence arrives. Until then it may honestly remain open; do not manufacture a verdict merely to complete the diagnostic.',
+    });
+  }
 
   // 8. Refusals. The most informative thing an agent does is the thing the
   //    tool refuses, and none of it was recorded until refusals stopped being

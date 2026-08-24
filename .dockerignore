@@ -3,6 +3,7 @@ node_modules
 **/node_modules
 projects
 case-studies
+demo-projects
 material
 paper/tmp
 .env

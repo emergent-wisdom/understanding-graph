@@ -171,6 +171,26 @@ describe('graph_understand contract', () => {
     expect(disrupted.prompt).toContain('must not become the only copy');
   });
 
+  it('leaves next-move judgment with the model in direct mode', async () => {
+    const result = (await handleToolCall(
+      'graph_understand',
+      {
+        query: 'Continue the work without ambient navigation',
+        workflow: 'general',
+      },
+      contextManager,
+      'full',
+      false,
+      'direct',
+    )) as { prompt: string };
+
+    expect(result.prompt).not.toContain('graph_suggest_next');
+    expect(result.prompt).toContain('Choose the next graph move yourself');
+    expect(result.prompt).toContain(
+      'no graph capability depends on suggestion guidance',
+    );
+  });
+
   it('surfaces artifact/cognition imbalance during repeated graph re-entry', async () => {
     const store = getGraphStore();
     const root = store.createDocumentNode({

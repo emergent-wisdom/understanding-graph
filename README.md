@@ -33,17 +33,26 @@ live:
 
 ```bash
 cd your-project
-npx -y understanding-graph@0.1.29 init
+npx -y understanding-graph@0.1.30 init
 ```
 
 It creates project-scoped MCP configuration for both Codex and Claude Code,
 installs the same fluid-understanding contract in `AGENTS.md` and
-`CLAUDE.md`, and adds the local `projects/` path to ignore rules without
-installing any starter graph. Open either client, sign in with your normal ChatGPT or
-Claude subscription, and ask for the actual research, writing, coding, or
-decision task. The agent creates a descriptively named graph when real work
-begins. You do not need to say “use the graph.” The model runs in the
-subscription client; Understanding Graph itself makes no model API calls.
+`CLAUDE.md`, installs a project-scoped `reading-mode` skill for both clients,
+and adds the local `projects/` path to ignore rules without installing any
+starter graph. Open either client, sign in with your normal ChatGPT or Claude
+subscription, and ask for the actual research, writing, coding, or decision
+task. The agent creates a descriptively named graph when real work begins. You
+do not need to say “use the graph.” The model runs in the subscription client;
+Understanding Graph itself makes no model API calls.
+
+For a fresh chronological reading, give the agent a file path and ask it to
+turn on reader mode. It stages the source without returning or sampling its
+body, then encounters only the next ordered passage through `source_read` and
+may attach ordinary, passage-grounded understanding before continuing. Codex
+also exposes `$reading-mode`; Claude Code exposes `/reading-mode`. Text pasted
+directly into chat has already been encountered, so use a file path when a
+genuinely fresh reading matters.
 
 [Codex is available through eligible ChatGPT plans](https://help.openai.com/en/articles/11369540-codex-and-chatgpt-plan-usage-limits), and [Claude Code can use Claude Pro or Max](https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan). Their normal plan limits still apply.
 
@@ -99,6 +108,8 @@ This creates:
 - `.codex/config.toml` -- Codex MCP configuration
 - `.mcp.json` -- Claude Code project MCP configuration
 - `AGENTS.md` and `CLAUDE.md` -- the same canonical understanding workflow
+- `.agents/skills/reading-mode/SKILL.md` -- explicit Codex reader workflow
+- `.claude/skills/reading-mode/SKILL.md` -- explicit Claude Code reader workflow
 - `.gitignore` entry for `projects/` -- keeps graph data local; no starter
   project is created
 
@@ -112,7 +123,7 @@ If a client cannot install plugins or run the initializer, connect the MCP
 server directly:
 
 ```bash
-claude mcp add ug -- npx -y understanding-graph@0.1.29 mcp
+claude mcp add ug -- npx -y understanding-graph@0.1.30 mcp
 ```
 
 MCP initialization still supplies a concise graph-use contract, but client
@@ -131,7 +142,7 @@ Per-client setup guides: [Claude Code](https://github.com/emergent-wisdom/unders
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.1.29", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.30", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects",
         "UG_SOURCE_ROOT": "/path/to/your/source-project"
@@ -153,7 +164,7 @@ Add to your MCP config:
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.1.29", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.30", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }
@@ -168,7 +179,7 @@ The root npm package includes the built frontend and depends on the web server,
 so the published package can launch the UI directly:
 
 ```bash
-PROJECT_DIR=/path/to/your/projects npx -y understanding-graph@0.1.29 start
+PROJECT_DIR=/path/to/your/projects npx -y understanding-graph@0.1.30 start
 # open http://localhost:3000
 ```
 
@@ -176,8 +187,8 @@ Run independent sidecars by giving each process its own port and project-store
 root. The roots may be sibling directories on the same volume:
 
 ```bash
-PORT=3101 PROJECT_DIR=/srv/undergraph/worker-1 npx -y understanding-graph@0.1.29 start
-PORT=3102 PROJECT_DIR=/srv/undergraph/worker-2 npx -y understanding-graph@0.1.29 start
+PORT=3101 PROJECT_DIR=/srv/undergraph/worker-1 npx -y understanding-graph@0.1.30 start
+PORT=3102 PROJECT_DIR=/srv/undergraph/worker-2 npx -y understanding-graph@0.1.30 start
 ```
 
 Use absolute paths in deployments. Sharing the installed package and its
@@ -192,7 +203,7 @@ closed without both:
 HOST=0.0.0.0 PORT=3101 \
 UG_WORKER_TOKEN=replace-with-a-long-random-secret \
 PROJECT_DIR=/srv/undergraph/worker-1 \
-npx -y understanding-graph@0.1.29 start
+npx -y understanding-graph@0.1.30 start
 ```
 
 The trusted caller must send `Authorization: Bearer <UG_WORKER_TOKEN>` on every
@@ -215,8 +226,8 @@ npm run start:web
 `graph_semantic_search`, `graph_similar`, `graph_semantic_gaps`, and `graph_backfill_embeddings` can use `@huggingface/transformers` (a local embedding model, roughly 160 MB once compiled). It is an *optional peer dependency* so the default install stays small. For an npx-based project, install both packages locally so Node can resolve the peer from the same dependency tree:
 
 ```bash
-npm install --save-dev understanding-graph@0.1.29 @huggingface/transformers@4.2.0
-npx understanding-graph@0.1.29 init
+npm install --save-dev understanding-graph@0.1.30 @huggingface/transformers@4.2.0
+npx understanding-graph@0.1.30 init
 ```
 
 A separate global `@huggingface/transformers` install does not reliably satisfy an
@@ -243,18 +254,21 @@ inspectable update log—each node's commit message becomes its *Origin Story*.
 
 ```
 1. project_switch({ project: "my-project" })
-2. graph_suggest_next({ task, workflow: "coding" })
-3. [judge the sampled concrete routes and their weights]
-4. [choose, combine, modify, reject, or invent a route]
-5. graph_batch({ commit_message, agent_name, ... }) # preserve artifact + understanding
-6. [use batch.navigation.suggestedCall at the next real choice point]
+2a. DIRECT: use graph_understand, graph_batch, or another graph tool immediately
+2b. GUIDED: graph_suggest_next({ task, workflow: "coding" })
+3. [if guided, judge, modify, reject, skip, or choose a sampled route]
+4. graph_batch({ commit_message, agent_name, ... }) # preserve artifact + understanding
 ```
 
-This chooser loop guides navigation; it does not prescribe the model's internal
-sequence. Suggestions are sampled server-side from graph- and workflow-weighted
-pressures, include concrete nodes or regions when possible, and temporarily
-down-weight recently suggested action kinds. The model remains responsible for
-task fit. It may always do something else or stop rather than manufacture work.
+The optional chooser is an aid for surfacing graph-specific pointers that may
+deepen or diversify understanding, recover neglected material, test the current
+view, or expose a useful connection. Suggestions are sampled server-side from
+graph- and workflow-weighted pressures, include concrete nodes or regions when
+possible, and temporarily down-weight recently suggested action kinds. The
+model remains responsible for task fit and may always work directly, do
+something else, or stop rather than manufacture work. Set `UG_GUIDANCE_MODE` to
+`direct` to remove ambient suggestion prompts; `graph_suggest_next` remains
+available on demand.
 
 ### Atomic commits
 
@@ -439,7 +453,7 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 
 ## Multi-Agent with Claude Code Agent Teams
 
-Understanding Graph is designed as a shared persistent medium for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams). After running `npx -y understanding-graph@0.1.29 init`, the lead creates or selects a named graph; every teammate working in that project root can then share it -- stigmergy without bundled data.
+Understanding Graph is designed as a shared persistent medium for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams). After running `npx -y understanding-graph@0.1.30 init`, the lead creates or selects a named graph; every teammate working in that project root can then share it -- stigmergy without bundled data.
 
 ### How it works
 
@@ -453,7 +467,7 @@ Claude (Team Lead):
   └── synthesizes findings from graph_history()               ┘
 ```
 
-1. **`init` installs the same fluid protocol for every teammate** -- Each agent treats the graph as the canonical medium, asks `graph_suggest_next` for concrete possibilities at natural choice points, and remains free to choose or reject them.
+1. **`init` installs the same fluid protocol for every teammate** -- Each agent treats the graph as the canonical medium and may work directly or ask `graph_suggest_next` for concrete possibilities at natural choice points.
 2. **Commit messages are the coordination layer** -- Each `graph_batch` requires a `commit_message`. When the Security teammate writes "Security Agent: found JWT stored in localStorage -- tension between convenience and XSS risk", the Backend teammate sees it via `graph_history()` and acts on it.
 3. **Triggers classify contributions** -- Teammates tag their nodes (`tension`, `question`, `decision`, `surprise`), making it easy to find what matters: "show me all unresolved tensions" or "what questions are still open?"
 4. **Persistent handoffs without mandatory direct messaging** -- Teammates can coordinate through the graph itself. The researcher leaves `question` nodes; the backend agent finds them via `graph_find_by_trigger` and creates `answers` edges.
@@ -462,7 +476,7 @@ Claude (Team Lead):
 
 ```bash
 cd your-project
-npx -y understanding-graph@0.1.29 init     # one-time setup
+npx -y understanding-graph@0.1.30 init     # one-time setup
 ```
 
 Then in Claude Code:
@@ -541,6 +555,7 @@ cd packages/frontend && npm run dev
 | `ANTHROPIC_API_KEY` | -- | For repository autonomous-worker scripts (optional) |
 | `ANTHROPIC_MODEL` | -- | Explicit model ID for the optional Anthropic autonomous worker |
 | `TOOL_MODE` | `general` | Enforced tool surface: safe cross-domain `general`; focused `reading`, `research`, `coding`, `collaborative_coding`, or `writing`; explicit broad `full`; or the reserved `synthetic_reader` pretraining producer |
+| `UG_GUIDANCE_MODE` | `guided` | Suggestion aid: `guided` adds optional next-move prompts; `direct` suppresses ambient prompts while keeping `graph_suggest_next` callable on demand |
 | `DEFAULT_PROJECT` | unset | Optional project to load or explicitly create on startup |
 
 ---
@@ -551,8 +566,9 @@ cd packages/frontend && npm run dev
    preserve the communicable understanding and addressable artifact units that
    matter to the work, not merely its final answer.
 2. **Keep agency with the model** — `graph_suggest_next` offers weighted,
-   concrete provocations. The model may choose, combine, modify, reject, or
-   replace them according to the user's task.
+   concrete provocations when the optional aid is useful. The model may work
+   directly or choose, combine, modify, reject, replace, or skip them according
+   to the user's task.
 3. **Re-enter when it can change the work** — Revisit the accumulated graph at
    genuine choice points, surprises, resistance, or uncertainty—not on a fixed
    timer and not as ceremony.
@@ -572,7 +588,7 @@ Understanding Graph gives your agents shared *episodic* memory — the recorded 
 
 ```bash
 # Add both to Claude Code
-claude mcp add ug   -- npx -y understanding-graph@0.1.29 mcp
+claude mcp add ug   -- npx -y understanding-graph@0.1.30 mcp
 claude mcp add sema -- uvx --from semahash sema mcp
 ```
 

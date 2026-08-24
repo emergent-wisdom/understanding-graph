@@ -70,8 +70,15 @@ async function loadAndReadFirstPassage(title: string) {
     },
     contextManager,
     'synthetic_reader',
-  )) as { contentNodeId: string; content: string };
+  )) as {
+    contentNodeId: string;
+    content: string;
+    hint: string;
+    navigation: Record<string, unknown>;
+  };
   expect(first.content).toBe(PUBLIC_A);
+  expect(first.hint).not.toContain('graph_suggest_next');
+  expect(first.navigation).not.toHaveProperty('suggestedCall');
 
   const appended = (await handleToolCall(
     'doc_append_thinking',

@@ -123,6 +123,43 @@ describe('weighted next-move suggestions', () => {
     );
     expect(forced?.steps[1].description).toContain('no connection is valid');
   });
+
+  it('offers practice as an optional mirror without manufacturing a missing node type', () => {
+    let practice: ReturnType<typeof rollNextMoves>[number] | undefined;
+
+    for (let seed = 1; seed <= 30 && !practice; seed += 1) {
+      let state = seed;
+      const random = () => {
+        state = (state * 48271) % 2147483647;
+        return state / 2147483647;
+      };
+      practice = rollNextMoves(
+        {
+          task: 'Continue understanding the text naturally',
+          workflow: 'reading',
+          focusNodeIds: [],
+          nodeCount: 20,
+          edgeCount: 25,
+          unresolvedCount: 1,
+          documentCount: 6,
+          count: 6,
+        },
+        random,
+      ).find((move) => move.action === 'check-practice');
+    }
+
+    expect(practice).toBeDefined();
+    expect(practice?.whyNow).not.toMatch(/predict|scor/i);
+    expect(practice?.whyNow).toContain('not a missing-work checklist');
+    expect(practice?.steps[0].call).toEqual({
+      tool: 'graph_practice',
+      arguments: {},
+    });
+    expect(practice?.steps[0].description).toContain(
+      'an absent node type is not work to manufacture',
+    );
+    expect(practice?.steps[1].description).toContain('otherwise ignore');
+  });
 });
 
 /**
@@ -146,6 +183,14 @@ describe('reading the artifact in order is reachable', () => {
     nodeCount: 11,
     edgeCount: 12,
     count: 12,
+    documentNodes: [
+      {
+        id: 'n_story_root',
+        title: 'The story',
+        trigger: 'foundation',
+        isDocRoot: true,
+      },
+    ],
   };
 
   function actions(input: Parameters<typeof rollNextMoves>[0]) {
@@ -188,5 +233,13 @@ describe('reading the artifact in order is reachable', () => {
         'read should outweigh a single-node reread when prose has outpaced ' +
         'live thinking.',
     ).toBe(true);
+    expect(whole?.subjects).toEqual([
+      expect.objectContaining({ id: 'n_story_root', isDocRoot: true }),
+    ]);
+    expect(whole?.steps[0].call).toEqual({
+      tool: 'doc_read',
+      arguments: { nodeId: 'n_story_root', offset: 0, limit: 8 },
+    });
+    expect(whole?.steps[1].description).toContain('pagination.nextOffset');
   });
 });

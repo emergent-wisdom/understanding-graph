@@ -10,7 +10,7 @@ tools.
 npm install -g mcporter
 mcporter config add ug \
   --command npx \
-  --arg -y --arg understanding-graph@0.1.29 --arg mcp \
+  --arg -y --arg understanding-graph@0.1.30 --arg mcp \
   --scope home \
   --description "Understanding Graph: a persistent medium for agent understanding"
 ```
@@ -26,7 +26,7 @@ Most agents want a persistent project dir outside the cwd. Pass it via
 ```bash
 mcporter config add ug \
   --command npx \
-  --arg -y --arg understanding-graph@0.1.29 --arg mcp \
+  --arg -y --arg understanding-graph@0.1.30 --arg mcp \
   --env PROJECT_DIR=/Users/you/.ug/projects \
   --scope home
 ```
@@ -67,14 +67,16 @@ Before the first graph operation, call `mcporter call ug.project_list`. If no
 project is active, select an exact existing match or create a descriptive,
 task-scoped project with `mcporter call ug.project_switch project=<name>`.
 
-At the start of substantive work and at natural choice points after that, call:
+When graph-specific navigation would help at a real choice point, you may call:
 
 `mcporter call ug.graph_suggest_next task="<user task>" workflow="<reading|research|coding|collaborative_coding|writing|general>"`
 
 Judge the returned weighted, concrete routes against the user task. Choose,
 combine, modify, reject, or replace them. Use `graph_understand` with the
 selected route's explicit stance when prior state may change the next move;
-there is no mandatory call sequence.
+there is no mandatory call sequence. If the aid is disabled or unnecessary,
+use the graph tools directly and choose for yourself when to deepen, diversify,
+connect, test, revisit, disrupt, or pause.
 
 For direct concept and document-tree mutation, use `graph_batch` with a
 descriptive `commit_message` that names the agent and explains intent. Preserve

@@ -1,5 +1,12 @@
 export { ContextManager } from './context-manager.js';
 export {
+  ambientGuidanceEnabled,
+  GUIDANCE_MODES,
+  type GuidanceMode,
+  guidanceModeFromEnv,
+} from './guidance.js';
+export {
+  getServerInstructions,
   PROJECT_SELECTION_INSTRUCTIONS,
   SERVER_INSTRUCTIONS,
 } from './instructions.js';

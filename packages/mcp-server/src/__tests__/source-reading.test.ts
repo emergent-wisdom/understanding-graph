@@ -113,6 +113,134 @@ describe('source file containment', () => {
 });
 
 describe('source reading bootstrap', () => {
+  it('keeps file-backed reading chronological while ordinary testimony accumulates between chunks', async () => {
+    const sourceRoot = path.join(tmpDir, 'source-root');
+    const sourcePath = path.join(sourceRoot, 'chronological.txt');
+    const futureSentinel = 'FUTURE_SENTINEL_7e12c9';
+    const firstPassage =
+      'The opening frames the locked room as protection rather than confinement.\n';
+    const secondPassage = `Only later does the witness call it a cage: ${futureSentinel}`;
+    const sourceText = firstPassage + secondPassage;
+    fs.mkdirSync(sourceRoot, { recursive: true });
+    fs.writeFileSync(sourcePath, sourceText);
+    process.env.UG_SOURCE_ROOT = sourceRoot;
+
+    const loaded = (await handleToolCall(
+      'source_load',
+      {
+        title: 'A Chronological File Reading',
+        filePath: 'chronological.txt',
+        sourceType: 'transcript',
+        workflow: 'reading',
+      },
+      contextManager,
+      'reading',
+    )) as Record<string, unknown>;
+
+    expect(loaded.success).toBe(true);
+    expect(loaded.loadedFrom).toBe('file');
+    expect(JSON.stringify(loaded)).not.toContain(futureSentinel);
+
+    const sourceId = loaded.sourceId as string;
+    const firstRead = (await handleToolCall(
+      'source_read',
+      {
+        sourceId,
+        chars: firstPassage.length,
+        commit_message: 'Encounter only the opening passage',
+      },
+      contextManager,
+      'reading',
+    )) as Record<string, unknown>;
+
+    expect(firstRead.success).toBe(true);
+    expect(firstRead.content).toBe(firstPassage);
+    expect(firstRead.position).toBe(firstPassage.length);
+    expect(firstRead.done).toBe(false);
+    expect(JSON.stringify(firstRead)).not.toContain(secondPassage);
+    expect(JSON.stringify(firstRead)).not.toContain(futureSentinel);
+
+    const noteBatch = (await handleToolCall(
+      'graph_batch',
+      {
+        commit_message:
+          'Preserve how the opening changes the live interpretation before reading onward',
+        agent_name: 'chronological_reader_test',
+        workflow: 'reading',
+        operations: [
+          {
+            tool: 'graph_note',
+            params: {
+              about: firstRead.contentNodeId,
+              title: "Protection may be the room's asserted purpose",
+              trigger: 'question',
+              testimony:
+                'The opening asks me to hold protection and confinement apart. I cannot yet tell whether that framing is sincere, imposed, or already unstable.',
+              why: 'The later source should be allowed to test this live ambiguity.',
+            },
+          },
+        ],
+      },
+      contextManager,
+      'reading',
+    )) as {
+      success?: boolean;
+      results?: Array<{ id?: string }>;
+    };
+
+    expect(noteBatch.success).toBe(true);
+    const noteId = noteBatch.results?.[0]?.id;
+    expect(noteId).toEqual(expect.stringMatching(/^n_/));
+
+    const afterNote = getGraphStore().getAll();
+    const testimony = afterNote.nodes.find((node) => node.id === noteId);
+    expect(testimony).toMatchObject({
+      trigger: 'question',
+      understanding:
+        'The opening asks me to hold protection and confinement apart. I cannot yet tell whether that framing is sincere, imposed, or already unstable.',
+    });
+    expect(
+      afterNote.edges.some(
+        (edge) =>
+          edge.type === 'learned_from' &&
+          edge.fromId === noteId &&
+          edge.toId === firstRead.contentNodeId,
+      ),
+    ).toBe(true);
+
+    const secondRead = (await handleToolCall(
+      'source_read',
+      {
+        sourceId,
+        chars: secondPassage.length,
+        commit_message: 'Encounter the next passage without skipping ahead',
+      },
+      contextManager,
+      'reading',
+    )) as Record<string, unknown>;
+
+    expect(secondRead.success).toBe(true);
+    expect(secondRead.content).toBe(secondPassage);
+    expect(secondRead.position).toBe(sourceText.length);
+    expect(secondRead.done).toBe(true);
+    expect(secondRead.content).toContain(futureSentinel);
+
+    const completed = getGraphStore().getAll();
+    expect(
+      completed.edges.some(
+        (edge) =>
+          edge.type === 'next' &&
+          edge.fromId === firstRead.contentNodeId &&
+          edge.toId === secondRead.contentNodeId,
+      ),
+    ).toBe(true);
+    expect(
+      completed.nodes.filter(
+        (node) => node.trigger === 'thinking' || node.fileType === 'thinking',
+      ),
+    ).toEqual([]);
+  });
+
   it('restores the staged cursor when graph persistence throws', async () => {
     const loaded = (await handleToolCall(
       'source_load',
@@ -188,7 +316,7 @@ describe('source reading bootstrap', () => {
     expect(read.hint).toContain(`learned_from`);
     expect(read.hint).toContain(read.contentNodeId as string);
     expect(read.hint).toContain('PRESERVE THE COMMUNICABLE UNDERSTANDING');
-    expect(read.hint).toContain('ROLL POSSIBLE MOVES');
+    expect(read.hint).toContain('OPTIONAL GUIDANCE AT A REAL CHOICE POINT');
     expect(read.navigation).toMatchObject({
       focusNodeIds: [read.contentNodeId],
       suggestedCall: {
@@ -256,6 +384,47 @@ describe('source reading bootstrap', () => {
     expect(exported.nodeCount).toBe(1);
     expect(exported.contentCount).toBe(1);
     expect(exported.thinkingCount).toBe(0);
+  });
+
+  it('keeps chronological reading usable without ambient suggestion aid', async () => {
+    const loaded = (await handleToolCall(
+      'source_load',
+      {
+        title: 'Direct Reading',
+        content: 'A bounded passage can be encountered without a chooser.',
+        sourceType: 'article',
+      },
+      contextManager,
+      'general',
+      false,
+      'direct',
+    )) as Record<string, unknown>;
+
+    const read = (await handleToolCall(
+      'source_read',
+      {
+        sourceId: loaded.sourceId,
+        commit_message: 'Read directly without ambient navigation aid',
+      },
+      contextManager,
+      'general',
+      false,
+      'direct',
+    )) as {
+      hint: string;
+      contentNodeId: string;
+      navigation: Record<string, unknown>;
+      understandingMode: Record<string, unknown>;
+    };
+
+    expect(read.hint).not.toContain('graph_suggest_next');
+    expect(read.navigation).toEqual({
+      focusNodeIds: [read.contentNodeId],
+    });
+    expect(read.understandingMode).toMatchObject({
+      mode: 'understanding',
+      moment: 'encountered',
+    });
   });
 
   it('preserves chronological chunks while grounding updates in typed passage evidence', async () => {

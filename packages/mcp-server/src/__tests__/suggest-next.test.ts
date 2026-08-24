@@ -66,7 +66,12 @@ describe('graph_suggest_next', () => {
     )) as {
       protocol: string;
       mediumIntegrity: { canonicalState: string; invariant: string };
-      roll: { hiddenActionSpace: boolean };
+      roll: {
+        hiddenActionSpace: boolean;
+        distribution: string;
+        shuffleBag: { purpose: string };
+        interpretation: string;
+      };
       options: Array<{
         action: string;
         stance: string;
@@ -83,6 +88,14 @@ describe('graph_suggest_next', () => {
     expect(result.mediumIntegrity.canonicalState).toBe('graph');
     expect(result.mediumIntegrity.invariant).toContain('only in chat');
     expect(result.roll.hiddenActionSpace).toBe(true);
+    expect(result.roll.distribution).toContain('within this roll');
+    expect(result.roll.shuffleBag.purpose).toContain('recently suggested');
+    expect(result.roll.shuffleBag.purpose).toContain(
+      'does not observe which option the model chose',
+    );
+    expect(result.roll.shuffleBag.purpose).not.toContain('paid off');
+    expect(result.roll.interpretation).toContain('not obligations');
+    expect(result.roll.interpretation).toContain('low-weight pause');
     expect(result.options[0]).toEqual(
       expect.objectContaining({
         action: 're-enter',

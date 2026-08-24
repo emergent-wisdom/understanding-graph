@@ -23,7 +23,6 @@ allowed-tools: |
   mcp__plugin_understanding-graph_ug__graph_history
   mcp__plugin_understanding-graph_ug__graph_score
   mcp__plugin_understanding-graph_ug__graph_thermostat
-  Read
 ---
 
 # Reading Mode — Chronological Metabolic Processing
@@ -34,13 +33,24 @@ reader to continue from it.
 
 ## Setup
 
-1. Load the source: `source_load({ title: "...", content: "..." })` or `source_load({ title: "...", filePath: "..." })`. File paths stay within `UG_SOURCE_ROOT` (the server working directory by default); pass `content` directly or deliberately configure that root for material elsewhere.
+1. Select or create the task-scoped graph project before inspecting the source.
+   For a file or attachment, pass its path directly to
+   `source_load({ title: "...", filePath: "..." })`: do not open, shell-read,
+   search, sample, or summarize it first. `source_load` stages the text and
+   returns metadata, not its body. File paths stay within `UG_SOURCE_ROOT` (the
+   server working directory by default). A capable host may copy an out-of-root
+   attachment byte-for-byte into that root without inspecting it; otherwise ask
+   the user to place it there. If the text was pasted directly into the prompt,
+   it has already been encountered; pass `content` to `source_load` but do not
+   claim a fresh reading.
 2. Check the current source position. The loaded source and its chronological
    position are authoritative.
-3. At the first real choice point, call
+3. If guided navigation would help at a real choice point, call
    `graph_suggest_next({ task: "Read this source chronologically", workflow: "reading" })`.
-   Choose, change, or reject its routes. When re-entry would help, condition the
-   reading task without asking the model to recall or summarize the unread work:
+   Choose, change, reject, or skip its routes. In direct mode, choose how to
+   deepen, connect, test, or continue the reading yourself. When re-entry would
+   help, condition the reading task without asking the model to recall or
+   summarize the unread work:
 
 ```javascript
 graph_understand({
@@ -85,6 +95,10 @@ that point.
 
 The source drives the sequence. Do not jump to a thematic section, ending, or
 canonical interpretation because it seems more efficient.
+
+The persisted source cursor is reader mode's continuation state. This ordinary
+workflow runs in the normal `general` tool mode (or the narrower startup
+allow-list `TOOL_MODE=reading`); it is not `TOOL_MODE=synthetic_reader`.
 
 ## Voice of understanding
 

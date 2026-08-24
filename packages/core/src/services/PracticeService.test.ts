@@ -46,6 +46,19 @@ function diagnostic(key: string) {
 }
 
 describe('an absence reports absent, never zero', () => {
+  it('does not turn an unused prediction type into missing work', () => {
+    const store = initializeGraph();
+    store.createNode({
+      title: 'The passage changes the governing distinction',
+      trigger: 'surprise',
+      why: 'Records a revision produced by reading.',
+      understanding:
+        'The later passage reframes exact identity as support for pluralism.',
+    });
+
+    expect(diagnostic('scored_predictions')).toBeUndefined();
+  });
+
   it('says the re-entry ratio is unrecorded rather than reporting no re-entry', () => {
     initializeGraph();
 
@@ -413,7 +426,7 @@ describe('the unexpressed list names what it is made of', () => {
     expect(value).toMatch(/\(2 evaluation, 1 model\)/);
   });
 
-  it('shows a pure-verdict residue as such, which is the signal to stop', () => {
+  it('shows a pure-evaluation residue as descriptive rather than artifact work', () => {
     const store = initializeGraph();
 
     // The artifact diagnostics are gated on the graph holding an artifact at
@@ -441,7 +454,10 @@ describe('the unexpressed list names what it is made of', () => {
     expect(value).not.toContain('model');
     // The reading has to tell the agent that this residue is not work.
     expect(diagnostic('understanding_ahead_of_artifact')?.reading).toContain(
-      'verdicts scoring predictions',
+      'judgments about the work',
+    );
+    expect(diagnostic('understanding_ahead_of_artifact')?.reading).toContain(
+      'should not be forced into the artifact',
     );
   });
 
