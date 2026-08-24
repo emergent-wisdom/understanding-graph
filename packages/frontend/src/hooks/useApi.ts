@@ -5,9 +5,15 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
+import { useAppStore } from '@/stores/appStore'
 import type { Conversation, Document, GraphData, Project } from '@/types/graph'
 
 const API_BASE = '/api'
+
+type LoadedProject = Project & {
+  loaded?: boolean
+  meta?: { name?: string; goal?: string }
+}
 
 // Polling intervals for the "live dev tool" use-case. When the frontend is
 // deployed as a read-only snapshot (e.g. the public emergentwisdom.org
@@ -42,14 +48,36 @@ function snakeToCamel(obj: any): any {
 }
 
 // Fetch helpers
+export function projectRequestHeaders(
+  projectId: string | null | undefined,
+): Record<string, string> {
+  return projectId ? { 'X-Project-Id': projectId } : {}
+}
+
+export function scopedQueryKey(
+  base: readonly unknown[],
+  projectId: string | null | undefined,
+  ...parts: readonly unknown[]
+): readonly unknown[] {
+  return [...base, projectId || null, ...parts]
+}
+
+function activeProjectHeaders(): Record<string, string> {
+  return projectRequestHeaders(useAppStore.getState().currentProject?.id)
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${url}`)
+  const res = await fetch(`${API_BASE}${url}`, {
+    headers: activeProjectHeaders(),
+  })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   return res.json()
 }
 
 async function fetchJsonCamel<T>(url: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${url}`)
+  const res = await fetch(`${API_BASE}${url}`, {
+    headers: activeProjectHeaders(),
+  })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
   const data = await res.json()
   return snakeToCamel(data) as T
@@ -58,7 +86,10 @@ async function fetchJsonCamel<T>(url: string): Promise<T> {
 async function postJson<T>(url: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${url}`, {
     method: 'POST',
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: {
+      ...activeProjectHeaders(),
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) throw new Error(`API error: ${res.status}`)
@@ -124,10 +155,16 @@ export function useLoadProject() {
 
   return useMutation({
     mutationFn: (projectId: string) =>
-      postJson<{ meta: { name: string; goal?: string } }>(
-        `/projects/${projectId}/load`,
-      ),
-    onSuccess: () => {
+      postJson<LoadedProject>(`/projects/${projectId}/load`),
+    onSuccess: (result, projectId) => {
+      // Update the request identity before invalidating queries. Every
+      // refetch then carries the new project explicitly rather than racing a
+      // Set-Cookie update or reusing the previous project's identity.
+      useAppStore.getState().setCurrentProject({
+        id: result.id || projectId,
+        name: result.name || result.meta?.name || projectId,
+        goal: result.goal || result.meta?.goal,
+      })
       // Every data view below the project list is scoped to the active graph.
       // Invalidate them together so a project switch cannot retain stale
       // search, detail, history, document, or statistics results.
@@ -139,13 +176,14 @@ export function useLoadProject() {
 
 // Graph data with polling
 export function useGraph(enabled = true, showSuperseded = false) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: [...queryKeys.graph, showSuperseded],
+    queryKey: scopedQueryKey(queryKeys.graph, projectId, showSuperseded),
     queryFn: () =>
       fetchJson<GraphData>(
         `/graph${showSuperseded ? '?showSuperseded=true' : ''}`,
       ),
-    enabled,
+    enabled: enabled && Boolean(projectId),
     refetchInterval: pollInterval(3000), // Poll every 3 seconds (off in display-only)
     refetchIntervalInBackground: false, // Don't poll when tab is hidden
     staleTime: DISPLAY_ONLY ? Infinity : 1000, // Consider data fresh for 1 second
@@ -154,20 +192,22 @@ export function useGraph(enabled = true, showSuperseded = false) {
 
 // Conversations - API returns snake_case, transform to camelCase
 export function useConversations(enabled = true) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: queryKeys.conversations,
+    queryKey: scopedQueryKey(queryKeys.conversations, projectId),
     queryFn: () => fetchJsonCamel<Conversation[]>('/conversations'),
-    enabled,
+    enabled: enabled && Boolean(projectId),
     refetchInterval: pollInterval(5000),
     staleTime: DISPLAY_ONLY ? Infinity : 2000,
   })
 }
 
 export function useConversation(id: string | null) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: queryKeys.conversation(id || ''),
+    queryKey: scopedQueryKey(queryKeys.conversation(id || ''), projectId),
     queryFn: () => fetchJsonCamel<Conversation>(`/conversations/${id}`),
-    enabled: !!id,
+    enabled: Boolean(id && projectId),
     // Avoid the same flicker as useNode — the DetailsPanel pulls the
     // conversation for the active node and would otherwise blank out
     // momentarily on every selection change.
@@ -177,10 +217,11 @@ export function useConversation(id: string | null) {
 
 // Documents - API returns snake_case
 export function useDocuments(enabled = true) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: queryKeys.documents,
+    queryKey: scopedQueryKey(queryKeys.documents, projectId),
     queryFn: () => fetchJsonCamel<Document[]>('/documents'),
-    enabled,
+    enabled: enabled && Boolean(projectId),
   })
 }
 
@@ -195,8 +236,9 @@ export interface DocumentRoot {
 }
 
 export function useDocumentRoots(enabled = true) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: queryKeys.documentRoots,
+    queryKey: scopedQueryKey(queryKeys.documentRoots, projectId),
     queryFn: async () => {
       const response = await fetchJson<{
         roots: DocumentRoot[]
@@ -204,7 +246,7 @@ export function useDocumentRoots(enabled = true) {
       }>('/graph/documents')
       return response.roots
     },
-    enabled,
+    enabled: enabled && Boolean(projectId),
     refetchInterval: pollInterval(5000),
     staleTime: DISPLAY_ONLY ? Infinity : 2000,
   })
@@ -225,20 +267,22 @@ export function useDocumentRoots(enabled = true) {
 // false, the DetailsPanel never falls into the Loading branch, and the
 // panel smoothly swaps contents once the new fetch resolves.
 export function useNode(id: string | null) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: queryKeys.node(id || ''),
+    queryKey: scopedQueryKey(queryKeys.node(id || ''), projectId),
     queryFn: () => fetchJson<GraphData['nodes'][0]>(`/graph/nodes/${id}`),
-    enabled: !!id,
+    enabled: Boolean(id && projectId),
     placeholderData: keepPreviousData,
   })
 }
 
 // Edge details — same rationale as useNode for placeholderData.
 export function useEdge(id: string | null) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: queryKeys.edge(id || ''),
+    queryKey: scopedQueryKey(queryKeys.edge(id || ''), projectId),
     queryFn: () => fetchJson<GraphData['edges'][0]>(`/graph/edges/${id}`),
-    enabled: !!id,
+    enabled: Boolean(id && projectId),
     placeholderData: keepPreviousData,
   })
 }
@@ -265,15 +309,16 @@ export function shouldFetchSemanticSearch(query: string, enabled = true) {
 }
 
 export function useSemanticSearch(query: string, limit = 10, enabled = true) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: [...queryKeys.search, query, limit],
+    queryKey: scopedQueryKey(queryKeys.search, projectId, query, limit),
     queryFn: async () => {
       const response = await fetchJson<SearchResponse>(
         `/graph/embeddings/search?q=${encodeURIComponent(query)}&limit=${limit}`,
       )
       return response.results
     },
-    enabled: shouldFetchSemanticSearch(query, enabled),
+    enabled: shouldFetchSemanticSearch(query, enabled && Boolean(projectId)),
     staleTime: 30000, // Cache results for 30 seconds
   })
 }
@@ -286,10 +331,11 @@ export interface DbTable {
 }
 
 export function useDbSchema(enabled = true) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: queryKeys.dbSchema,
+    queryKey: scopedQueryKey(queryKeys.dbSchema, projectId),
     queryFn: () => fetchJson<{ tables: DbTable[] }>('/db/schema'),
-    enabled,
+    enabled: enabled && Boolean(projectId),
   })
 }
 
@@ -328,10 +374,11 @@ export interface DbStats {
 }
 
 export function useDbStats(enabled = true) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: queryKeys.dbStats,
+    queryKey: scopedQueryKey(queryKeys.dbStats, projectId),
     queryFn: () => fetchJson<DbStats>('/db/stats'),
-    enabled,
+    enabled: enabled && Boolean(projectId),
     refetchInterval: pollInterval(10000), // Poll every 10 seconds
     staleTime: DISPLAY_ONLY ? Infinity : 5000,
   })
@@ -347,6 +394,7 @@ export function useDbTableRows(
     search?: string
   } = {},
 ) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   const params = new URLSearchParams()
   if (options.limit) params.set('limit', String(options.limit))
   if (options.offset) params.set('offset', String(options.offset))
@@ -355,7 +403,7 @@ export function useDbTableRows(
   if (options.search) params.set('search', options.search)
 
   return useQuery({
-    queryKey: [...queryKeys.dbRows, tableName, options],
+    queryKey: scopedQueryKey(queryKeys.dbRows, projectId, tableName, options),
     queryFn: () =>
       fetchJson<{
         rows: Record<string, unknown>[]
@@ -363,7 +411,7 @@ export function useDbTableRows(
         limit: number
         offset: number
       }>(`/db/tables/${tableName}/rows?${params}`),
-    enabled: !!tableName,
+    enabled: Boolean(tableName && projectId),
   })
 }
 
@@ -378,13 +426,14 @@ export interface Commit {
 }
 
 export function useCommits(limit = 500, enabled = true) {
+  const projectId = useAppStore((state) => state.currentProject?.id)
   return useQuery({
-    queryKey: [...queryKeys.commits, limit],
+    queryKey: scopedQueryKey(queryKeys.commits, projectId, limit),
     queryFn: async () => {
       // API returns array directly (not wrapped)
       return fetchJsonCamel<Commit[]>(`/commits?limit=${limit}`)
     },
-    enabled,
+    enabled: enabled && Boolean(projectId),
     refetchInterval: pollInterval(5000),
     staleTime: DISPLAY_ONLY ? Infinity : 2000,
   })

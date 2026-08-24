@@ -144,19 +144,14 @@ function CrossProjectReference({
   title?: string
 }) {
   const loadProject = useLoadProject()
-  const { setCurrentProject, selectAndFlyToNode } = useAppStore()
+  const { selectAndFlyToNode } = useAppStore()
   const [isLoading, setIsLoading] = useState(false)
 
   const handleClick = async () => {
     setIsLoading(true)
     try {
       // Load the target project
-      const result = await loadProject.mutateAsync(project)
-      setCurrentProject({
-        id: project,
-        name: result.meta?.name || project,
-        goal: result.meta?.goal,
-      })
+      await loadProject.mutateAsync(project)
       // After project loads, select and fly to the node
       // Small delay to let the graph render
       setTimeout(() => {

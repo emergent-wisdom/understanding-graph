@@ -6,13 +6,7 @@ import { useAppStore } from '@/stores/appStore'
 export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const { data: projects = [], isLoading } = useProjects()
   const loadProject = useLoadProject()
-  const {
-    currentProject,
-    setCurrentProject,
-    theme,
-    setTheme,
-    openDocumentView,
-  } = useAppStore()
+  const { currentProject, theme, setTheme, openDocumentView } = useAppStore()
   const { data: documentRoots = [] } = useDocumentRoots(!!currentProject)
 
   const sortedProjects = [...projects].sort((a, b) =>
@@ -20,12 +14,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   )
 
   const handleSelectProject = async (id: string) => {
-    const result = await loadProject.mutateAsync(id)
-    setCurrentProject({
-      id,
-      name: result.meta?.name || id,
-      goal: result.meta?.goal,
-    })
+    await loadProject.mutateAsync(id)
     onNavigate?.()
   }
 

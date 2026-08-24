@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   invalidateProjectQueries,
   PROJECT_SCOPED_QUERY_KEYS,
+  projectRequestHeaders,
   queryKeys,
+  scopedQueryKey,
   shouldFetchSemanticSearch,
 } from './useApi'
 
@@ -25,6 +27,31 @@ describe('invalidateProjectQueries', () => {
     }
     expect(queryClient.getQueryState(queryKeys.projects)?.isInvalidated).toBe(
       false,
+    )
+  })
+})
+
+describe('projectRequestHeaders', () => {
+  it('sends explicit project identity for project-scoped API reads', () => {
+    expect(projectRequestHeaders('llada')).toEqual({
+      'X-Project-Id': 'llada',
+    })
+  })
+
+  it('omits the header before a project has been reconciled', () => {
+    expect(projectRequestHeaders(null)).toEqual({})
+  })
+})
+
+describe('scopedQueryKey', () => {
+  it('keeps cached project data in separate query families', () => {
+    expect(scopedQueryKey(queryKeys.graph, 'llada', false)).toEqual([
+      'graph',
+      'llada',
+      false,
+    ])
+    expect(scopedQueryKey(queryKeys.graph, 'metamorphosis', false)).not.toEqual(
+      scopedQueryKey(queryKeys.graph, 'llada', false),
     )
   })
 })
