@@ -67,6 +67,7 @@ describe('graph_suggest_next', () => {
       protocol: string;
       mediumIntegrity: { canonicalState: string; invariant: string };
       roll: {
+        creativity: string;
         hiddenActionSpace: boolean;
         distribution: string;
         shuffleBag: { purpose: string };
@@ -88,6 +89,7 @@ describe('graph_suggest_next', () => {
     expect(result.mediumIntegrity.canonicalState).toBe('graph');
     expect(result.mediumIntegrity.invariant).toContain('only in chat');
     expect(result.roll.hiddenActionSpace).toBe(true);
+    expect(result.roll.creativity).toBe('enabled');
     expect(result.roll.distribution).toContain('within this roll');
     expect(result.roll.shuffleBag.purpose).toContain('recently suggested');
     expect(result.roll.shuffleBag.purpose).toContain(
@@ -131,6 +133,51 @@ describe('graph_suggest_next', () => {
     )) as { stance: string; stanceSource: string };
     expect(inferred.stance).toBe(reentry?.stance);
     expect(inferred.stanceSource).toBe('explicit');
+  });
+
+  it('can suppress creative provocations for one roll while retaining ordinary routes', async () => {
+    const store = getGraphStore();
+    store.createNode({
+      title: 'Current design',
+      trigger: 'model',
+      why: 'Provides a nonempty graph for the chooser.',
+      understanding: 'The current design has a familiar local optimum.',
+    });
+    store.createNode({
+      title: 'Dormant alternative',
+      trigger: 'question',
+      why: 'Provides an unresolved ordinary route.',
+      understanding: 'Could a different boundary make the system simpler?',
+    });
+    vi.spyOn(Math, 'random').mockReturnValue(0.4);
+
+    const result = (await handleToolCall(
+      'graph_suggest_next',
+      {
+        task: 'Continue examining the design',
+        workflow: 'general',
+        creativity: false,
+        count: 6,
+      },
+      contextManager,
+      'general',
+    )) as {
+      roll: { creativity: string };
+      options: Array<{ action: string }>;
+    };
+
+    expect(result.roll.creativity).toBe('disabled');
+    expect(result.options).not.toEqual([]);
+    expect(
+      result.options.some((option) =>
+        [
+          'bisociate',
+          'disrupt',
+          'force-bisociation',
+          'axiomatic-noise',
+        ].includes(option.action),
+      ),
+    ).toBe(false);
   });
 
   it('does not present answered questions or healthy diversity as unresolved conflict', async () => {
@@ -226,5 +273,20 @@ describe('graph_suggest_next', () => {
     expect(result.prompt).toContain('temporary axiom');
     expect(result.prompt).toContain('no\nconnection');
     expect(store.getAll()).toEqual(before);
+  });
+
+  it('normalizes an offset update cursor before using or returning it', async () => {
+    const result = (await handleToolCall(
+      'graph_suggest_next',
+      {
+        task: 'Catch up before continuing',
+        workflow: 'general',
+        updatesSince: '2026-08-25T02:00:00+02:00',
+      },
+      contextManager,
+      'general',
+    )) as { roll: { updatesSince: string } };
+
+    expect(result.roll.updatesSince).toBe('2026-08-25T00:00:00.000Z');
   });
 });

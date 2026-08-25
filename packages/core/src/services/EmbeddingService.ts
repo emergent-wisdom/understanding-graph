@@ -91,21 +91,28 @@ export async function generateEmbedding(text: string): Promise<Float32Array> {
 }
 
 /**
- * Generate embedding for a node (combines title, understanding, why)
- * @param node - Object with title, understanding, and why fields
+ * Generate an embedding for a cognitive or document node. Include every
+ * distinct semantic field so a document remains retrievable by exact passage
+ * language even when it also has a compressed summary or interpretation.
  * @returns Float32Array of embedding values
  */
 export async function generateNodeEmbedding(node: {
   title: string;
   understanding?: string | null;
+  summary?: string | null;
+  content?: string | null;
   why?: string | null;
 }): Promise<Float32Array> {
-  // Combine fields for richer semantic representation
-  const parts = [node.title];
-  if (node.understanding) parts.push(node.understanding);
-  if (node.why) parts.push(node.why);
+  const parts = [
+    node.title,
+    node.understanding?.trim(),
+    node.summary?.trim(),
+    node.content?.trim(),
+    node.why?.trim(),
+  ].filter((part): part is string => Boolean(part));
+  const uniqueParts = [...new Set(parts)];
 
-  const combinedText = parts.join(' ');
+  const combinedText = uniqueParts.join(' ');
   return generateEmbedding(combinedText);
 }
 

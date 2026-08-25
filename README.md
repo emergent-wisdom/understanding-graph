@@ -1,11 +1,11 @@
-# Understanding Graph: A Recursive Medium for Persistent Understanding
+# Understanding Graph: A Persistent Medium for Recursive Understanding
 
-**A recursive medium for persistent, inspectable understanding.**
+**A persistent medium for recursive, inspectable understanding.**
 
 [![Paper](https://img.shields.io/badge/Paper-PDF-red)](https://github.com/emergent-wisdom/understanding-graph/blob/main/paper/understanding_graph.pdf)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19462658.svg)](https://doi.org/10.5281/zenodo.19462658)
 [![npm version](https://img.shields.io/npm/v/understanding-graph.svg)](https://www.npmjs.com/package/understanding-graph)
-[![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-blue)](https://registry.modelcontextprotocol.io/servers/io.github.emergent-wisdom/understanding-graph)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-blue)](https://registry.modelcontextprotocol.io/?q=io.github.emergent-wisdom%2Funderstanding-graph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Understanding Graph is an MCP server that gives AI agents structured, persistent memory. Unlike knowledge bases that store facts, it stores externally useful *understanding updates* -- tensions, surprises, decisions, evidence, and how beliefs evolved over time. It does not require private chain-of-thought. Multiple agents can coordinate through the graph itself: each agent reads what others have written, builds on it, and leaves inspectable traces for the next -- stigmergy.
@@ -26,6 +26,8 @@ Understanding Graph is an MCP server that gives AI agents structured, persistent
 
 ## Quick Start
 
+Requires [Node.js](https://nodejs.org/) 22 or newer.
+
 ### Recommended: use your Codex or Claude subscription
 
 Run the initializer in the directory where you want the graph-backed work to
@@ -33,7 +35,7 @@ live:
 
 ```bash
 cd your-project
-npx -y understanding-graph@0.1.30 init
+npx -y understanding-graph@0.1.31 init
 ```
 
 It creates project-scoped MCP configuration for both Codex and Claude Code,
@@ -54,7 +56,7 @@ also exposes `$reading-mode`; Claude Code exposes `/reading-mode`. Text pasted
 directly into chat has already been encountered, so use a file path when a
 genuinely fresh reading matters.
 
-[Codex is available through eligible ChatGPT plans](https://help.openai.com/en/articles/11369540-codex-and-chatgpt-plan-usage-limits), and [Claude Code can use Claude Pro or Max](https://support.anthropic.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan). Their normal plan limits still apply.
+[Codex is available through eligible ChatGPT plans](https://learn.chatgpt.com/docs/pricing), and [Claude Code can use Claude Pro or Max](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-or-max-plan). Their normal plan limits still apply.
 
 ### Installable plugin (workflow skill + MCP server)
 
@@ -123,7 +125,7 @@ If a client cannot install plugins or run the initializer, connect the MCP
 server directly:
 
 ```bash
-claude mcp add ug -- npx -y understanding-graph@0.1.30 mcp
+claude mcp add ug -- npx -y understanding-graph@0.1.31 mcp
 ```
 
 MCP initialization still supplies a concise graph-use contract, but client
@@ -142,7 +144,7 @@ Per-client setup guides: [Claude Code](https://github.com/emergent-wisdom/unders
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.1.30", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.31", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects",
         "UG_SOURCE_ROOT": "/path/to/your/source-project"
@@ -164,7 +166,7 @@ Add to your MCP config:
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.1.30", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.31", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }
@@ -179,7 +181,7 @@ The root npm package includes the built frontend and depends on the web server,
 so the published package can launch the UI directly:
 
 ```bash
-PROJECT_DIR=/path/to/your/projects npx -y understanding-graph@0.1.30 start
+PROJECT_DIR=/path/to/your/projects npx -y understanding-graph@0.1.31 start
 # open http://localhost:3000
 ```
 
@@ -187,8 +189,8 @@ Run independent sidecars by giving each process its own port and project-store
 root. The roots may be sibling directories on the same volume:
 
 ```bash
-PORT=3101 PROJECT_DIR=/srv/undergraph/worker-1 npx -y understanding-graph@0.1.30 start
-PORT=3102 PROJECT_DIR=/srv/undergraph/worker-2 npx -y understanding-graph@0.1.30 start
+PORT=3101 PROJECT_DIR=/srv/undergraph/worker-1 npx -y understanding-graph@0.1.31 start
+PORT=3102 PROJECT_DIR=/srv/undergraph/worker-2 npx -y understanding-graph@0.1.31 start
 ```
 
 Use absolute paths in deployments. Sharing the installed package and its
@@ -203,7 +205,7 @@ closed without both:
 HOST=0.0.0.0 PORT=3101 \
 UG_WORKER_TOKEN=replace-with-a-long-random-secret \
 PROJECT_DIR=/srv/undergraph/worker-1 \
-npx -y understanding-graph@0.1.30 start
+npx -y understanding-graph@0.1.31 start
 ```
 
 The trusted caller must send `Authorization: Bearer <UG_WORKER_TOKEN>` on every
@@ -226,8 +228,8 @@ npm run start:web
 `graph_semantic_search`, `graph_similar`, `graph_semantic_gaps`, and `graph_backfill_embeddings` can use `@huggingface/transformers` (a local embedding model, roughly 160 MB once compiled). It is an *optional peer dependency* so the default install stays small. For an npx-based project, install both packages locally so Node can resolve the peer from the same dependency tree:
 
 ```bash
-npm install --save-dev understanding-graph@0.1.30 @huggingface/transformers@4.2.0
-npx understanding-graph@0.1.30 init
+npm install --save-dev understanding-graph@0.1.31 @huggingface/transformers@4.2.0
+npx understanding-graph@0.1.31 init
 ```
 
 A separate global `@huggingface/transformers` install does not reliably satisfy an
@@ -269,6 +271,15 @@ model remains responsible for task fit and may always work directly, do
 something else, or stop rather than manufacture work. Set `UG_GUIDANCE_MODE` to
 `direct` to remove ambient suggestion prompts; `graph_suggest_next` remains
 available on demand.
+Pass `creativity: false` to an individual roll when ordinary guidance is useful
+but grounded random comparison, bisociation, ANI, disruption, and temporary
+forcing are not. This changes the roll only; the optional creativity tools
+remain available for direct use.
+
+Retrieval has two orthogonal axes: `workflow` identifies the domain and its
+native evidence, while `stance` weights the epistemic pressure—such as
+deepening, resistance, connection, disruption, revisiting, or testing. Neither
+axis limits what the model may do.
 
 ### Atomic commits
 
@@ -343,7 +354,7 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 ## Tools Overview
 
 <details>
-<summary>41 tools in the default <code>general</code> surface, 69 in explicit <code>full</code> mode, plus batch-only operations callable through <code>graph_batch</code> (click to expand)</summary>
+<summary>Selected tools from the 46-tool default <code>general</code> surface and 70-tool explicit <code>full</code> mode, plus batch-only operations callable through <code>graph_batch</code> (click to expand)</summary>
 
 ### Batch Operations
 | Tool | Purpose |
@@ -379,31 +390,35 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 |------|---------|
 | `graph_understand` | Compose a workflow-specific re-entry packet with priors, resistance, evidence, and typed relations |
 | `graph_skeleton` | Structural overview (~150 tokens) |
-| `graph_context` | Surrounding context for a concept |
-| `graph_context_region` | Context for multiple related nodes |
+| `graph_context` | Full graph XML, optionally focused on one node; auto-compacts above 50 nodes |
+| `graph_context_region` | Full details for one numbered region returned by context, skeleton, or search |
 | `graph_semantic_search` | Find nodes by meaning |
 | `graph_similar` | Find conceptually similar nodes |
 | `graph_find_by_trigger` | Find nodes by type |
-| `graph_analyze` | Concept and pattern frequencies |
+| `graph_analyze` | Find structural gaps, cycles, bridges, open questions, and serendipity nodes |
 | `graph_semantic_gaps` | Find disconnected concepts |
-| `graph_score` | Graph health metrics |
+| `graph_score` | Structural proxy for chronology, revision, resolution, edge specificity, and connectivity—not semantic quality |
 | `graph_path` | Reasoning path between concepts |
 | `graph_centrality` | Most influential concepts |
-| `graph_thermostat` | Legacy descriptive graph-state pulse; prefer `graph_suggest_next` |
+| `graph_thermostat` | Advisory entropy-style pulse for convergence, continuation, or divergence |
 | `graph_history` | Commit history and changes |
 
 ### Synthesis & Exploration
+
+The toolkit's median-escape branch---particularly ANI and Axiomatic Forcing---was inspired by [*The Ontology of the Alien*](https://doi.org/10.5281/zenodo.18912179). Its random cues, temporary axioms, and alternative-physics provocations are adapted here as optional agent-facing tools whose outputs remain speculative until scrutinized.
+
 | Tool | Purpose |
 |------|---------|
+| `graph_bisociate` | Surface candidate cross-context pairs with spreading activation and information gain |
 | `graph_discover_grounded` | Default bounded comparison of distant graph material; no connection is valid |
-| `graph_discover_grounded_chaos` | Optional perturbation after a genuine grounded bridge (`full` mode) |
-| `graph_discover` | Explicitly speculative, ungrounded serendipity (`full` mode) |
+| `graph_discover_grounded_chaos` | Optional dictionary perturbation after a genuine grounded bridge; requires a host-installed word list |
+| `graph_discover` | Explicitly speculative blind ANI over graph material |
 | `graph_random` | Concrete random provocations, including optional scrutinized Physics What-If forcing |
 | `graph_serendipity` | Batch-only: record a synthesis with source edges |
-| `graph_validate` | Batch-only: validate a proposed synthesis |
-| `graph_chaos` | Inject controlled randomness (`full` mode) |
+| `graph_validate` | Batch-only: record an authored validation judgment for a scrutinized serendipity |
+| `graph_chaos` | Inject words from a machine-local dictionary or graph nodes into text |
 | `graph_decide` | Batch-only: record a typed decision over options |
-| `graph_evaluate_variations` | Compare alternative ideas |
+| `graph_evaluate_variations` | Rank alternatives with the experimental Novelty Score |
 
 ### Document Operations (availability varies by workflow mode)
 | Tool | Purpose |
@@ -428,7 +443,8 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 | `project_switch` | Switch active project |
 | `project_list` | List available projects |
 
-### Cross-Project
+### Cross-Project (`TOOL_MODE=full`)
+
 | Tool | Purpose |
 |------|---------|
 | `graph_lookup_external` | Look up node in another project |
@@ -438,6 +454,10 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 | `graph_global_lookup` | Search across all projects |
 
 ### Multi-Agent Coordination (Solver)
+
+Solver tools are available in `research`, `collaborative_coding`, and `full`
+tool modes.
+
 | Tool | Purpose |
 |------|---------|
 | `solver_spawn` | Register specialized solver agent |
@@ -453,7 +473,7 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 
 ## Multi-Agent with Claude Code Agent Teams
 
-Understanding Graph is designed as a shared persistent medium for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams). After running `npx -y understanding-graph@0.1.30 init`, the lead creates or selects a named graph; every teammate working in that project root can then share it -- stigmergy without bundled data.
+Understanding Graph is designed as a shared persistent medium for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams). After running `npx -y understanding-graph@0.1.31 init`, the lead creates or selects a named graph; every teammate working in that project root can then share it -- stigmergy without bundled data.
 
 ### How it works
 
@@ -476,7 +496,7 @@ Claude (Team Lead):
 
 ```bash
 cd your-project
-npx -y understanding-graph@0.1.30 init     # one-time setup
+npx -y understanding-graph@0.1.31 init     # one-time setup
 ```
 
 Then in Claude Code:
@@ -508,7 +528,7 @@ The solver system persists in the SQLite database, so tasks survive across sessi
 ```
 packages/
   core/          # Graph logic, SQLite storage, embeddings
-  mcp-server/    # MCP server (41 default / 69 full tools + batch operations)
+  mcp-server/    # MCP server (46 default / 70 full tools + batch operations)
   web-server/    # REST API + serves frontend
   frontend/      # 3D visualization (React + Three.js)
 ```
@@ -556,6 +576,7 @@ cd packages/frontend && npm run dev
 | `ANTHROPIC_MODEL` | -- | Explicit model ID for the optional Anthropic autonomous worker |
 | `TOOL_MODE` | `general` | Enforced tool surface: safe cross-domain `general`; focused `reading`, `research`, `coding`, `collaborative_coding`, or `writing`; explicit broad `full`; or the reserved `synthetic_reader` pretraining producer |
 | `UG_GUIDANCE_MODE` | `guided` | Suggestion aid: `guided` adds optional next-move prompts; `direct` suppresses ambient prompts while keeping `graph_suggest_next` callable on demand |
+| `UG_ANI_DICTIONARY_PATH` | system word list | Absolute path to a host-installed newline-delimited word list when `/usr/share/dict/words` or another standard path is unavailable; no dictionary or reduced fallback is bundled |
 | `DEFAULT_PROJECT` | unset | Optional project to load or explicitly create on startup |
 
 ---
@@ -588,7 +609,7 @@ Understanding Graph gives your agents shared *episodic* memory — the recorded 
 
 ```bash
 # Add both to Claude Code
-claude mcp add ug   -- npx -y understanding-graph@0.1.30 mcp
+claude mcp add ug   -- npx -y understanding-graph@0.1.31 mcp
 claude mcp add sema -- uvx --from semahash sema mcp
 ```
 
@@ -615,7 +636,7 @@ See [coding-inside-the-graph](https://github.com/emergent-wisdom/understanding-g
 
 ```bibtex
 @misc{westerberg2026understanding,
-  title        = {Understanding Graph: A Recursive Medium for Persistent Understanding},
+  title        = {Understanding Graph: A Persistent Medium for Recursive Understanding},
   author       = {Westerberg, Henrik},
   year         = {2026},
   month        = aug,

@@ -61,9 +61,33 @@ Protocol: \`${UNDERSTANDING_PROTOCOL_ID}\`.
 the process the task needs. Re-enter with \`graph_understand\` when graph state
 could alter the next move; preserve related changes atomically with \`graph_batch\`.
 
+Use \`graph_understand\` for a bounded, task-specific re-entry packet. When the
+global shape matters, call \`graph_skeleton\`, then open a relevant
+\`region_id\` with \`graph_context_region\`. \`graph_context\` is the fuller
+graph view and auto-compacts above 50 nodes.
+
 ${PROJECT_SELECTION_INSTRUCTIONS}
 
 ${guidanceInstructions(guidanceMode, suggestionsAvailable)}
+
+${
+  suggestionsAvailable
+    ? `## Optional creativity and scrutiny
+
+Creativity is an aid, not a loop. A suggestion roll may offer bisociation,
+grounded comparison, temporary forcing, or blind Axiomatic Noise Injection.
+Pass \`creativity: false\` to omit them from that roll; direct tools remain
+callable. \`graph_thermostat\` is a separate advisory pulse, never a governor.
+
+Generated candidates are not conclusions. If one is worth retaining, preserve
+it source-linked as an unvalidated \`serendipity\` node; scrutinize or test it,
+then use \`graph_validate\` only for an authored validation judgment. Rejection
+or “no defensible connection” is valid. For stabilization, PURE asks whether a
+candidate is Parsimonious, Unique, Realizable, and Expansive; steelman for and
+against each gate, and let any RED reject stabilization. Novelty cannot
+compensate for a failed gate.`
+    : ''
+}
 
 \`workflow\` says where the work lives; a rolled \`stance\` weights re-entry as
 \`balanced\`, \`deepen\`, \`resist\`, \`connect\`, \`disrupt\`, \`revisit\`, or
@@ -85,35 +109,24 @@ mode, not \`synthetic_reader\`; never create the reserved \`thinking\` trigger.
 
 A document leaf is an
 addressable unit of attention and change. In code, use a function, class, type,
-test, or coherent block: revised, moved, reused, or removed independently. Move
-shared behavior instead of copying it. Generate and test the projection.
+test, or coherent block: revised, moved, reused, or removed independently.
+Move shared behavior, then generate and test it.
 
-In writing, parts, chapters, and scenes are normally containers. A child leaf is
-the smallest passage you can plausibly imagine moving, comparing, or revising
-independently: often a beat, image, exchange, turn, revelation, paragraph, or
-small paragraph cluster. This is semantic granularity, not a word count or node quota.
+In writing, parts, chapters, and scenes are containers. A child leaf is the
+smallest passage you can plausibly imagine moving, comparing, or revising: a
+beat, image, exchange, turn, paragraph, or small cluster. This is
+semantic granularity, not a word count or node quota.
 Do not privately pre-author an entire artifact and then deposit it with
 retrospective rationale.
 
-Preserve enough texture to recover the live understanding around a choice. The batch-only
-\`graph_note({ about, testimony, title?, trigger?, why?, status? })\` attaches an
-interpretation, alternative, surprise, question, prediction, evaluation, or
-other testimony to the exact graph material that occasioned it. Record a
-correction as an \`evaluation\`, not as a separate trigger.
+Preserve enough texture to recover the live understanding around a choice.
+Batch-only \`graph_note({ about, testimony, ... })\` attaches testimony to the
+exact material that occasioned it. Record a
+correction as an \`evaluation\`.
 
-${
-  suggestionsAvailable
-    ? `On re-entry, inspect resonance, conflict, gaps, or distant possibility.
-\`graph_suggest_next\` may roll a grounded comparison or temporary Physics What-If
-through \`graph_random\`. Release the forced assumption, test it, and accept “no
-defensible connection” as valid.`
-    : ''
-}
-
-Do not transcribe token-level steps, manufacture notes, use trigger quotas, or
-reconstruct rationale; do not manufacture understanding to prove activity. Keep
-unfinished attention open. Testimony is user-visible input to future attention,
-not a claim to reveal hidden chain-of-thought.
+Do not transcribe token-level steps or reconstruct rationale;
+do not manufacture understanding to prove activity. Keep unfinished attention open. Testimony is
+user-visible, not a claim to reveal hidden chain-of-thought.
 
 Synthesis is normally an **operation**, not a catch-all node type. Type stable
 results by what they became: \`analysis\` for a cognitive ratchet, \`model\`,
@@ -139,16 +152,12 @@ create or imitate it in ordinary work.
 ## Mutation and provenance
 
 Use \`graph_batch\` with an honest \`commit_message\` and actual \`agent_name\`.
-Link the exact passage, function, class, or test to the cognition that shaped it.
-\`inspired_by\` records influence; \`expresses\` points artifact→concept;
-\`implements\` points commitment→unit; \`learned_from\` points update→encounter.
-A truthful \`why\` lets a later Reader inspect the recorded reason that unit
-exists or changed. These are authored claims, not verified causality; omit unreal
-relations. Documents need no fabricated concept. Inside a batch, \`$N.id\`
-references operation N. Other relations include
-\`refines\`, \`contradicts\`, \`questions\`, \`answers\`, \`validates\`,
-\`invalidates\`, \`contains\`, and \`next\`. Revise or supersede rather than
-silently overwrite.
+Link the exact passage, function, class, or test to its cognition; a truthful
+\`why\` preserves the recorded reason that unit exists or changed. \`inspired_by\`
+records influence; \`expresses\` points artifact→concept;
+\`implements\` points commitment→unit; \`learned_from\` points update→encounter. These are
+authored claims, not verified causality; omit unreal ones. \`$N.id\` references operation
+N. Revise or supersede rather than overwrite.
 
 For open-ended diagnosis, this is a valid shape check:
 

@@ -131,6 +131,27 @@ function contextUnderstanding(node: GraphNodeData): string | null {
   return node.understanding;
 }
 
+type EpistemicNode = Pick<GraphNodeData, 'trigger' | 'validated'>;
+
+/**
+ * Serendipity is a provenance class, not established graph truth. Keep that
+ * distinction attached to the node anywhere model-facing context renders it,
+ * even when the caller hides the general `trigger` field.
+ */
+function epistemicAttributes(node: EpistemicNode, prefix = ''): string {
+  if (node.trigger !== 'serendipity') return '';
+  return node.validated === true
+    ? ` ${prefix}validated="true"`
+    : ` ${prefix}epistemic_status="speculative"`;
+}
+
+function epistemicTextMarker(node: EpistemicNode): string {
+  if (node.trigger !== 'serendipity') return '';
+  return node.validated === true
+    ? ' [validated=true]'
+    : ' [epistemic_status=speculative]';
+}
+
 function edgeRelation(edge: {
   type: string;
   explanation?: string | null;
@@ -153,8 +174,12 @@ interface RegionSummary {
   triggerDistribution: Record<string, number>;
   sampleRelationships: Array<{
     from: string;
+    fromTrigger: TriggerType | null;
+    fromValidated: boolean | null;
     relation: string;
     to: string;
+    toTrigger: TriggerType | null;
+    toValidated: boolean | null;
     type: string;
     why: string | null;
   }>;
@@ -166,10 +191,12 @@ interface NodeWithConnections {
   trigger: TriggerType | null;
   why: string | null;
   understanding: string | null;
-  validated?: boolean | null;
+  validated: boolean | null;
   outgoing: Array<{
     targetId: string;
     targetTitle: string;
+    targetTrigger: TriggerType | null;
+    targetValidated: boolean | null;
     explanation: string | null;
     why: string | null;
     type: string;
@@ -290,7 +317,7 @@ export function getUpdatesSince(_projectId: string, since: string): string {
   if (nodes.length > 0) {
     out += `  <changed_nodes count="${nodes.length}">\n`;
     for (const n of nodes) {
-      out += `    <node id="${n.id}" trigger="${n.trigger || 'general'}">\n`;
+      out += `    <node id="${n.id}" trigger="${n.trigger || 'general'}"${epistemicAttributes(n)}>\n`;
       out += `      <name>${escapeXml(n.title)}</name>\n`;
       const understanding = contextUnderstanding(n);
       if (understanding) {
@@ -305,15 +332,17 @@ export function getUpdatesSince(_projectId: string, since: string): string {
   if (edges.length > 0) {
     out += `  <changed_edges count="${edges.length}">\n`;
     for (const e of edges) {
-      const from = store.getNode(e.fromId)?.title || e.fromId;
-      const to = store.getNode(e.toId)?.title || e.toId;
+      const fromNode = store.getNode(e.fromId);
+      const toNode = store.getNode(e.toId);
+      const from = fromNode?.title || e.fromId;
+      const to = toNode?.title || e.toId;
       out += `    <edge id="${e.id}" type="${e.type}">\n`;
-      out += `      <from>${escapeXml(from)}</from>\n`;
+      out += `      <from${fromNode ? epistemicAttributes(fromNode) : ''}>${escapeXml(from)}</from>\n`;
       out += `      <relation>${escapeXml(edgeRelation(e))}</relation>\n`;
       if (e.why) {
         out += `      <why>${escapeXml(e.why)}</why>\n`;
       }
-      out += `      <to>${escapeXml(to)}</to>\n`;
+      out += `      <to${toNode ? epistemicAttributes(toNode) : ''}>${escapeXml(to)}</to>\n`;
       out += `    </edge>\n`;
     }
     out += `  </changed_edges>\n`;
@@ -474,6 +503,8 @@ export function generateXmlContext(
     const outgoing = (outgoingEdges.get(n.id) || []).map((e) => ({
       targetId: e.toId,
       targetTitle: nodeMap.get(e.toId)?.title || '',
+      targetTrigger: nodeMap.get(e.toId)?.trigger ?? null,
+      targetValidated: nodeMap.get(e.toId)?.validated ?? null,
       explanation: e.explanation,
       why: e.why,
       type: e.type,
@@ -542,7 +573,7 @@ export function generateXmlContext(
         const typeAttr = shouldInclude('trigger', visibleFields)
           ? ` type="${n.trigger || 'general'}"`
           : '';
-        context += `  <concept id="${n.id}"${typeAttr}>
+        context += `  <concept id="${n.id}"${typeAttr}${epistemicAttributes(n)}>
     <name>${escapeXml(n.title)}</name>
 `;
         // Add origin story (the commit that created this node)
@@ -577,9 +608,9 @@ export function generateXmlContext(
       if (n.outgoing?.length) {
         n.outgoing.forEach((o) => {
           context += `  <link edge_type="${escapeXml(o.type)}">
-    <from>${escapeXml(n.title)}</from>
+    <from${epistemicAttributes(n)}>${escapeXml(n.title)}</from>
     <relation>${escapeXml(edgeRelation(o))}</relation>
-${shouldInclude('why', visibleFields) && o.why ? `    <why>${escapeXml(o.why)}</why>\n` : ''}    <to>${escapeXml(o.targetTitle)}</to>
+${shouldInclude('why', visibleFields) && o.why ? `    <why>${escapeXml(o.why)}</why>\n` : ''}    <to${epistemicAttributes({ trigger: o.targetTrigger, validated: o.targetValidated })}>${escapeXml(o.targetTitle)}</to>
   </link>\n`;
         });
       }
@@ -606,14 +637,14 @@ ${shouldInclude('why', visibleFields) && o.why ? `    <why>${escapeXml(o.why)}</
     if (openEnds.length > 0) {
       context += `  <open_threads hint="These concepts have incoming connections but lead nowhere yet">\n`;
       openEnds.slice(0, 5).forEach((n) => {
-        context += `    <concept>${escapeXml(n.title)}</concept>\n`;
+        context += `    <concept${epistemicAttributes(n)}>${escapeXml(n.title)}</concept>\n`;
       });
       context += `  </open_threads>\n`;
     }
     if (isolated.length > 0) {
       context += `  <isolated hint="These concepts aren't connected to anything yet">\n`;
       isolated.slice(0, 5).forEach((n) => {
-        context += `    <concept>${escapeXml(n.title)}</concept>\n`;
+        context += `    <concept${epistemicAttributes(n)}>${escapeXml(n.title)}</concept>\n`;
       });
       context += `  </isolated>\n`;
     }
@@ -631,7 +662,7 @@ ${shouldInclude('why', visibleFields) && o.why ? `    <why>${escapeXml(o.why)}</
     context += `<serendipity_nodes hint="These were randomly generated and need validation - treat with skepticism">
 `;
     unvalidatedSerendipity.forEach((n) => {
-      context += `  <node id="${n.id}" validated="false">
+      context += `  <node id="${n.id}" epistemic_status="speculative">
     <title>${escapeXml(n.title)}</title>
     <understanding>${escapeXml(n.understanding) || ''}</understanding>
   </node>
@@ -717,7 +748,7 @@ function generateFocusedContext(
     ? ` type="${n.trigger || 'general'}"`
     : '';
 
-  context += `  <concept id="${n.id}"${typeAttr}>
+  context += `  <concept id="${n.id}"${typeAttr}${epistemicAttributes(n)}>
     <name>${escapeXml(n.title)}</name>
 `;
   // Add origin story for focused node
@@ -753,7 +784,7 @@ function generateFocusedContext(
     const nbTypeAttr = shouldInclude('trigger', visibleFields)
       ? ` type="${nb.trigger || 'general'}"`
       : '';
-    context += `  <concept id="${nb.id}"${nbTypeAttr}>
+    context += `  <concept id="${nb.id}"${nbTypeAttr}${epistemicAttributes(nb)}>
     <name>${escapeXml(nb.title)}</name>
 `;
     // Add origin story for neighbor
@@ -791,10 +822,19 @@ function generateFocusedContext(
         : neighbors.find((nb) => nb.id === e.toId)?.title || e.toId;
     const direction = e.fromId === nodeId ? 'outgoing' : 'incoming';
 
+    const fromNode =
+      e.fromId === nodeId
+        ? node
+        : neighbors.find((neighbor) => neighbor.id === e.fromId);
+    const toNode =
+      e.toId === nodeId
+        ? node
+        : neighbors.find((neighbor) => neighbor.id === e.toId);
+
     context += `  <link dir="${direction}" edge_type="${escapeXml(e.type)}">
-    <from>${escapeXml(fromName)}</from>
+    <from${fromNode ? epistemicAttributes(fromNode) : ''}>${escapeXml(fromName)}</from>
     <relation>${escapeXml(edgeRelation(e))}</relation>
-${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to>${escapeXml(toName)}</to>
+${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to${toNode ? epistemicAttributes(toNode) : ''}>${escapeXml(toName)}</to>
   </link>\n`;
   });
 
@@ -913,8 +953,12 @@ function generateCompactContext(
       if (fromNode && toNode) {
         sampleRels.push({
           from: fromNode.title,
+          fromTrigger: fromNode.trigger,
+          fromValidated: fromNode.validated,
           relation: edgeRelation(e),
           to: toNode.title,
+          toTrigger: toNode.trigger,
+          toValidated: toNode.validated,
           type: e.type,
           why: e.why,
         });
@@ -964,7 +1008,7 @@ function generateCompactContext(
     const typeAttr = shouldInclude('trigger', visibleFields)
       ? ` type="${item.node.trigger || 'general'}"`
       : '';
-    context += `  <concept id="${item.node.id}" degree="${item.degree}"${typeAttr}>
+    context += `  <concept id="${item.node.id}" degree="${item.degree}"${typeAttr}${epistemicAttributes(item.node)}>
     <name>${escapeXml(item.node.title)}</name>
 `;
     if (
@@ -997,12 +1041,16 @@ function generateCompactContext(
         ? topNames[0].split(' ').slice(0, 4).join(' ')
         : 'Unnamed';
 
-    let regionXml = `  <region id="${region.id}" nodes="${region.nodeCount}" label="${escapeXml(regionLabel)}">
+    const regionLabelNode = allNodes.find(
+      (node) => node.id === region.topConcepts[0]?.id,
+    );
+    let regionXml = `  <region id="${region.id}" nodes="${region.nodeCount}" label="${escapeXml(regionLabel)}"${regionLabelNode ? epistemicAttributes(regionLabelNode, 'label_') : ''}>
     <top_concepts>
 `;
     // Show only configured number of concepts per region
     region.topConcepts.slice(0, conceptsPerRegion).forEach((c) => {
-      regionXml += `      <concept id="${c.id}" degree="${c.degree}">${escapeXml(c.name)}</concept>\n`;
+      const conceptNode = allNodes.find((node) => node.id === c.id);
+      regionXml += `      <concept id="${c.id}" degree="${c.degree}"${conceptNode ? epistemicAttributes(conceptNode) : ''}>${escapeXml(c.name)}</concept>\n`;
     });
     if (region.nodeCount > conceptsPerRegion) {
       regionXml += `      <more count="${region.nodeCount - conceptsPerRegion}" hint="Use graph_context_region(${region.id}) for full list" />\n`;
@@ -1026,12 +1074,12 @@ function generateCompactContext(
       regionXml += `    <sample_relationships>\n`;
       region.sampleRelationships.forEach((r) => {
         regionXml += `      <link edge_type="${escapeXml(r.type)}">\n`;
-        regionXml += `        <from>${escapeXml(r.from)}</from>\n`;
+        regionXml += `        <from${epistemicAttributes({ trigger: r.fromTrigger, validated: r.fromValidated })}>${escapeXml(r.from)}</from>\n`;
         regionXml += `        <relation>${escapeXml(r.relation)}</relation>\n`;
         if (shouldInclude('why', visibleFields) && r.why) {
           regionXml += `        <why>${escapeXml(r.why)}</why>\n`;
         }
-        regionXml += `        <to>${escapeXml(r.to)}</to>\n`;
+        regionXml += `        <to${epistemicAttributes({ trigger: r.toTrigger, validated: r.toValidated })}>${escapeXml(r.to)}</to>\n`;
         regionXml += `      </link>\n`;
       });
       regionXml += `    </sample_relationships>\n`;
@@ -1074,7 +1122,7 @@ function generateCompactContext(
   if (isolatedNodes.length > 0 && currentTokens < maxTokens - 200) {
     context += `<isolated_nodes count="${isolatedNodes.length}" hint="These concepts have no connections yet">\n`;
     isolatedNodes.slice(0, 3).forEach((n) => {
-      context += `  <node id="${n.id}">${escapeXml(n.title)}</node>\n`;
+      context += `  <node id="${n.id}"${epistemicAttributes(n)}>${escapeXml(n.title)}</node>\n`;
     });
     context += `</isolated_nodes>\n`;
   }
@@ -1174,7 +1222,7 @@ export function generateRegionContext(
         const typeAttr = shouldInclude('trigger', visibleFields)
           ? ` type="${n.trigger || 'general'}"`
           : '';
-        context += `  <concept id="${n.id}"${typeAttr}>
+        context += `  <concept id="${n.id}"${typeAttr}${epistemicAttributes(n)}>
     <name>${escapeXml(n.title)}</name>
 `;
         const understanding = contextUnderstanding(n);
@@ -1213,9 +1261,9 @@ export function generateRegionContext(
       const toNode = nodeMap.get(e.toId);
       if (fromNode && toNode) {
         context += `  <link type="internal" edge_type="${escapeXml(e.type)}">
-    <from>${escapeXml(fromNode.title)}</from>
+    <from${epistemicAttributes(fromNode)}>${escapeXml(fromNode.title)}</from>
     <relation>${escapeXml(edgeRelation(e))}</relation>
-${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to>${escapeXml(toNode.title)}</to>
+${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to${epistemicAttributes(toNode)}>${escapeXml(toNode.title)}</to>
   </link>\n`;
       }
     });
@@ -1231,9 +1279,9 @@ ${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</
       if (fromNode && toNode) {
         const isOutgoing = regionNodeIds.has(e.fromId);
         context += `  <link type="${isOutgoing ? 'outgoing' : 'incoming'}" edge_type="${escapeXml(e.type)}">
-    <from>${escapeXml(fromNode.title)}</from>
+    <from${epistemicAttributes(fromNode)}>${escapeXml(fromNode.title)}</from>
     <relation>${escapeXml(edgeRelation(e))}</relation>
-${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to>${escapeXml(toNode.title)}</to>
+${shouldInclude('why', visibleFields) && e.why ? `    <why>${escapeXml(e.why)}</why>\n` : ''}    <to${epistemicAttributes(toNode)}>${escapeXml(toNode.title)}</to>
   </link>\n`;
       }
     });
@@ -1273,15 +1321,28 @@ export function generateSkeletonContext(_projectId: string): string {
   const communities = communityResult.communities;
 
   // Build region summaries (just name + count)
-  const regionSummaries: Array<{ label: string; count: number; id: number }> =
-    [];
+  const regionSummaries: Array<{
+    label: string;
+    labelNode: GraphNodeData;
+    count: number;
+    id: number;
+  }> = [];
   for (const [commId, nodes] of communities) {
     // Get top node by degree as label
     const sorted = nodes
-      .map((n) => ({ name: n.title, degree: degree.get(n.id) || 0 }))
+      .map((n) => ({ node: n, degree: degree.get(n.id) || 0 }))
       .sort((a, b) => b.degree - a.degree);
-    const label = sorted[0]?.name.split(' ').slice(0, 3).join(' ') || 'Unnamed';
-    regionSummaries.push({ label, count: nodes.length, id: commId });
+    const labelNode = sorted[0]?.node ?? nodes[0];
+    const label =
+      labelNode?.title.split(' ').slice(0, 3).join(' ') || 'Unnamed';
+    if (labelNode) {
+      regionSummaries.push({
+        label,
+        labelNode,
+        count: nodes.length,
+        id: commId,
+      });
+    }
   }
   regionSummaries.sort((a, b) => b.count - a.count);
 
@@ -1299,7 +1360,12 @@ export function generateSkeletonContext(_projectId: string): string {
       // Extract concept name from summary like "Created concept: X"
       const match = e.summary.match(/concept[:\s]+(.+?)(?:\s+with|\s*$)/i);
       if (match) {
-        recentTopics.add(match[1].split(' ').slice(0, 3).join(' '));
+        const topic = match[1].split(' ').slice(0, 3).join(' ');
+        const eventNode =
+          e.entity_type === 'node' ? store.getNode(e.entity_id) : null;
+        recentTopics.add(
+          `${topic}${eventNode ? epistemicTextMarker(eventNode) : ''}`,
+        );
       }
     }
   });
@@ -1312,7 +1378,7 @@ export function generateSkeletonContext(_projectId: string): string {
   const mainRegions = regionSummaries.slice(0, 7);
   const smallCount = regionSummaries.length - 7;
   mainRegions.forEach((r) => {
-    out += `  ${r.label} (${r.count}) [R${r.id}]\n`;
+    out += `  ${r.label}${epistemicTextMarker(r.labelNode)} (${r.count}) [R${r.id}]\n`;
   });
   if (smallCount > 0) {
     out += `  +${smallCount} smaller\n`;
@@ -1320,7 +1386,12 @@ export function generateSkeletonContext(_projectId: string): string {
 
   // Hubs
   out += '\nHubs: ';
-  out += hubs.map((h) => h.name).join(' · ');
+  out += hubs
+    .map((hub) => {
+      const node = activeNodes.find((candidate) => candidate.id === hub.id);
+      return `${hub.name}${node ? epistemicTextMarker(node) : ''}`;
+    })
+    .join(' · ');
 
   // Recent
   if (recentTopics.size > 0) {
@@ -1414,11 +1485,17 @@ export function findPath(
   }
 
   if (!parent.has(toId) && fromId !== toId) {
+    store.recordAccessBatch([fromId, toId]);
     return `No path between "${nodeMap.get(fromId)?.title}" and "${nodeMap.get(toId)?.title}"`;
   }
 
   // Reconstruct path
-  const path: Array<{ nodeId: string; nodeName: string; via: string }> = [];
+  const path: Array<{
+    nodeId: string;
+    nodeName: string;
+    node: GraphNodeData;
+    via: string;
+  }> = [];
   let current = toId;
   while (current !== fromId) {
     const p = parent.get(current);
@@ -1426,6 +1503,7 @@ export function findPath(
     path.unshift({
       nodeId: current,
       nodeName: nodeMap.get(current)?.title || current,
+      node: nodeMap.get(current) as GraphNodeData,
       via: p.via,
     });
     current = p.nodeId;
@@ -1433,16 +1511,18 @@ export function findPath(
   path.unshift({
     nodeId: fromId,
     nodeName: nodeMap.get(fromId)?.title || fromId,
+    node: nodeMap.get(fromId) as GraphNodeData,
     via: '',
   });
+  store.recordAccessBatch(path.map((step) => step.nodeId));
 
   // Format output
   let out = `Path (${path.length} nodes):\n\n`;
   path.forEach((step, i) => {
     if (i === 0) {
-      out += `${step.nodeName}\n`;
+      out += `${step.nodeName}${epistemicTextMarker(step.node)}\n`;
     } else {
-      out += `  ${step.via}\n${step.nodeName}\n`;
+      out += `  ${step.via}\n${step.nodeName}${epistemicTextMarker(step.node)}\n`;
     }
   });
 

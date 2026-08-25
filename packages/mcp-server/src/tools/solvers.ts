@@ -53,7 +53,7 @@ function generateId(prefix: string): string {
   return `${prefix}_${id}`;
 }
 
-// Traffic Light schema for strict PURE enforcement
+// Traffic Light schema for post-exploration PURE stabilization
 // biome-ignore lint/correctness/noUnusedVariables: Reserved for future PURE enforcement
 interface TrafficLight {
   light: 'GREEN' | 'YELLOW' | 'RED';
@@ -198,12 +198,12 @@ export const solverTools: Tool[] = [
   },
   {
     name: 'solver_enforce',
-    description: `Rapid PURE gate enforcement following the Exploration Protocol. For each gate, you MUST argue both sides (steelman success AND failure) before deciding. Returns Traffic Light (RED/YELLOW/GREEN).
+    description: `Post-exploration PURE stabilization check for a candidate intended to become reusable analysis, a decision, or a generalized synthesis. Apply it after open exploration, not as a gate on raw surprises, questions, or hypotheses. For each gate, you MUST argue both sides (steelman success AND failure) before deciding. Returns Traffic Light (RED/YELLOW/GREEN).
 
-Decision Rule: Explore ⟺ No gate is RED
-- GREEN: Gate convincingly satisfied
-- YELLOW: Plausible but under-specified (advance with targeted rework)
-- RED: Gate fails materially (revise before exploring)
+Decision Rule: stabilize for reuse only when no gate is RED
+- GREEN: Gate convincingly satisfied; eligible for stabilization
+- YELLOW: Plausible but under-specified; targeted rework is needed before stabilization
+- RED: Gate fails materially; do not stabilize or reuse the candidate in its current form
 
 Coloring anchors:
 - Parsimonious: RED if hidden prerequisites or core cannot be stated. YELLOW if core long or auxiliaries unclear. GREEN if minimal core stated with non-essential auxiliaries.
@@ -215,7 +215,8 @@ Coloring anchors:
       properties: {
         target_id: {
           type: 'string',
-          description: 'Node ID to evaluate',
+          description:
+            'Candidate node ID to evaluate for post-exploration stabilization or reuse',
         },
         parsimonious: {
           type: 'object',
@@ -966,7 +967,7 @@ All graph operations you perform will be tracked under session ${sessionId}.`,
         };
       }
 
-      // Rapid PURE format with steelmanning
+      // Post-exploration PURE stabilization format with steelmanning
       type GateEval = {
         green_case: string;
         red_case: string;
@@ -993,7 +994,7 @@ All graph operations you perform will be tracked under session ${sessionId}.`,
       const yellows = gates.filter((g) => pure[g].decision === 'yellow');
       const _greens = gates.filter((g) => pure[g].decision === 'green');
 
-      // Non-compensatory decision rule: Explore ⟺ No gate is RED
+      // Non-compensatory stabilization rule: no RED gate permits reuse.
       let light: 'GREEN' | 'YELLOW' | 'RED';
       let smallest_lift:
         | { dimension: (typeof gates)[number]; suggestion: string }
@@ -1050,10 +1051,10 @@ All graph operations you perform will be tracked under session ${sessionId}.`,
 
       const verdict =
         light === 'GREEN'
-          ? 'EXPLORE - All PURE gates passed'
+          ? 'STABILIZE FOR REUSE - All PURE gates passed'
           : light === 'YELLOW'
-            ? `EXPLORE with targeted rework - Fix ${yellows.join(', ')}`
-            : `DO NOT EXPLORE - Failed: ${reds.join(', ')}`;
+            ? `REWORK BEFORE STABILIZATION - Fix ${yellows.join(', ')}`
+            : `DO NOT STABILIZE FOR REUSE - Failed: ${reds.join(', ')}`;
 
       return {
         success: true,

@@ -48,6 +48,12 @@ choose, combine, modify, reject, replace, or skip them. A route may call
 returned material as provisional prior understanding, not authority. If the
 graph is empty, begin honestly without inventing a past.
 
+Creativity is enabled for suggestion rolls by default. Pass
+`creativity: false` when ordinary guidance is useful but grounded random
+comparison, bisociation, ANI, disruption, and temporary forcing are not; this
+changes only that roll and does not disable any creativity tool. Models that do
+not need the aid may stay in direct mode.
+
 Do not privately complete the task and later deposit a polished rationale.
 Develop artifacts and understanding in the graph while they are alive.
 
@@ -121,6 +127,11 @@ could alter what comes next. A useful result is not merely that the graph was
 consulted, but that something already persisted changes a later question,
 association, artifact, experiment, or decision.
 
+Use `graph_understand` for a bounded, task-specific re-entry packet. When the
+global shape matters, call `graph_skeleton`, then open a relevant `region_id`
+with `graph_context_region`. `graph_context` is the fuller graph view and
+auto-compacts above 50 nodes.
+
 Use `graph_batch` to preserve related artifact, understanding, relation, and
 provenance changes atomically. Do not create nodes or edges to satisfy a quota.
 
@@ -182,15 +193,42 @@ native evidence. A rolled `stance`—`balanced`, `deepen`, `resist`, `connect`,
 select a route that calls `graph_understand`, preserve its stance. Judge the
 returned pressure freely; stance does not dictate a conclusion.
 
-Use `graph_discover_grounded` when a distant comparison might reveal hidden
-structure, and `graph_analyze` when questions, gaps, bridges, or conflicts need
-inspection. A suggestion may instead propose `graph_random({ force: true })`:
-for one generative pass, assume the sampled concepts connect and articulate the
-strongest Physics What-If. Then release that assumption and test the candidate.
-Forced bisociation generates possibilities; it does not validate them. Reject
-noise. “No defensible connection” is valid. When a resonance genuinely changes
-the work, preserve its provenance so later instances can see where the influence
-came from.
+Use `graph_thermostat()` when an advisory entropy-style pulse would materially
+help choose convergence, continuation, or divergence; it is not a governor or
+quality score. Use `graph_bisociate` for spreading-activation and
+information-gain candidates, `graph_discover_grounded` for a bounded distant
+comparison, and `graph_analyze` for questions, gaps, bridges, or conflicts.
+Only after finding a real grounded bridge may `graph_discover_grounded_chaos`
+perturb it.
+
+For deliberately high divergence, `graph_discover({ blind: true })` applies
+ANI to sampled graph material, while `graph_chaos({ text, blind: true })`
+perturbs chosen text. Blind ANI requires a separate model context that receives
+the returned prompt without the original source context. Dictionary ANI reads
+a newline-delimited word list installed on the MCP server host; set
+`UG_ANI_DICTIONARY_PATH` to its absolute path when no standard system word list
+exists. No bundled or reduced fallback is used.
+
+A suggestion may instead propose `graph_random({ force: true })`: for one
+generative pass, assume the sampled concepts connect and articulate the
+strongest Physics What-If. Then release every forced or noisy premise and test
+the candidate. `graph_evaluate_variations` may experimentally rank alternatives
+by Novelty Score, but neither that score nor novelty validates an insight.
+Reject noise; “no defensible connection” is valid. Preserve a useful synthesis
+with exact provenance through batch-only `graph_serendipity`, and use
+batch-only `graph_validate` only after scrutiny yields a specific defensible
+insight.
+
+Use PURE only after open exploration, when a candidate is intended to stabilize
+as reusable analysis, a decision, or a generalized synthesis. Steelman the case
+for and against each gate: **Parsimonious** (a minimal core), **Unique** (an
+independent lever or prediction), **Realizable** (a coherent mechanism and
+testable milestones), and **Expansive** (meaningful transfer beyond one niche).
+Any RED rejects stabilization in the candidate's current form; no RED but at
+least one YELLOW calls for the smallest targeted rework; all GREEN permits
+stabilization. Do not apply PURE to raw surprises, questions, or hypotheses.
+The structured `solver_enforce` logger is available only in `research`,
+`collaborative_coding`, and `full` tool modes.
 
 Before reporting completion, make sure the graph contains the live state another
 instance would need: artifacts, understanding, unresolved attention, and honest

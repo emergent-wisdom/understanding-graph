@@ -5,7 +5,12 @@ import louvainFn from 'graphology-communities-louvain';
 import { bidirectional } from 'graphology-shortest-path';
 import { bfsFromNode } from 'graphology-traversal';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, logEvent } from '../database/sqlite.js';
+import {
+  getDb,
+  getProjectMeta,
+  logEvent,
+  setProjectMeta,
+} from '../database/sqlite.js';
 import {
   assertEdgeType,
   assertTriggerType,
@@ -276,6 +281,30 @@ export class GraphStore {
   private nodesCache: Map<string, GraphNodeData> = new Map();
   private edgesCache: Map<string, GraphEdgeData> = new Map();
   private dirty = true;
+
+  private static readonly EMBEDDING_REPRESENTATION_VERSION = 2;
+  private static readonly EMBEDDING_VERSION_KEY =
+    'embedding_representation_version';
+
+  constructor() {
+    const currentVersion = getProjectMeta<number>(
+      GraphStore.EMBEDDING_VERSION_KEY,
+    );
+    if (currentVersion === GraphStore.EMBEDDING_REPRESENTATION_VERSION) return;
+
+    const result = getDb()
+      .prepare('UPDATE nodes SET embedding = NULL WHERE embedding IS NOT NULL')
+      .run();
+    setProjectMeta(
+      GraphStore.EMBEDDING_VERSION_KEY,
+      GraphStore.EMBEDDING_REPRESENTATION_VERSION,
+    );
+    if (result.changes > 0) {
+      console.error(
+        `[GraphStore] Invalidated ${result.changes} legacy embedding(s) for representation v${GraphStore.EMBEDDING_REPRESENTATION_VERSION}; semantic search remains lexical until current embeddings are regenerated.`,
+      );
+    }
+  }
 
   // --------------------------------------------------------------------------
   // Internal helpers
@@ -707,7 +736,8 @@ export class GraphStore {
         is_doc_root = CASE WHEN ? IS NOT NULL THEN ? ELSE is_doc_root END,
         file_type = COALESCE(?, file_type),
         "references" = COALESCE(?, "references"),
-        metadata = COALESCE(?, metadata)
+        metadata = COALESCE(?, metadata),
+        embedding = CASE WHEN ? = 1 THEN NULL ELSE embedding END
       WHERE id = ?
     `);
 
@@ -715,6 +745,13 @@ export class GraphStore {
       input.validated !== undefined ? (input.validated ? 1 : 0) : null;
     const isDocRootVal =
       input.isDocRoot !== undefined ? (input.isDocRoot ? 1 : 0) : null;
+    const semanticContentChanged = [
+      input.title,
+      input.why,
+      input.understanding,
+      input.content,
+      input.summary,
+    ].some((value) => value !== undefined);
     stmt.run(
       input.title || null,
       input.trigger || null,
@@ -731,6 +768,7 @@ export class GraphStore {
       input.fileType || null,
       input.references ? JSON.stringify(input.references) : null,
       mergedMetadata,
+      semanticContentChanged ? 1 : 0,
       id,
     );
 
@@ -972,6 +1010,7 @@ export class GraphStore {
         file_type = NULL,
         trigger = ?,
         understanding = ?,
+        embedding = NULL,
         revisions = ?,
         version = version + 1,
         updated_at = datetime('now')
@@ -1774,6 +1813,8 @@ export class GraphStore {
       const embedding = await generateNodeEmbedding({
         title: node.title,
         understanding: node.understanding,
+        summary: node.summary,
+        content: node.content,
         why: node.why,
       });
 
@@ -2566,6 +2607,7 @@ export class GraphStore {
             // Found shorter path
             existing.energy += spreadEnergy;
             existing.pathLength = newPathLength;
+            existing.source = data.source;
           } else {
             // Accumulate energy from multiple paths
             existing.energy += spreadEnergy * 0.5;
@@ -2608,6 +2650,7 @@ export class GraphStore {
   informationGain(
     nodeId1: string,
     nodeId2: string,
+    communityByNode?: ReadonlyMap<string, number>,
   ): {
     structuralSurprisal: number; // How unexpected based on graph structure
     semanticSurprisal: number | null; // How unexpected based on embeddings
@@ -2638,13 +2681,15 @@ export class GraphStore {
     }
 
     // Cluster surprisal: are they in different communities?
-    const communityResult = this.detectCommunities();
-    let comm1: number | undefined;
-    let comm2: number | undefined;
-    for (const [commId, nodes] of communityResult.communities) {
-      if (nodes.some((n) => n.id === nodeId1)) comm1 = commId;
-      if (nodes.some((n) => n.id === nodeId2)) comm2 = commId;
-      if (comm1 !== undefined && comm2 !== undefined) break;
+    let comm1 = communityByNode?.get(nodeId1);
+    let comm2 = communityByNode?.get(nodeId2);
+    if (!communityByNode) {
+      const communityResult = this.detectCommunities();
+      for (const [commId, nodes] of communityResult.communities) {
+        if (nodes.some((n) => n.id === nodeId1)) comm1 = commId;
+        if (nodes.some((n) => n.id === nodeId2)) comm2 = commId;
+        if (comm1 !== undefined && comm2 !== undefined) break;
+      }
     }
     const clusterSurprisal = comm1 !== comm2 ? 1.0 : 0.0;
 
@@ -2870,10 +2915,19 @@ export class GraphStore {
       };
     }> = [];
 
+    const communityByNode = new Map<string, number>();
+    for (const [communityId, communityNodes] of this.detectCommunities()
+      .communities) {
+      for (const communityNode of communityNodes) {
+        communityByNode.set(communityNode.id, communityId);
+      }
+    }
+
     for (const [, candidate] of candidates) {
       const infoGain = this.informationGain(
         candidate.node1.id,
         candidate.node2.id,
+        communityByNode,
       );
       candidate.sources.informationGain = infoGain.combined;
 
@@ -4203,7 +4257,7 @@ export class GraphStore {
 
     db.prepare(`
       UPDATE nodes
-      SET title = ?, updated_at = ?
+      SET title = ?, updated_at = ?, embedding = NULL
       WHERE id = ?
     `).run(newName, now, nodeId);
 

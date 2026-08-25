@@ -15,6 +15,7 @@ import {
 import type { ContextManager } from '../context-manager.js';
 import type { GuidanceMode } from '../guidance.js';
 import {
+  epistemicStatusForNode,
   UNDERSTANDING_PROTOCOL_LABEL,
   UNDERSTANDING_STANCES,
   type UnderstandingStance,
@@ -203,6 +204,8 @@ interface FramedNode {
   title: string;
   trigger: string | null;
   excerpt: string;
+  validated?: boolean;
+  epistemicStatus?: 'validated' | 'speculative';
   /** One line naming what this node does to the understanding around it. */
   why?: string;
   /**
@@ -300,6 +303,8 @@ interface UnderstandingFrame {
     id: string;
     from: string;
     to: string;
+    fromNode: FramedNode;
+    toNode: FramedNode;
     type: string;
     explanation: string | null;
     why: string | null;
@@ -488,7 +493,7 @@ function isArtifactNode(node: GraphNodeData) {
   return Boolean(node.isDocRoot || node.level);
 }
 
-function isResolvedLiveAttention(node: GraphNodeData) {
+export function isResolvedLiveAttention(node: GraphNodeData) {
   return (
     node.metadata?.liveAttention === true &&
     ['closed', 'resolved', 'superseded'].includes(
@@ -816,6 +821,7 @@ function frameNode(
     id: node.id,
     title: node.title,
     trigger: node.trigger,
+    ...epistemicStatusForNode(node),
     excerpt: excerpt(displayText(node)),
     // The node's role in one line: what it corrects, reframes, opens or
     // settles. Required on every node precisely because nothing else records
@@ -1874,14 +1880,42 @@ export async function handleUnderstandingTools(
       return a.id.localeCompare(b.id);
     })
     .slice(0, 12)
-    .map((edge) => ({
-      id: edge.id,
-      from: edge.fromId,
-      to: edge.toId,
-      type: edge.type,
-      explanation: edge.explanation,
-      why: edge.why,
-    }));
+    .flatMap((edge) => {
+      const fromNode = nodeById.get(edge.fromId);
+      const toNode = nodeById.get(edge.toId);
+      if (!fromNode || !toNode) return [];
+      return [
+        {
+          id: edge.id,
+          from: edge.fromId,
+          to: edge.toId,
+          fromNode: frameNode(fromNode),
+          toNode: frameNode(toNode),
+          type: edge.type,
+          explanation: edge.explanation,
+          why: edge.why,
+        },
+      ];
+    });
+
+  // Count every active graph node represented anywhere in the packet, not
+  // only the nodes that participated in baseline/resistance selection.
+  // Artifact paths, inspiration neighborhoods, and relation endpoints are
+  // model-visible graph state too.
+  const packetNodeIds = new Set([
+    ...selectedNodeIds,
+    ...(artifactEvidence?.passages.flatMap((passage) => [
+      passage.id,
+      ...passage.path.map((pathNode) => pathNode.id),
+    ]) ?? []),
+    ...(inspirationCandidate
+      ? [
+          inspirationCandidate.id,
+          ...inspirationCandidate.neighborhood.map((item) => item.node.id),
+        ]
+      : []),
+    ...relations.flatMap((relation) => [relation.from, relation.to]),
+  ]);
 
   const frame: UnderstandingFrame = {
     ...(focusedNodes.length > 0
@@ -1923,6 +1957,11 @@ export async function handleUnderstandingTools(
     .map((relation) => relation.id);
   const syntheticReader = reservedThinkingVisible();
 
+  // Temperature and cold-node selection should reflect material the model
+  // actually received, not merely node creation time. Record the complete
+  // bounded packet only after selection succeeds.
+  store.recordAccessBatch([...packetNodeIds]);
+
   return {
     query,
     project: projectId,
@@ -1959,6 +1998,17 @@ export async function handleUnderstandingTools(
         cognitive: cognitiveSeeds.length,
         artifacts: artifactSeeds.length,
         artifactScopeFallback: scopedCognitiveFallback.length,
+      },
+      graphCoverage: {
+        activeNodes: nodes.length,
+        activeEdges: edges.length,
+        packetNodes: packetNodeIds.size,
+        omittedNodes: Math.max(0, nodes.length - packetNodeIds.size),
+        complete: packetNodeIds.size >= nodes.length,
+        note:
+          packetNodeIds.size >= nodes.length
+            ? 'Every active node is represented in this small-graph packet.'
+            : 'This is bounded re-entry, not a complete graph view. Use graph_skeleton and graph_context_region when global topology or an omitted region could change the work.',
       },
       ...(artifactEvidence
         ? { artifactEvidence: artifactEvidence.coverage }

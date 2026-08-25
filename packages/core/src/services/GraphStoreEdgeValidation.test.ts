@@ -24,6 +24,78 @@ afterEach(() => {
 });
 
 describe('GraphStore edge invariants', () => {
+  it('clears a stale embedding whenever semantic node material changes', () => {
+    const store = getGraphStore();
+    const node = store.createNode({
+      title: 'Revision embedding fixture',
+      trigger: 'analysis',
+      understanding: 'The old semantic material.',
+      why: 'Exercises embedding invalidation on revision.',
+    });
+    const embedding = new Float32Array([1, 0.5]);
+    sqlite
+      .getDb()
+      .prepare('UPDATE nodes SET embedding = ? WHERE id = ?')
+      .run(Buffer.from(embedding.buffer), node.id);
+    store.invalidateCache();
+    expect(store.getNode(node.id)?.embedding).not.toBeNull();
+
+    store.updateNode(node.id, {
+      understanding: 'The revised semantic material.',
+      revisionWhy: 'The meaning changed.',
+    });
+
+    expect(store.getNode(node.id)?.embedding).toBeNull();
+  });
+
+  it('clears a stale embedding after an applied semantic bulk replacement', () => {
+    const store = getGraphStore();
+    const node = store.createNode({
+      title: 'Bulk replacement fixture',
+      trigger: 'analysis',
+      understanding: 'The old phrase defines this node.',
+      why: 'Exercises embedding invalidation outside GraphStore.updateNode.',
+    });
+    const embedding = new Float32Array([0.1, 0.9]);
+    sqlite
+      .getDb()
+      .prepare('UPDATE nodes SET embedding = ? WHERE id = ?')
+      .run(Buffer.from(embedding.buffer), node.id);
+
+    sqlite.bulkReplace({
+      find: 'old phrase',
+      replace: 'new phrase',
+      fields: ['understanding'],
+      preview: false,
+    });
+    store.invalidateCache();
+
+    expect(store.getNode(node.id)?.understanding).toContain('new phrase');
+    expect(store.getNode(node.id)?.embedding).toBeNull();
+  });
+
+  it('invalidates legacy embeddings once when their representation version changes', () => {
+    const store = getGraphStore();
+    const node = store.createNode({
+      title: 'Legacy document embedding',
+      trigger: 'reference',
+      content: 'Exact document content omitted by the legacy representation.',
+      why: 'Exercises the one-time embedding migration.',
+    });
+    const embedding = new Float32Array([0.25, 0.75]);
+    sqlite
+      .getDb()
+      .prepare('UPDATE nodes SET embedding = ? WHERE id = ?')
+      .run(Buffer.from(embedding.buffer), node.id);
+    sqlite.setProjectMeta('embedding_representation_version', 1);
+
+    resetGraphStore();
+    const migrated = getGraphStore();
+
+    expect(migrated.getNode(node.id)?.embedding).toBeNull();
+    expect(sqlite.getProjectMeta('embedding_representation_version')).toBe(2);
+  });
+
   it('invalidates graph-backed node data after a rename', () => {
     const store = getGraphStore();
     const first = store.createNode({

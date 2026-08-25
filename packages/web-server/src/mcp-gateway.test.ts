@@ -97,6 +97,8 @@ describe('graph-scoped cloud MCP gateway', () => {
     expect(names.has('graph_suggest_next')).toBe(true);
     expect(names.has('graph_practice')).toBe(true);
     expect(names.has('graph_random')).toBe(true);
+    expect(names.has('graph_bisociate')).toBe(true);
+    expect(names.has('graph_discover')).toBe(true);
     expect(names.has('doc_create')).toBe(false);
     expect(names.has('doc_get_tree')).toBe(true);
     expect(names.has('graph_batch')).toBe(true);
@@ -162,6 +164,100 @@ describe('graph-scoped cloud MCP gateway', () => {
     );
     expect(sourceLoad?.inputSchema.properties).not.toHaveProperty('filePath');
     expect(sourceLoad?.description).toContain('provide content directly');
+
+    const suggestedNext = catalog.tools.find(
+      (tool) => tool.name === 'graph_suggest_next',
+    );
+    expect(suggestedNext?.description).toContain(
+      'spreading-activation bisociation',
+    );
+    expect(suggestedNext?.description).toContain('blind axiomatic noise');
+  });
+
+  it('can call the bounded creativity tools promised by hosted suggestion guidance', async () => {
+    const store = getGraphStore();
+    const first = store.createNode({
+      title: 'Tidal timing',
+      trigger: 'foundation',
+      understanding: 'A periodic signal changes what can happen at a boundary.',
+      why: 'Provides one bounded concept for hosted creativity calls.',
+    });
+    const second = store.createNode({
+      title: 'Queue pressure',
+      trigger: 'tension',
+      understanding:
+        'Accumulated work changes the behavior of a constrained system.',
+      why: 'Provides a second bounded concept for hosted creativity calls.',
+    });
+    store.createEdge({
+      fromId: first.id,
+      toId: second.id,
+      type: 'contextualizes',
+      explanation: 'Timing changes how queue pressure becomes visible.',
+      why: 'Makes a small connected graph for spreading activation.',
+    });
+
+    const bisociationResponse = await fetch(`${baseUrl}/api/mcp/call`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'graph_bisociate',
+        arguments: { seed_nodes: [first.id], limit: 4 },
+      }),
+    });
+    expect(bisociationResponse.status).toBe(200);
+    const bisociationMcp = (await bisociationResponse.json()) as {
+      isError?: boolean;
+      content: Array<{ text: string }>;
+    };
+    expect(bisociationMcp.isError).not.toBe(true);
+    const bisociation = JSON.parse(bisociationMcp.content[0].text) as {
+      success: boolean;
+      mode: string;
+    };
+    expect(bisociation.success).toBe(true);
+    expect(bisociation.mode).toMatch(/bisociation|activation|fallback/);
+
+    const dictionaryPath = path.join(temporaryDirectory, 'ani-words.txt');
+    fs.writeFileSync(dictionaryPath, 'turbine\nlantern\nmeadow\narchive\n');
+    const priorDictionaryPath = process.env.UG_ANI_DICTIONARY_PATH;
+    process.env.UG_ANI_DICTIONARY_PATH = dictionaryPath;
+    try {
+      const discoverResponse = await fetch(`${baseUrl}/api/mcp/call`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'graph_discover',
+          arguments: { nodes: 2, intensity: 1, blind: true },
+        }),
+      });
+      expect(discoverResponse.status).toBe(200);
+      const discoverMcp = (await discoverResponse.json()) as {
+        isError?: boolean;
+        content: Array<{ text: string }>;
+      };
+      expect(discoverMcp.isError).not.toBe(true);
+      const discover = JSON.parse(discoverMcp.content[0].text) as {
+        success: boolean;
+        mode: string;
+        sourceNodeIds: string[];
+        blindAgentRecommendation: { blindPrompt: string };
+      };
+      expect(discover).toMatchObject({ success: true, mode: 'blind' });
+      expect(discover.sourceNodeIds).toHaveLength(2);
+      expect(discover.blindAgentRecommendation.blindPrompt).toContain(
+        'blind sense-making agent',
+      );
+    } finally {
+      if (priorDictionaryPath === undefined) {
+        delete process.env.UG_ANI_DICTIONARY_PATH;
+      } else {
+        process.env.UG_ANI_DICTIONARY_PATH = priorDictionaryPath;
+      }
+    }
+
+    expect(store.getAll().nodes).toHaveLength(2);
+    expect(store.getAll().edges).toHaveLength(1);
   });
 
   it('rejects server filesystem paths before source_load can persist anything', async () => {

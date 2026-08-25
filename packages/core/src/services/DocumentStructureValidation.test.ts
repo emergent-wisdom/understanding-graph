@@ -87,6 +87,12 @@ describe('document identity boundaries', () => {
       isDocRoot: true,
       fileType: 'md',
     });
+    const staleEmbedding = new Float32Array([0.25, 0.75]);
+    sqlite
+      .getDb()
+      .prepare('UPDATE nodes SET embedding = ? WHERE id = ?')
+      .run(Buffer.from(staleEmbedding.buffer), detached.id);
+    store.invalidateCache();
     const converted = store.convertToConcept(detached.id, {
       trigger: 'analysis',
       moveContent: true,
@@ -97,6 +103,7 @@ describe('document identity boundaries', () => {
       understanding: 'Detached content',
       content: null,
       isDocRoot: null,
+      embedding: null,
     });
   });
 });

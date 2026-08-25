@@ -7,10 +7,16 @@ description: |
 user-invocable: true
 allowed-tools: |
   mcp__plugin_understanding-graph_ug__graph_suggest_next
+  mcp__plugin_understanding-graph_ug__graph_thermostat
   mcp__plugin_understanding-graph_ug__graph_understand
   mcp__plugin_understanding-graph_ug__graph_analyze
   mcp__plugin_understanding-graph_ug__graph_practice
+  mcp__plugin_understanding-graph_ug__graph_bisociate
+  mcp__plugin_understanding-graph_ug__graph_discover
   mcp__plugin_understanding-graph_ug__graph_discover_grounded
+  mcp__plugin_understanding-graph_ug__graph_discover_grounded_chaos
+  mcp__plugin_understanding-graph_ug__graph_chaos
+  mcp__plugin_understanding-graph_ug__graph_evaluate_variations
   mcp__plugin_understanding-graph_ug__graph_random
   mcp__plugin_understanding-graph_ug__graph_semantic_search
   mcp__plugin_understanding-graph_ug__graph_path
@@ -33,7 +39,8 @@ exploratory choice, start with:
 ```javascript
 graph_suggest_next({
   task: "State the live task or uncertainty",
-  workflow: "general"
+  workflow: "general",
+  creativity: true
 })
 ```
 
@@ -45,11 +52,37 @@ reject them. The model decides whether a proposed encounter can serve the live
 task; the menu is neither exhaustive nor mandatory. Do not call for another
 roll merely because one turn elapsed.
 
+Pass `creativity: false` when ordinary guidance is useful but creative
+provocations are not. This affects that roll only; it does not disable any
+direct tool. Use `graph_thermostat()` when an entropy-style structural pulse
+would genuinely help decide between convergence, continuation, and divergence.
+Its pressure and recommended tool are advisory, not a command or quality score.
+
+## Choose the creative pressure
+
+Use `graph_bisociate` to surface cross-context candidates through spreading
+activation and information gain. It is often the lightest way to leave a local
+groove: inspect a candidate's actual nodes, then decide whether a relation is
+real.
+
 Use `graph_discover_grounded({ nodes: 3, intensity: 0.2 })` when you want the
 graph to sample distant material and ask whether a real bridge exists. Inspect
 the actual sources, then look for a shared mechanism, constraint, structure, or
 functional analogy. A defensible
 no-connection result needs no node.
+
+After finding a genuine bridge, `graph_discover_grounded_chaos` can perturb
+that bridge. Do not call it merely because the grounded tool returned nodes.
+Use `graph_discover({ nodes: 2, cold: true, blind: true })` for the more
+speculative blind ANI path, or `graph_chaos({ text, blind: true })` to perturb
+chosen text. Blind ANI is meaningful only when a separate model context sees
+the returned prompt without the original source context.
+
+Dictionary ANI reads a newline-delimited word list installed on the MCP server
+host. When no standard system word list exists, set the server environment
+variable `UG_ANI_DICTIONARY_PATH` to its absolute path. There is no bundled or
+reduced fallback; if the dictionary is unavailable, choose a non-ANI method
+instead of inventing substitute seeds.
 
 Use `graph_random({ nodes: 3, cold: true, force: false })` when the value lies in
 letting a colder sample perturb the current framing. Returned nodes are
@@ -75,3 +108,11 @@ question, surprise, hypothesis, tension, or decision.
 If the encounter does not change later attention or work, write nothing.
 Never create a note merely to prove that
 the exploratory call was useful.
+
+All creative outputs remain provisional until scrutinized against their source
+nodes, the task, and any relevant evidence or artifact behavior.
+`graph_evaluate_variations` may experimentally rank alternatives by Novelty
+Score; its ranking is not validation. When a synthesis is worth retaining,
+record it with a batch-only `graph_serendipity` operation and its exact source
+elements. Mark it with batch-only `graph_validate` only after independent
+scrutiny yields a specific defensible insight.

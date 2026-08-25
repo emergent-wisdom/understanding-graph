@@ -34,7 +34,7 @@ Choose the smallest view that answers the live question:
 - `graph_semantic_gaps()` when embedding coverage exists and conceptual
   distance is relevant;
 - `graph_skeleton()` only when the overall topology is itself in question;
-- `graph_thermostat()` as a legacy descriptive pulse, not a command.
+- `graph_thermostat()` as an advisory entropy-style pulse, not a command.
 
 Metrics describe the stored shape. They cannot establish truth, creativity,
 importance, completeness, or whether a node was worth creating. A sparse graph

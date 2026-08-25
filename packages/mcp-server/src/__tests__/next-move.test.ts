@@ -26,6 +26,26 @@ describe('weighted next-move suggestions', () => {
     expect(moves.every((move) => move.whyNow.includes('State pressure'))).toBe(
       true,
     );
+    expect(Math.max(...moves.map((move) => move.weight))).toBe(100);
+  });
+
+  it('normalizes a lone returned weight against the sampled set', () => {
+    const moves = rollNextMoves(
+      {
+        task: 'Consider one next move',
+        workflow: 'general',
+        focusNodeIds: [],
+        nodeCount: 8,
+        edgeCount: 9,
+        unresolvedCount: 2,
+        documentCount: 1,
+        count: 1,
+      },
+      () => 0.999,
+    );
+
+    expect(moves).toHaveLength(1);
+    expect(moves[0].weight).toBe(100);
   });
 
   it('omits inapplicable graph routes while preserving continue, preserve, and pause', () => {
@@ -58,6 +78,7 @@ describe('weighted next-move suggestions', () => {
       edgeCount: 4,
       unresolvedCount: 1,
       documentCount: 0,
+      creativityEnabled: false,
       count: 12,
     };
 
@@ -124,6 +145,118 @@ describe('weighted next-move suggestions', () => {
     expect(forced?.steps[1].description).toContain('no connection is valid');
   });
 
+  it('can include creativity tools in the roll or omit them without disabling ordinary guidance', () => {
+    const creativeActions = new Set([
+      'bisociate',
+      'disrupt',
+      'force-bisociation',
+      'axiomatic-noise',
+    ]);
+    const base = {
+      task: 'Find a less familiar way to frame the design',
+      workflow: 'writing',
+      focusNodeIds: ['n_focus'],
+      nodeCount: 8,
+      edgeCount: 14,
+      unresolvedCount: 0,
+      documentCount: 3,
+      randomNodes: [
+        { id: 'n_focus', title: 'Current frame' },
+        { id: 'n_cold', title: 'Dormant analogy' },
+        { id: 'n_edge', title: 'Boundary condition' },
+      ],
+      focusNodes: [{ id: 'n_focus', title: 'Current frame' }],
+      count: 6,
+    };
+    const enabledSeen = new Set<string>();
+
+    for (let seed = 1; seed <= 40; seed += 1) {
+      let state = seed;
+      const random = () => {
+        state = (state * 48271) % 2147483647;
+        return state / 2147483647;
+      };
+      for (const move of rollNextMoves(
+        { ...base, creativityEnabled: true },
+        random,
+      )) {
+        if (creativeActions.has(move.action)) enabledSeen.add(move.action);
+      }
+    }
+
+    expect(enabledSeen).toEqual(creativeActions);
+
+    const disabledSeen = new Set<string>();
+    for (let seed = 1; seed <= 20; seed += 1) {
+      let state = seed;
+      const random = () => {
+        state = (state * 48271) % 2147483647;
+        return state / 2147483647;
+      };
+      const disabled = rollNextMoves(
+        { ...base, creativityEnabled: false },
+        random,
+      );
+      expect(disabled.some((move) => creativeActions.has(move.action))).toBe(
+        false,
+      );
+      disabled.forEach((move) => {
+        disabledSeen.add(move.action);
+      });
+    }
+    expect(disabledSeen.has('re-enter')).toBe(true);
+
+    const disabledCalls = rollNextMoves(
+      { ...base, taskRelevantNodes: [], creativityEnabled: false },
+      () => 0,
+    ).flatMap((move) =>
+      move.steps.flatMap((step) => (step.call ? [step.call.tool] : [])),
+    );
+    expect(disabledCalls).not.toContain('graph_discover_grounded');
+  });
+
+  it('can roll topology orientation and timestamped delta re-entry', () => {
+    const seen = new Map<string, ReturnType<typeof rollNextMoves>[number]>();
+    const updatesSince = '2026-08-25T00:00:00.000Z';
+
+    for (let seed = 1; seed <= 40; seed += 1) {
+      let state = seed;
+      const random = () => {
+        state = (state * 48271) % 2147483647;
+        return state / 2147483647;
+      };
+      for (const move of rollNextMoves(
+        {
+          task: 'Resume work without mistaking one packet for the whole graph',
+          workflow: 'general',
+          focusNodeIds: [],
+          nodeCount: 24,
+          edgeCount: 30,
+          unresolvedCount: 2,
+          documentCount: 3,
+          creativityEnabled: false,
+          updatesSince,
+          count: 6,
+        },
+        random,
+      )) {
+        seen.set(move.action, move);
+      }
+    }
+
+    expect(seen.get('survey-topology')?.steps[0].call).toEqual({
+      tool: 'graph_skeleton',
+      arguments: {},
+    });
+    expect(seen.get('survey-topology')?.steps[1].description).toContain(
+      'graph_context_region',
+    );
+    expect(seen.get('catch-up')?.steps[0].call).toEqual({
+      tool: 'graph_updates',
+      arguments: { since: updatesSince },
+    });
+  });
+
   it('offers practice as an optional mirror without manufacturing a missing node type', () => {
     let practice: ReturnType<typeof rollNextMoves>[number] | undefined;
 
@@ -182,6 +315,7 @@ describe('reading the artifact in order is reachable', () => {
     focusNodeIds: [],
     nodeCount: 11,
     edgeCount: 12,
+    creativityEnabled: false,
     count: 12,
     documentNodes: [
       {
@@ -241,5 +375,31 @@ describe('reading the artifact in order is reachable', () => {
       arguments: { nodeId: 'n_story_root', offset: 0, limit: 8 },
     });
     expect(whole?.steps[1].description).toContain('pagination.nextOffset');
+  });
+
+  it('never rolls a concrete call that the active capability surface lacks', () => {
+    const availableTools = new Set(['graph_understand']);
+    for (let index = 0; index < 100; index += 1) {
+      const moves = rollNextMoves(
+        {
+          ...base,
+          workflow: 'research',
+          nodeCount: 30,
+          edgeCount: 50,
+          unresolvedCount: 4,
+          documentCount: 8,
+          updatesSince: '2026-08-25T00:00:00.000Z',
+          creativityEnabled: true,
+          availableTools,
+          count: 6,
+        },
+        () => ((index * 37) % 101) / 101,
+      );
+      for (const call of moves.flatMap((move) =>
+        move.steps.flatMap((step) => (step.call ? [step.call] : [])),
+      )) {
+        expect(availableTools.has(call.tool), call.tool).toBe(true);
+      }
+    }
   });
 });

@@ -9,12 +9,18 @@ description: |
 user-invocable: false
 allowed-tools: |
   mcp__plugin_understanding-graph_ug__graph_suggest_next
+  mcp__plugin_understanding-graph_ug__graph_thermostat
   mcp__plugin_understanding-graph_ug__graph_understand
   mcp__plugin_understanding-graph_ug__graph_batch
   mcp__plugin_understanding-graph_ug__graph_analyze
   mcp__plugin_understanding-graph_ug__graph_practice
   mcp__plugin_understanding-graph_ug__graph_path
+  mcp__plugin_understanding-graph_ug__graph_bisociate
+  mcp__plugin_understanding-graph_ug__graph_discover
   mcp__plugin_understanding-graph_ug__graph_discover_grounded
+  mcp__plugin_understanding-graph_ug__graph_discover_grounded_chaos
+  mcp__plugin_understanding-graph_ug__graph_chaos
+  mcp__plugin_understanding-graph_ug__graph_evaluate_variations
   mcp__plugin_understanding-graph_ug__graph_random
   mcp__plugin_understanding-graph_ug__graph_semantic_search
   mcp__plugin_understanding-graph_ug__graph_history
@@ -52,7 +58,8 @@ graph-sensitive possibilities:
 ```javascript
 graph_suggest_next({
   task: "Draft or revise this specific work for its intended reader",
-  workflow: "writing"
+  workflow: "writing",
+  creativity: true
 })
 ```
 
@@ -71,6 +78,33 @@ it resolves into a conclusion; `no_shift` is still valid. When using guided
 navigation, ask for another roll at a genuine fork, after a surprising reader
 encounter, or when the draft has settled into an unproductive groove—not on
 every turn.
+
+Pass `creativity: false` when ordinary navigation is useful but creative
+provocations are not. This changes only that roll; every creativity tool
+remains directly callable. `graph_thermostat()` can provide an advisory
+entropy-style pulse when the work seems prematurely settled or structurally
+scattered, but it does not decide what the prose needs.
+
+For optional creative pressure, use the smallest fitting method:
+
+- `graph_bisociate` surfaces cross-context candidates through spreading
+  activation and information gain.
+- `graph_discover_grounded` asks for a defensible bridge; only after finding
+  one may `graph_discover_grounded_chaos` perturb it.
+- `graph_discover({ blind: true })` applies ANI to sampled graph material;
+  `graph_chaos({ text, blind: true })` applies it to chosen text. A separate
+  model context must see only the returned prompt for the blind method to be
+  blind.
+- `graph_evaluate_variations` can experimentally rank drafted alternatives by
+  Novelty Score, but the ranking is neither a reader judgment nor validation.
+
+Dictionary ANI uses a newline-delimited word list installed on the MCP server
+host. If no standard word list exists, set `UG_ANI_DICTIONARY_PATH` to its
+absolute path in the server environment. There is no bundled or reduced
+fallback. Release every forced or noisy premise after generation, scrutinize
+the result against the manuscript and its sources, and use batch-only
+`graph_validate` only when a retained `graph_serendipity` synthesis has yielded
+a specific defensible insight.
 
 ## Write with open attention
 

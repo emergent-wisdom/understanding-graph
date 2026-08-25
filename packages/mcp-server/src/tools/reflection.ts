@@ -17,9 +17,58 @@ import {
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
 import { rollNextMoves } from '../next-move.js';
-import { UNDERSTANDING_PROTOCOL_ID } from '../protocol.js';
+import {
+  epistemicStatusForNode,
+  UNDERSTANDING_PROTOCOL_ID,
+} from '../protocol.js';
+import { isResolvedLiveAttention } from './understand.js';
 
 const nextMoveHistory = new Map<string, string[]>();
+
+function semanticNodeText(node: {
+  title: string;
+  trigger?: string | null;
+  understanding?: string | null;
+  summary?: string | null;
+  content?: string | null;
+}): string {
+  if (node.trigger === 'thinking') return node.content?.trim() || node.title;
+  return (
+    node.understanding?.trim() ||
+    node.summary?.trim() ||
+    node.content?.trim() ||
+    node.title
+  );
+}
+
+function searchableNodeText(node: {
+  title: string;
+  understanding?: string | null;
+  summary?: string | null;
+  content?: string | null;
+  why?: string | null;
+}): string {
+  return [node.title, node.understanding, node.summary, node.content, node.why]
+    .filter((part): part is string => typeof part === 'string')
+    .join(' ');
+}
+
+function recordNodeExposure(
+  store: GraphStore,
+  nodes: Iterable<{ id: string }>,
+) {
+  const ids = [...new Set([...nodes].map((node) => node.id))];
+  if (ids.length > 0) store.recordAccessBatch(ids);
+}
+
+function recordXmlExposure(xml: string) {
+  const ids = [
+    ...new Set(
+      [...xml.matchAll(/\bid="(n_[A-Za-z0-9_-]+)"/g)].map((match) => match[1]),
+    ),
+  ];
+  if (ids.length > 0) getGraphStore().recordAccessBatch(ids);
+}
 
 function rememberSuggestedMoves(projectId: string, actions: string[]) {
   const recent = [...actions, ...(nextMoveHistory.get(projectId) ?? [])].slice(
@@ -39,6 +88,7 @@ function rankNodesForTask<
     id: string;
     title: string;
     understanding?: string | null;
+    summary?: string | null;
     content?: string | null;
   },
 >(nodes: Node[], task: string): Node[] {
@@ -56,7 +106,7 @@ function rankNodesForTask<
     .map((node, index) => {
       const title = node.title.toLowerCase();
       const body =
-        `${node.understanding ?? ''} ${node.content ?? ''}`.toLowerCase();
+        `${node.understanding ?? ''} ${node.summary ?? ''} ${node.content ?? ''}`.toLowerCase();
       const score = tokens.reduce(
         (sum, token) =>
           sum +
@@ -759,7 +809,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_suggest_next',
     description:
-      'OPTIONAL UNDERSTANDING AID. Call when a substantive graph-backed task reaches a choice point where graph-specific pointers could deepen or diversify understanding, recover neglected material, test the current view, or make a useful connection newly visible. Direct use of graph_understand, graph_batch, and other graph tools is equally valid and loses no capability. This endpoint rolls several graph-state-, task-, and workflow-weighted concrete possibilities. Every option carries an epistemic stance—balanced, deepen, resist, connect, disrupt, revisit, or test—that can shape the next graph_understand packet independently of the work domain. Each may contain multiple steps and may deepen, search, connect, force a temporary bisociation, disrupt, make, test, preserve, or pause. Higher weights deserve stronger consideration, but the agent judges fit to the user task and may combine, modify, reject, replace, or skip every suggestion. Suggestions do not guarantee better understanding, and calling this endpoint does not activate a persistent mode. Medium integrity still applies: commit new artifact work and communicable understanding before presenting it as the completed result.',
+      'OPTIONAL UNDERSTANDING AID. Call when a substantive graph-backed task reaches a choice point where graph-specific pointers could deepen or diversify understanding, recover neglected material, test the current view, or make a useful connection newly visible. Direct use of graph_understand, graph_batch, and other graph tools is equally valid and loses no capability. This endpoint rolls several graph-state-, task-, and workflow-weighted concrete possibilities. Every option carries an epistemic stance—balanced, deepen, resist, connect, disrupt, revisit, or test—that can shape the next graph_understand packet independently of the work domain. With creativity enabled (the default), the roll may offer spreading-activation bisociation, blind axiomatic noise, or temporary forcing alongside ordinary moves; creativity:false removes those provocations without disabling the tools themselves. Higher weights deserve stronger consideration, but the agent judges fit to the user task and may combine, modify, reject, replace, or skip every suggestion. Suggestions do not guarantee better understanding, and calling this endpoint does not activate a persistent mode. Medium integrity still applies: commit new artifact work and communicable understanding before presenting it as the completed result.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -793,6 +843,16 @@ export const reflectionTools: Tool[] = [
           maximum: 6,
           description: 'Number of sampled options to return (default: 4).',
         },
+        creativity: {
+          type: 'boolean',
+          description:
+            'Whether this roll may include optional creativity provocations such as bisociation, ANI, disruption, and temporary forcing (default: true). false keeps ordinary re-entry, search, integration, artifact, preservation, and pause routes.',
+        },
+        updatesSince: {
+          type: 'string',
+          description:
+            'Optional ISO timestamp cursor. When present, the roll can offer a concrete graph_updates catch-up route.',
+        },
         project: {
           type: 'string',
           description: 'Project ID (optional)',
@@ -804,7 +864,7 @@ export const reflectionTools: Tool[] = [
   {
     name: 'graph_thermostat',
     description:
-      'Legacy graph-state pulse retained for compatibility. Prefer graph_suggest_next for the ordinary weighted chooser loop.',
+      'Optional entropy-style graph-state pulse. Use it when deciding whether the current graph would benefit from convergence, ordinary continuation, or a more divergent creativity tool. It is advisory, not a governor; graph_suggest_next can turn the broad pressure into concrete weighted options.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -968,6 +1028,7 @@ export async function handleReflectionTools(
   name: string,
   args: Record<string, unknown>,
   contextManager: ContextManager,
+  availableTools?: ReadonlySet<string>,
 ): Promise<unknown> {
   switch (name) {
     // ========================================================================
@@ -1131,6 +1192,7 @@ export async function handleReflectionTools(
 
       // Apply final limit
       const results = filteredNodes.slice(0, limit);
+      if (!isExternal) recordNodeExposure(getGraphStore(), results);
 
       // Get all nodes for edge target names lookup
       const allNodes = queryNodes(projectId, { limit: 1000 });
@@ -1154,7 +1216,7 @@ export async function handleReflectionTools(
             : trigger === 'tension'
               ? 'These are unresolved tensions - consider resolving with a decision or synthesis'
               : trigger === 'serendipity'
-                ? 'These are chaos-injected discoveries - consider validating with graph_validate'
+                ? 'These are speculative candidates - scrutinize or test them before recording any validation judgment with graph_validate'
                 : trigger === 'prediction'
                   ? 'Use unresolvedOnly=true to find predictions that need adjudication'
                   : undefined;
@@ -1174,6 +1236,8 @@ export async function handleReflectionTools(
           return {
             id: n.id,
             name: n.title,
+            trigger: n.trigger,
+            ...epistemicStatusForNode(n),
             understanding:
               n.understanding?.slice(0, 150) +
               (n.understanding && n.understanding.length > 150 ? '...' : ''),
@@ -1244,15 +1308,18 @@ export async function handleReflectionTools(
           return false;
         }
       });
+      const visibleResults = results.slice(0, limit);
+      recordNodeExposure(store, visibleResults);
 
       return {
         field,
         value: value ?? '(any)',
         total: results.length,
-        nodes: results.slice(0, limit).map((n) => ({
+        nodes: visibleResults.map((n) => ({
           id: n.id,
           name: n.title,
           trigger: n.trigger,
+          ...epistemicStatusForNode(n),
           metadataValue: getNestedValue(n.metadata, field),
           fullMetadata: n.metadata,
         })),
@@ -1280,6 +1347,7 @@ export async function handleReflectionTools(
             ref.title?.toLowerCase().includes(url.toLowerCase()),
         );
       });
+      recordNodeExposure(store, results);
 
       return {
         searchTerm: url,
@@ -1288,6 +1356,7 @@ export async function handleReflectionTools(
           id: n.id,
           name: n.title,
           trigger: n.trigger,
+          ...epistemicStatusForNode(n),
           references: n.references?.filter(
             (ref) =>
               ref.url?.toLowerCase().includes(url.toLowerCase()) ||
@@ -1404,8 +1473,16 @@ export async function handleReflectionTools(
         (args.project as string) || contextManager.getCurrentProjectId();
       await contextManager.getContext(projectId); // Ensure initialized
 
-      const since = args.since as string;
+      const sinceInput =
+        typeof args.since === 'string' ? args.since.trim() : '';
+      const parsedSince = Date.parse(sinceInput);
+      if (!sinceInput || Number.isNaN(parsedSince)) {
+        throw new Error('since must be a valid ISO timestamp');
+      }
+      const since = new Date(parsedSince).toISOString();
       const xml = ContextService.getUpdatesSince(projectId, since);
+
+      recordXmlExposure(xml);
 
       return xml;
     }
@@ -1429,6 +1506,8 @@ export async function handleReflectionTools(
         nodeId: args.nodeId as string | undefined,
       });
 
+      recordXmlExposure(xml);
+
       return xml;
     }
 
@@ -1449,6 +1528,8 @@ export async function handleReflectionTools(
         hideDocumentProse: args.hide_document_content as boolean | undefined,
       });
 
+      recordXmlExposure(xml);
+
       return xml;
     }
 
@@ -1465,7 +1546,9 @@ export async function handleReflectionTools(
       const projectId = contextManager.getCurrentProjectId();
       await contextManager.getContext(projectId); // Ensure initialized
 
-      return generateSkeletonContext(projectId);
+      const skeleton = generateSkeletonContext(projectId);
+      recordXmlExposure(skeleton);
+      return skeleton;
     }
 
     case 'graph_path': {
@@ -1476,7 +1559,9 @@ export async function handleReflectionTools(
       const from = args.from as string;
       const to = args.to as string;
 
-      return findPath(projectId, from, to);
+      const pathResult = findPath(projectId, from, to);
+      recordXmlExposure(pathResult);
+      return pathResult;
     }
 
     case 'graph_analyze': {
@@ -1879,6 +1964,11 @@ export async function handleReflectionTools(
       }
 
       const similar = store.findSimilar(resolvedId, limit);
+      const sourceNode = store.getNode(resolvedId);
+      recordNodeExposure(store, [
+        ...(sourceNode ? [sourceNode] : []),
+        ...similar.map((item) => item.node),
+      ]);
 
       return {
         node: resolvedId,
@@ -1887,6 +1977,7 @@ export async function handleReflectionTools(
         similar: similar.map((s) => ({
           id: s.node.id,
           name: s.node.title,
+          ...epistemicStatusForNode(s.node),
           sharedNeighbors: s.sharedNeighbors,
           similarity: Math.round(s.jaccardSimilarity * 100) / 100,
         })),
@@ -1911,11 +2002,23 @@ export async function handleReflectionTools(
       if (useEmbeddings && hasEmbeddings) {
         // Use embedding-based gaps (more accurate)
         const gaps = store.findSemanticGapsWithEmbeddings(limit);
+        recordNodeExposure(
+          store,
+          gaps.flatMap((gap) => [gap.node1, gap.node2]),
+        );
         return {
           method: 'embeddings',
           gaps: gaps.map((g) => ({
-            node1: { id: g.node1.id, name: g.node1.title },
-            node2: { id: g.node2.id, name: g.node2.title },
+            node1: {
+              id: g.node1.id,
+              name: g.node1.title,
+              ...epistemicStatusForNode(g.node1),
+            },
+            node2: {
+              id: g.node2.id,
+              name: g.node2.title,
+              ...epistemicStatusForNode(g.node2),
+            },
             similarity: Math.round((g.embeddingSimilarity || 0) * 1000) / 1000,
           })),
           count: gaps.length,
@@ -1926,12 +2029,24 @@ export async function handleReflectionTools(
 
       // Fall back to keyword-based gaps
       const gaps = store.findSemanticGaps(limit);
+      recordNodeExposure(
+        store,
+        gaps.flatMap((gap) => [gap.node1, gap.node2]),
+      );
 
       return {
         method: 'keywords',
         gaps: gaps.map((g) => ({
-          node1: { id: g.node1.id, name: g.node1.title },
-          node2: { id: g.node2.id, name: g.node2.title },
+          node1: {
+            id: g.node1.id,
+            name: g.node1.title,
+            ...epistemicStatusForNode(g.node1),
+          },
+          node2: {
+            id: g.node2.id,
+            name: g.node2.title,
+            ...epistemicStatusForNode(g.node2),
+          },
           sharedTerms: g.sharedTerms,
         })),
         count: gaps.length,
@@ -1960,6 +2075,11 @@ export async function handleReflectionTools(
       await contextManager.getContext(projectId);
       const store = getGraphStore();
       const importance = store.getImportance();
+      recordNodeExposure(store, [
+        ...importance.pageRank.map((item) => item.node),
+        ...importance.betweenness.map((item) => item.node),
+        ...importance.degree.map((item) => item.node),
+      ]);
 
       return {
         project: projectId,
@@ -1967,16 +2087,19 @@ export async function handleReflectionTools(
         pageRank: importance.pageRank.map((r) => ({
           id: r.node.id,
           name: r.node.title,
+          ...epistemicStatusForNode(r.node),
           score: Math.round(r.score * 1000) / 1000,
         })),
         betweenness: importance.betweenness.map((r) => ({
           id: r.node.id,
           name: r.node.title,
+          ...epistemicStatusForNode(r.node),
           score: Math.round(r.score * 1000) / 1000,
         })),
         degree: importance.degree.map((r) => ({
           id: r.node.id,
           name: r.node.title,
+          ...epistemicStatusForNode(r.node),
           inDegree: r.inDegree,
           outDegree: r.outDegree,
           total: r.total,
@@ -2007,6 +2130,16 @@ export async function handleReflectionTools(
       const query = args.query as string;
       const limit = (args.limit as number) || 10;
 
+      // Both semantic and lexical results promise a region_id so callers can
+      // page directly into graph_context_region.
+      const communityResult = store.detectCommunities();
+      const nodeToCommunity = new Map<string, number>();
+      for (const [commId, nodes] of communityResult.communities) {
+        for (const node of nodes) {
+          nodeToCommunity.set(node.id, commId);
+        }
+      }
+
       // Check embedding coverage first
       const stats = store.getEmbeddingStats();
       if (stats.withEmbedding === 0 || !EmbeddingService.isModelLoaded()) {
@@ -2016,15 +2149,7 @@ export async function handleReflectionTools(
         const lexicalResults = store
           .getAll()
           .nodes.map((node) => {
-            const text = [
-              node.title,
-              node.trigger === 'thinking' ? node.content : node.understanding,
-              node.why,
-              node.summary,
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLocaleLowerCase();
+            const text = searchableNodeText(node).toLocaleLowerCase();
             const matches = terms.filter((term) => text.includes(term)).length;
             return {
               node,
@@ -2036,6 +2161,10 @@ export async function handleReflectionTools(
             (a, b) => b.score - a.score || a.node.id.localeCompare(b.node.id),
           )
           .slice(0, limit);
+        recordNodeExposure(
+          store,
+          lexicalResults.map((result) => result.node),
+        );
 
         return {
           query,
@@ -2045,12 +2174,12 @@ export async function handleReflectionTools(
           results: lexicalResults.map((result) => ({
             id: result.node.id,
             name: result.node.title,
+            trigger: result.node.trigger,
+            ...epistemicStatusForNode(result.node),
             similarity: null,
             lexicalCoverage: Math.round(result.score * 1000) / 1000,
-            understanding: (result.node.trigger === 'thinking'
-              ? result.node.content
-              : result.node.understanding
-            )?.slice(0, 200),
+            region_id: nodeToCommunity.get(result.node.id) ?? null,
+            understanding: semanticNodeText(result.node).slice(0, 200),
           })),
           count: lexicalResults.length,
           embeddingCoverage: `${stats.withEmbedding}/${stats.total} nodes (lexical fallback; model not loaded)`,
@@ -2059,15 +2188,10 @@ export async function handleReflectionTools(
       }
 
       const results = await store.semanticSearch(query, limit);
-
-      // Build node-to-region map for context loading optimization
-      const communityResult = store.detectCommunities();
-      const nodeToCommunity = new Map<string, number>();
-      for (const [commId, nodes] of communityResult.communities) {
-        for (const node of nodes) {
-          nodeToCommunity.set(node.id, commId);
-        }
-      }
+      recordNodeExposure(
+        store,
+        results.map((result) => result.node),
+      );
 
       return {
         query,
@@ -2076,13 +2200,13 @@ export async function handleReflectionTools(
         results: results.map((r) => ({
           id: r.node.id,
           name: r.node.title,
+          trigger: r.node.trigger,
+          ...epistemicStatusForNode(r.node),
           similarity: Math.round(r.similarity * 1000) / 1000,
           region_id: nodeToCommunity.get(r.node.id) ?? null,
           understanding:
-            r.node.understanding?.slice(0, 200) +
-            (r.node.understanding && r.node.understanding.length > 200
-              ? '...'
-              : ''),
+            semanticNodeText(r.node).slice(0, 200) +
+            (semanticNodeText(r.node).length > 200 ? '...' : ''),
         })),
         count: results.length,
         searchMode: 'semantic',
@@ -2192,12 +2316,30 @@ export async function handleReflectionTools(
       ) {
         throw new Error('count must be an integer from 1 to 6');
       }
+      const creativityEnabled = args.creativity !== false;
+      const updatesSinceInput =
+        typeof args.updatesSince === 'string' ? args.updatesSince.trim() : '';
+      if (updatesSinceInput && Number.isNaN(Date.parse(updatesSinceInput))) {
+        throw new Error('updatesSince must be a valid ISO timestamp');
+      }
+      const updatesSince = updatesSinceInput
+        ? new Date(updatesSinceInput).toISOString()
+        : '';
 
       const store = getGraphStore();
       const { nodes, edges } = store.getAll();
       const analysis = AnalysisService.analyzeGraph(projectId);
       const visibleNodeIds = new Set(nodes.map((node) => node.id));
       const nodeById = new Map(nodes.map((node) => [node.id, node]));
+      const openQuestionNodes = analysis.openQuestions
+        .map((question) => nodeById.get(question.id))
+        .filter(
+          (node): node is (typeof nodes)[number] =>
+            node != null &&
+            !node.isDocRoot &&
+            !node.level &&
+            !isResolvedLiveAttention(node),
+        );
       const taskRelevantRaw = rankNodesForTask(nodes, task).slice(0, 8);
       const taskRelevantRank = new Map(
         taskRelevantRaw.map((node, index) => [node.id, index]),
@@ -2212,6 +2354,7 @@ export async function handleReflectionTools(
         id: node.id,
         title: node.title,
         trigger: node.trigger,
+        ...epistemicStatusForNode(node),
         isDocRoot: Boolean(node.isDocRoot),
         excerpt: String(node.understanding || node.content || '')
           .replace(/\s+/g, ' ')
@@ -2226,6 +2369,26 @@ export async function handleReflectionTools(
         .getRandomNodes(Math.min(6, nodes.length))
         .filter((node) => visibleNodeIds.has(node.id))
         .map(describeNode);
+      const cognitiveNodes = nodes.filter(
+        (node) => !node.isDocRoot && !node.level,
+      );
+      const cognitiveNodeIds = new Set(cognitiveNodes.map((node) => node.id));
+      const cognitiveEdges = edges.filter(
+        (edge) =>
+          cognitiveNodeIds.has(edge.fromId) &&
+          cognitiveNodeIds.has(edge.toId) &&
+          edge.type !== 'contains' &&
+          edge.type !== 'next',
+      );
+      const connectedCognitiveIds = new Set<string>();
+      for (const edge of edges) {
+        if (cognitiveNodeIds.has(edge.fromId)) {
+          connectedCognitiveIds.add(edge.fromId);
+        }
+        if (cognitiveNodeIds.has(edge.toId)) {
+          connectedCognitiveIds.add(edge.toId);
+        }
+      }
       const contradictionEdges = edges.filter((edge) =>
         ['contradicts', 'invalidates'].includes(edge.type),
       );
@@ -2236,9 +2399,20 @@ export async function handleReflectionTools(
         focusNodeIds,
         nodeCount: nodes.length,
         edgeCount: edges.length,
+        cognitiveNodeCount: cognitiveNodes.length,
+        cognitiveEdgeCount: cognitiveEdges.length,
+        isolatedCognitiveCount: cognitiveNodes.filter(
+          (node) => !connectedCognitiveIds.has(node.id),
+        ).length,
         unresolvedCount:
-          analysis.openQuestions.length +
-          nodes.filter((node) => node.trigger === 'tension').length,
+          openQuestionNodes.length +
+          nodes.filter(
+            (node) =>
+              !node.isDocRoot &&
+              !node.level &&
+              node.trigger === 'tension' &&
+              !isResolvedLiveAttention(node),
+          ).length,
         documentCount: nodes.filter((node) => node.isDocRoot || node.level)
           .length,
         isolatedCount: analysis.stats.isolatedCount,
@@ -2248,9 +2422,7 @@ export async function handleReflectionTools(
         recentActions,
         taskRelevantNodes: taskRelevantRaw.map(describeNode),
         focusNodes,
-        openQuestions: analysis.openQuestions
-          .map((question) => nodeById.get(question.id))
-          .filter((node): node is (typeof nodes)[number] => node != null)
+        openQuestions: openQuestionNodes
           .sort(byTaskRelevance)
           .map(describeNode),
         isolatedNodes: analysis.isolatedNodes
@@ -2281,8 +2453,15 @@ export async function handleReflectionTools(
               ]
             : [];
         }),
+        creativityEnabled,
+        updatesSince: updatesSince || undefined,
         count,
+        availableTools,
       });
+      recordNodeExposure(
+        store,
+        options.flatMap((option) => option.subjects ?? []),
+      );
       rememberSuggestedMoves(
         projectId,
         options.map((option) => option.action),
@@ -2300,6 +2479,8 @@ export async function handleReflectionTools(
         workflow,
         focusNodeIds,
         roll: {
+          creativity: creativityEnabled ? 'enabled' : 'disabled',
+          updatesSince: updatesSince || null,
           distribution:
             'state- and workflow-weighted server-side sampling without replacement within this roll',
           hiddenActionSpace: true,
@@ -2325,32 +2506,83 @@ export async function handleReflectionTools(
       const store = getGraphStore();
       const { nodes, edges } = store.getAll();
 
-      const total = nodes.length;
-      if (total === 0) {
+      const cognitiveNodes = nodes.filter(
+        (node) => !node.isDocRoot && !node.level,
+      );
+      const cognitiveNodeIds = new Set(cognitiveNodes.map((node) => node.id));
+      const total = cognitiveNodes.length;
+      if (nodes.length === 0) {
         return {
-          metrics: { total: 0 },
-          physics: { temperature: '0.00', state: 'VOID', entropy: '0.00' },
-          governance: {
+          metrics: {
+            total_nodes: 0,
+            cognitive_nodes: 0,
+            document_nodes: 0,
+          },
+          physics: {
+            temperature: '0.00',
+            state: 'VOID',
+            entropy: '0.00',
+            entropyKind: 'heuristic structural disorder proxy',
+          },
+          advisory: {
             strategy: 'SEED',
-            directive:
+            suggestion:
               'The graph has no prior understanding. Begin the real task and preserve only what genuinely becomes salient.',
             recommended_tool: 'graph_understand',
-            advisory: true,
+          },
+        };
+      }
+
+      if (total === 0) {
+        return {
+          metrics: {
+            total_nodes: nodes.length,
+            cognitive_nodes: 0,
+            document_nodes: nodes.length,
+            unresolved_tension: '0.0%',
+            fragmentation: '0.0%',
+          },
+          physics: {
+            temperature: '0.00',
+            state: 'VOID',
+            entropy: '0.00',
+            entropyKind:
+              'heuristic structural disorder proxy over cognitive nodes',
+          },
+          advisory: {
+            strategy: 'SEED',
+            suggestion:
+              'Only document or artifact nodes are visible. Encounter the material and preserve genuine interpretation before treating graph shape as evidence.',
+            recommended_tool: 'graph_understand',
           },
         };
       }
 
       // 1. Calculate Metrics
-      const unresolved = nodes.filter(
-        (n) => n.trigger === 'question' || n.trigger === 'tension',
-      ).length;
+      const analysis = AnalysisService.analyzeGraph(projectId);
+      const nodeById = new Map(nodes.map((node) => [node.id, node]));
+      const unresolved =
+        analysis.openQuestions.filter((question) => {
+          const node = nodeById.get(question.id);
+          return (
+            node != null &&
+            cognitiveNodeIds.has(node.id) &&
+            !isResolvedLiveAttention(node)
+          );
+        }).length +
+        cognitiveNodes.filter(
+          (node) =>
+            node.trigger === 'tension' && !isResolvedLiveAttention(node),
+        ).length;
 
       const connectedNodeIds = new Set<string>();
       for (const edge of edges) {
         connectedNodeIds.add(edge.fromId);
         connectedNodeIds.add(edge.toId);
       }
-      const orphans = nodes.filter((n) => !connectedNodeIds.has(n.id)).length;
+      const orphans = cognitiveNodes.filter(
+        (node) => !connectedNodeIds.has(node.id),
+      ).length;
 
       // 2. Calculate Entropy (Disorder)
       // High entropy = Messy = Needs Cooling (Converge)
@@ -2375,8 +2607,8 @@ export async function handleReflectionTools(
         phase = 'GAS';
         strategy = 'DIVERGE';
         directive =
-          'Few live tensions or disconnected nodes are visible. If repeated re-entry is only returning familiar paths or the work is genuinely stuck, compare distant graph material with graph_discover_grounded; "no defensible connection" is a valid result.';
-        recommendedTool = 'graph_discover_grounded';
+          'Few live tensions or disconnected nodes are visible. If repeated re-entry is only returning familiar paths or the work is genuinely stuck, use graph_bisociate to surface a distant candidate; stronger ANI or forcing remains optional, and "no defensible connection" is a valid result.';
+        recommendedTool = 'graph_bisociate';
       } else if (temperature < 0.3) {
         phase = 'SOLID';
         strategy = 'CONVERGE';
@@ -2387,7 +2619,9 @@ export async function handleReflectionTools(
 
       return {
         metrics: {
-          total_nodes: total,
+          total_nodes: nodes.length,
+          cognitive_nodes: total,
+          document_nodes: nodes.length - total,
           unresolved_tension: `${(tensionRatio * 100).toFixed(1)}%`,
           fragmentation: `${(fragRatio * 100).toFixed(1)}%`,
         },
@@ -2395,12 +2629,13 @@ export async function handleReflectionTools(
           temperature: temperature.toFixed(2),
           state: phase,
           entropy: disorder.toFixed(2),
+          entropyKind:
+            'heuristic structural disorder proxy over cognitive nodes',
         },
-        governance: {
+        advisory: {
           strategy,
-          directive,
+          suggestion: directive,
           recommended_tool: recommendedTool,
-          advisory: true,
         },
       };
     }

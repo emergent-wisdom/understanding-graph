@@ -17,6 +17,8 @@ allowed-tools: |
   mcp__plugin_understanding-graph_ug__graph_suggest_next
   mcp__plugin_understanding-graph_ug__graph_understand
   mcp__plugin_understanding-graph_ug__graph_skeleton
+  mcp__plugin_understanding-graph_ug__graph_context_region
+  mcp__plugin_understanding-graph_ug__graph_updates
   mcp__plugin_understanding-graph_ug__graph_semantic_search
   mcp__plugin_understanding-graph_ug__graph_find_by_trigger
   mcp__plugin_understanding-graph_ug__graph_context
@@ -148,8 +150,8 @@ reader re-enter:
   than be collapsed into the current synthesis?
 
 Use `graph_suggest_next()` when the next reading move is genuinely open. Use
-`graph_score()` and the legacy `graph_thermostat()` only when structural health
-is actually in question, not as a ritual at arbitrary percentages.
+`graph_score()` and the advisory `graph_thermostat()` only when structural
+health is actually in question, not as a ritual at arbitrary percentages.
 
 ## Fresh reading discipline
 

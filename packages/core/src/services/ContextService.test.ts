@@ -10,8 +10,10 @@ import {
 } from '../types/index.js';
 import { withReservedThinkingVisibility } from '../visibility.js';
 import {
+  findPath,
   generateHistoryContext,
   generateRegionContext,
+  generateSkeletonContext,
   generateXmlContext,
   getUpdatesSince,
 } from './ContextService.js';
@@ -202,6 +204,76 @@ describe('ContextService model context', () => {
       expect(region).toContain(renderedConcept);
       expect(region).toContain(`type="${trigger}"`);
     }
+  });
+
+  it('preserves serendipity epistemic status in every agent-facing context view', () => {
+    const store = getGraphStore();
+    const speculative = createConcept('Speculative Spark', 'serendipity');
+    const validated = createConcept('Validated Spark', 'serendipity');
+    store.updateNode(validated.id, {
+      validated: true,
+      revisionWhy: 'Independent scrutiny supported this connection.',
+    });
+    const firstAnchor = createConcept('First Grounded Anchor');
+    const secondAnchor = createConcept('Second Grounded Anchor');
+
+    for (const target of [validated, firstAnchor, secondAnchor]) {
+      store.createEdge({
+        fromId: speculative.id,
+        toId: target.id,
+        type: 'relates',
+        explanation: 'Makes the epistemic rendering fixture connected.',
+        why: 'Exercises node and relationship renderers in one region.',
+      });
+    }
+
+    const regionId = regionIdContaining(speculative.id);
+    const titleOnly = { includeFields: ['title'] };
+    const contexts = {
+      updates: getUpdatesSince(PROJECT_ID, SINCE_BEFORE_FIXTURES),
+      full: generateXmlContext(PROJECT_ID, {
+        compact: false,
+        ...titleOnly,
+      }),
+      focused: generateXmlContext(PROJECT_ID, {
+        nodeId: speculative.id,
+        ...titleOnly,
+      }),
+      compact: generateXmlContext(PROJECT_ID, {
+        compact: true,
+        ...titleOnly,
+      }),
+      region: generateRegionContext(PROJECT_ID, regionId, titleOnly),
+    };
+
+    const speculativeNodePattern = new RegExp(
+      `<(?:node|concept) id="${speculative.id}"[^>]*epistemic_status="speculative"`,
+    );
+    const validatedNodePattern = new RegExp(
+      `<(?:node|concept) id="${validated.id}"[^>]*validated="true"`,
+    );
+
+    for (const [view, context] of Object.entries(contexts)) {
+      expect(context, `${view} speculative node`).toMatch(
+        speculativeNodePattern,
+      );
+      expect(context, `${view} validated node`).toMatch(validatedNodePattern);
+      expect(context, `${view} must not imply failed validation`).not.toContain(
+        'validated="false"',
+      );
+    }
+
+    expect(contexts.compact).toContain('label_epistemic_status="speculative"');
+
+    const skeleton = generateSkeletonContext(PROJECT_ID);
+    expect(skeleton).toContain(
+      'Speculative Spark [epistemic_status=speculative]',
+    );
+    expect(skeleton).toContain('Validated Spark [validated=true]');
+
+    const path = findPath(PROJECT_ID, speculative.id, validated.id);
+    expect(path).toContain('Speculative Spark [epistemic_status=speculative]');
+    expect(path).toContain('Validated Spark [validated=true]');
   });
 
   it('uses thinking content instead of signature metadata in every context mode', () => {

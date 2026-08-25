@@ -28,6 +28,12 @@ stays empty until `project_switch` creates a deliberately named project. Set
 `DEFAULT_PROJECT` only when the host explicitly wants to load or create that
 named project at startup.
 
+ANI (`graph_chaos` and the blind `graph_discover` path) reads a word list
+installed on the host machine. The server autodetects conventional paths such
+as `/usr/share/dict/words`; set `UG_ANI_DICTIONARY_PATH` to an absolute
+newline-delimited word-list file on other machines. No dictionary corpus or
+reduced fallback is bundled with the package.
+
 ## Understanding, not transcription
 
 The graph is a cognitive autobiography composed for future continuation. At
@@ -65,6 +71,9 @@ samples a small set without replacement, and returns only those concrete routes
 with weights and reasons. The model judges task fit and may choose, combine,
 modify, reject, replace, or skip every route. Set `UG_GUIDANCE_MODE=direct` to
 suppress automatic next-move prompts while keeping the endpoint callable.
+Pass `creativity: false` to keep ordinary guidance while omitting bisociation,
+grounded random comparison, ANI, disruption, and temporary forcing from that
+particular roll. The creativity tools remain directly callable.
 
 There is no required cognitive state machine. The model may read, search, make,
 test, connect, disrupt, re-enter, revise, preserve, or pause in whatever order
@@ -131,7 +140,7 @@ updates.
 | `coding` | Graph-native code documents, generation, and tests |
 | `collaborative_coding` | Coding plus ownership, locks, and handoffs |
 | `writing` | Graph-backed manuscripts and editorial revision |
-| `full` | Explicit broad access, including administrative and experimental tools |
+| `full` | Explicit broad access, including administrative tools |
 | `synthetic_reader` | Reserved production/signing/translation of Reader/CMP `thinking` blocks |
 
 Ordinary modes—including `full`—reject hidden or nested attempts to create a
@@ -146,9 +155,12 @@ reserved `thinking` block.
 | `graph_batch` | Apply a committed, atomic set of graph mutations |
 | `graph_skeleton` / `graph_context` | Inspect graph structure and local state |
 | `graph_semantic_search` | Find relevant prior state; lexical fallback works without embeddings |
+| `graph_bisociate` | Use spreading activation and information gain to surface candidate cross-context connections |
 | `graph_discover_grounded` | Compare distant graph material; an honest no-connection result is valid |
+| `graph_discover` / `graph_chaos` | Optional blind ANI using a machine-local dictionary |
 | `graph_random` | Sample concrete provocations or run a temporary Physics What-If; preserve only what survives scrutiny |
-| `graph_thermostat` | Legacy graph-state pulse; prefer `graph_suggest_next` |
+| `graph_evaluate_variations` | Rank alternatives with the experimental Novelty Score |
+| `graph_thermostat` | Advisory entropy-style pulse for choosing convergence, continuation, or divergence |
 | `graph_history` | Inspect commits, agents, and mutation events |
 | `source_load` / `source_read` | Encounter a source chronologically and persist exact passages |
 | `doc_read` / `doc_get_tree` | Navigate graph-native artifacts |

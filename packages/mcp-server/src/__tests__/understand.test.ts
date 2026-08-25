@@ -122,6 +122,8 @@ describe('graph_understand contract', () => {
     const distantProvocation = store.createNode({
       title: 'Forest firebreak mosaic',
       trigger: 'serendipity',
+      validated: false,
+      epistemicStatus: 'speculative',
       why: 'A distant pattern may or may not transfer.',
       understanding:
         'Heterogeneous gaps can prevent a locally useful response from propagating globally.',
@@ -169,6 +171,42 @@ describe('graph_understand contract', () => {
     );
     expect(disrupted.prompt).toContain('MEDIUM INTEGRITY');
     expect(disrupted.prompt).toContain('must not become the only copy');
+  });
+
+  it('reports when bounded re-entry omits graph regions', async () => {
+    const store = getGraphStore();
+    store.createNode({
+      title: 'Retry collapse mechanism',
+      trigger: 'model',
+      why: 'Provides the task-relevant baseline.',
+      understanding: 'Synchronized retries amplify burst load.',
+    });
+    for (let index = 0; index < 12; index += 1) {
+      store.createNode({
+        title: `Unrelated region ${index}`,
+        trigger: 'reference',
+        why: 'Provides graph state outside the bounded task packet.',
+        understanding: `Distant material ${index} about another inquiry.`,
+      });
+    }
+
+    const result = await understand('Why do synchronized retries collapse?');
+    const selection = result.selection as {
+      graphCoverage: {
+        activeNodes: number;
+        packetNodes: number;
+        omittedNodes: number;
+        complete: boolean;
+        note: string;
+      };
+    };
+
+    expect(selection.graphCoverage.activeNodes).toBe(13);
+    expect(selection.graphCoverage.packetNodes).toBeLessThan(13);
+    expect(selection.graphCoverage.omittedNodes).toBeGreaterThan(0);
+    expect(selection.graphCoverage.complete).toBe(false);
+    expect(selection.graphCoverage.note).toContain('graph_skeleton');
+    expect(selection.graphCoverage.note).toContain('graph_context_region');
   });
 
   it('leaves next-move judgment with the model in direct mode', async () => {
@@ -793,6 +831,8 @@ describe('graph_understand contract', () => {
       id: candidate.id,
       title: 'A borrowed tide enters the archive',
       trigger: 'serendipity',
+      validated: false,
+      epistemicStatus: 'speculative',
       excerpt:
         'The lunar archive mistakes an inherited voice for the sound of a tide.',
       selectionReason:
@@ -1382,18 +1422,16 @@ describe('graph_understand contract', () => {
       contextManager,
       'coding',
     )) as {
-      governance: {
-        advisory: boolean;
+      advisory: {
         recommended_tool: string;
-        directive: string;
+        suggestion: string;
       };
     };
 
-    expect(pulse.governance).toMatchObject({
-      advisory: true,
-      recommended_tool: 'graph_discover_grounded',
+    expect(pulse.advisory).toMatchObject({
+      recommended_tool: 'graph_bisociate',
     });
-    expect(pulse.governance.directive).toContain(
+    expect(pulse.advisory.suggestion).toContain(
       '"no defensible connection" is a valid result',
     );
   });
