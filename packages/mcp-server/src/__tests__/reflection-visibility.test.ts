@@ -194,6 +194,35 @@ function seedVisibilityFixture() {
 }
 
 describe('reflection reserved-artifact visibility', () => {
+  it('finds exact document language even when a summary is also present', async () => {
+    const document = getGraphStore().createNode({
+      title: 'Document search fixture',
+      trigger: 'foundation',
+      why: 'Exercises exact document retrieval in lexical fallback mode.',
+      understanding: 'A compressed interpretation that omits the marker.',
+      summary: 'A short summary that also omits it.',
+      content: 'The mirroredchambertoken occurs only in exact document text.',
+      level: 'document',
+      isDocRoot: true,
+      fileType: 'md',
+    });
+
+    const result = (await callOrdinary('graph_semantic_search', {
+      query: 'mirroredchambertoken',
+    })) as {
+      searchMode: string;
+      results: Array<{ id: string; region_id: number | null }>;
+    };
+
+    expect(result.searchMode).toBe('lexical_fallback');
+    expect(result.results).toEqual([
+      expect.objectContaining({
+        id: document.id,
+        region_id: ordinaryRegionContaining(document.id),
+      }),
+    ]);
+  });
+
   it('keeps ordinary renderers, enumeration, and graph algorithms free of reserved artifacts', async () => {
     const fixture = seedVisibilityFixture();
     const regionId = ordinaryRegionContaining(fixture.anchor.id);

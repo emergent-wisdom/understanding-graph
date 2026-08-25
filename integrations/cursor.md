@@ -16,7 +16,7 @@ edit directly:
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.1.30", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.31", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }

@@ -22,6 +22,8 @@ export type NextMoveNode = {
   id: string;
   title: string;
   trigger?: string | null;
+  validated?: boolean;
+  epistemicStatus?: 'validated' | 'speculative';
   excerpt?: string;
   isDocRoot?: boolean;
 };
@@ -39,6 +41,9 @@ export type RollNextMovesInput = {
   focusNodeIds: string[];
   nodeCount: number;
   edgeCount: number;
+  cognitiveNodeCount?: number;
+  cognitiveEdgeCount?: number;
+  isolatedCognitiveCount?: number;
   unresolvedCount: number;
   documentCount: number;
   isolatedCount?: number;
@@ -53,7 +58,10 @@ export type RollNextMovesInput = {
   centralNodes?: NextMoveNode[];
   randomNodes?: NextMoveNode[];
   contradictions?: NextMoveRelation[];
+  creativityEnabled?: boolean;
+  updatesSince?: string;
   count?: number;
+  availableTools?: ReadonlySet<string>;
 };
 
 type MoveTemplate = Omit<RolledNextMove, 'weight' | 'stance'> & {
@@ -97,6 +105,7 @@ export function rollNextMoves(
   const randomSubjects = pickMany(input.randomNodes ?? [], 3, random);
   const central = pickOne((input.centralNodes ?? []).slice(0, 4), random);
   const contradiction = pickOne(input.contradictions ?? [], random);
+  const creativityEnabled = input.creativityEnabled !== false;
   const reentrySubjects =
     focus.length > 0
       ? focus
@@ -108,9 +117,13 @@ export function rollNextMoves(
   const connectionSubjects =
     isolated.length >= 2
       ? isolated
-      : taskRelevant.length > 0 && randomSubjects.length > 0
-        ? uniqueNodes([taskRelevant[0], ...randomSubjects]).slice(0, 2)
-        : [];
+      : taskRelevant.length >= 2
+        ? taskRelevant.slice(0, 2)
+        : creativityEnabled &&
+            taskRelevant.length > 0 &&
+            randomSubjects.length > 0
+          ? uniqueNodes([taskRelevant[0], ...randomSubjects]).slice(0, 2)
+          : [];
   const templates: MoveTemplate[] = [
     {
       action: 're-enter',
@@ -226,7 +239,9 @@ export function rollNextMoves(
         connectionSubjects.length >= 2
           ? `Ask whether “${connectionSubjects[0].title}” and “${connectionSubjects[1].title}” share a defensible bridge`
           : 'Look for a defensible distant connection',
-      available: input.nodeCount >= 2,
+      available:
+        input.nodeCount >= 2 &&
+        (creativityEnabled || connectionSubjects.length >= 2),
       whyNow:
         isolated.length >= 2
           ? 'These graph elements are structurally isolated; their separation may be meaningful or accidental.'
@@ -277,12 +292,43 @@ export function rollNextMoves(
             ],
     },
     {
+      action: 'bisociate',
+      label:
+        reentrySubjects.length > 0
+          ? `Spread activation from ${reentrySubjects.map((node) => `“${node.title}”`).join(', ')}`
+          : 'Surface a graph-wide bisociation',
+      available: creativityEnabled && input.nodeCount >= 2,
+      whyNow:
+        'A spreading-activation pass can surface a concrete cross-context pair that ordinary task relevance would leave dormant.',
+      subjects: reentrySubjects.length > 0 ? reentrySubjects : undefined,
+      steps: [
+        {
+          description:
+            'Use graph structure, node temperature, and information gain to surface candidate associations.',
+          call: {
+            tool: 'graph_bisociate',
+            arguments:
+              reentrySubjects.length > 0
+                ? {
+                    seed_nodes: reentrySubjects.map((node) => node.id),
+                    limit: 8,
+                  }
+                : { strategy: 'mixed', limit: 8 },
+          },
+        },
+        {
+          description:
+            'Judge whether a candidate changes the live work. Connect or preserve it only if the relation survives scrutiny; rejecting every candidate is valid.',
+        },
+      ],
+    },
+    {
       action: 'disrupt',
       label:
         randomSubjects.length >= 2
           ? `Let ${randomSubjects.map((node) => `“${node.title}”`).join(', ')} perturb the current path`
           : 'Introduce a grounded random perturbation',
-      available: input.nodeCount >= 3,
+      available: creativityEnabled && input.nodeCount >= 3,
       whyNow:
         'A high-weight roll can justify leaving the most familiar path long enough to test a colder association.',
       subjects: randomSubjects.length >= 2 ? randomSubjects : undefined,
@@ -327,7 +373,7 @@ export function rollNextMoves(
         randomSubjects.length >= 2
           ? `Temporarily force “${randomSubjects[0].title}” and “${randomSubjects[1].title}” into contact`
           : 'Run a Physics What-If between distant concepts',
-      available: input.nodeCount >= 2,
+      available: creativityEnabled && input.nodeCount >= 2,
       whyNow:
         'A deliberately forced lens can generate a candidate relation that ordinary relevance retrieval would never propose. The candidate still has to survive later scrutiny.',
       subjects:
@@ -354,6 +400,71 @@ export function rollNextMoves(
         {
           description:
             'Release the forced assumption. Test the candidate against evidence and preserve it only if a defensible relation remains; no connection is valid.',
+        },
+      ],
+    },
+    {
+      action: 'axiomatic-noise',
+      label: 'Inject blind axiomatic noise',
+      available: creativityEnabled && input.nodeCount >= 2,
+      whyNow:
+        'When familiar associations dominate, a blind ANI pass can force a model to invent a different explanatory frame from machine-local random words.',
+      steps: [
+        {
+          description:
+            'Draw cold graph material, replace part of it with machine-local dictionary seeds, and return only the blind-agent prompt.',
+          call: {
+            tool: 'graph_discover',
+            arguments: {
+              nodes: 2,
+              cold: true,
+              intensity: 0.25,
+              blind: true,
+            },
+          },
+        },
+        {
+          description:
+            'Give only that prompt to a separate blind model context. Release the axioms afterward, scrutinize the synthesis, and preserve only what remains useful.',
+        },
+      ],
+    },
+    {
+      action: 'survey-topology',
+      label: 'Survey the graph as a landscape',
+      available: hasGraph,
+      whyNow:
+        'A bounded task packet can omit a region whose topology or recent momentum would change the work.',
+      steps: [
+        {
+          description:
+            'Read the compact structural digest of regions, hubs, and recent activity.',
+          call: { tool: 'graph_skeleton', arguments: {} },
+        },
+        {
+          description:
+            'Choose a region that could materially bear on the task, page it with graph_context_region, and stop after orientation if no region matters.',
+        },
+      ],
+    },
+    {
+      action: 'catch-up',
+      label: 'Catch up on graph changes since the last cursor',
+      available: Boolean(input.updatesSince),
+      whyNow:
+        'A caller-supplied timestamp makes temporal re-entry possible without treating the present packet as the whole graph.',
+      steps: [
+        {
+          description:
+            'Load every visible node, edge, and commit change since the supplied timestamp.',
+          call: {
+            tool: 'graph_updates',
+            arguments: { since: input.updatesSince },
+          },
+        },
+        {
+          description:
+            'Re-enter only changes that can alter the live task; delta size depends on intervening work.',
         },
       ],
     },
@@ -544,18 +655,23 @@ export function rollNextMoves(
 
   const count = Math.max(1, Math.min(6, Math.floor(input.count ?? 4)));
   const candidates = templates
-    .filter((template) => template.available)
+    .filter(
+      (template) =>
+        template.available &&
+        template.steps.every(
+          (step) =>
+            !step.call ||
+            input.availableTools == null ||
+            input.availableTools.has(step.call.tool),
+        ),
+    )
     .map((template) => ({
       template,
       pressure:
         actionPressure(template.action, input) *
         taskRelevanceMultiplier(template.subjects, input.taskRelevantNodes),
     }));
-  const maximumPressure = Math.max(
-    1,
-    ...candidates.map((candidate) => candidate.pressure),
-  );
-  const selected: RolledNextMove[] = [];
+  const selected: typeof candidates = [];
 
   while (candidates.length > 0 && selected.length < count) {
     const total = candidates.reduce(
@@ -572,17 +688,25 @@ export function rollNextMoves(
       }
     }
 
-    const [{ template, pressure }] = candidates.splice(selectedIndex, 1);
-    const { available: _available, ...move } = template;
-    selected.push({
-      ...move,
-      stance: stanceForAction(move.action),
-      weight: Math.max(1, Math.round((pressure / maximumPressure) * 100)),
-      whyNow: `${move.whyNow} State pressure ${pressure.toFixed(2)}; only rolled options are shown.`,
-    });
+    selected.push(...candidates.splice(selectedIndex, 1));
   }
 
-  return selected;
+  const maximumSelectedPressure =
+    selected.length > 0
+      ? Math.max(...selected.map((candidate) => candidate.pressure))
+      : 1;
+  return selected.map(({ template, pressure }) => {
+    const { available: _available, ...move } = template;
+    return {
+      ...move,
+      stance: stanceForAction(move.action),
+      weight: Math.max(
+        1,
+        Math.round((pressure / maximumSelectedPressure) * 100),
+      ),
+      whyNow: `${move.whyNow} State pressure ${pressure.toFixed(2)}; only rolled options are shown.`,
+    };
+  });
 }
 
 function stanceForAction(action: string): UnderstandingStance {
@@ -594,12 +718,16 @@ function stanceForAction(action: string): UnderstandingStance {
       return 'resist';
     case 'connect':
     case 'inspect-structure':
+    case 'bisociate':
+    case 'survey-topology':
       return 'connect';
     case 'disrupt':
     case 'force-bisociation':
+    case 'axiomatic-noise':
       return 'disrupt';
     case 'revisit-history':
     case 'check-practice':
+    case 'catch-up':
       return 'revisit';
     case 'reread-artifact':
     case 'read-artifact-whole':
@@ -611,9 +739,10 @@ function stanceForAction(action: string): UnderstandingStance {
 }
 
 function actionPressure(action: string, input: RollNextMovesInput): number {
-  const nodeCount = Math.max(1, input.nodeCount);
-  const fragmentation = (input.isolatedCount ?? 0) / nodeCount;
-  const tightness = input.edgeCount / nodeCount;
+  const nodeCount = Math.max(1, input.cognitiveNodeCount ?? input.nodeCount);
+  const fragmentation =
+    (input.isolatedCognitiveCount ?? input.isolatedCount ?? 0) / nodeCount;
+  const tightness = (input.cognitiveEdgeCount ?? input.edgeCount) / nodeCount;
   const unresolved = input.unresolvedCount / nodeCount;
   const contradictions = (input.contradictionCount ?? 0) / nodeCount;
   const cycles = (input.cycleCount ?? 0) / nodeCount;
@@ -635,6 +764,10 @@ function actionPressure(action: string, input: RollNextMovesInput): number {
     case 'connect':
       pressure += fragmentation * 6 + (tightness < 1 ? 0.5 : 0);
       break;
+    case 'bisociate':
+      pressure += Math.max(0, tightness - 1) * 0.6;
+      pressure += input.focusNodeIds.length > 0 ? 0.45 : 0.2;
+      break;
     case 'disrupt':
       pressure += Math.max(0, tightness - 1.5) * 1.5;
       pressure += unresolved < 0.08 ? 0.6 : 0;
@@ -643,8 +776,19 @@ function actionPressure(action: string, input: RollNextMovesInput): number {
       pressure += Math.max(0, tightness - 1.2) * 0.7;
       pressure += 0.35;
       break;
+    case 'axiomatic-noise':
+      pressure += Math.max(0, tightness - 1.5) * 0.45;
+      pressure += unresolved < 0.05 ? 0.2 : 0;
+      break;
     case 'inspect-structure':
       pressure += fragmentation * 3 + cycles * 2;
+      break;
+    case 'survey-topology':
+      pressure += Math.min(1.2, input.nodeCount / 40);
+      pressure += input.focusNodeIds.length === 0 ? 0.35 : 0;
+      break;
+    case 'catch-up':
+      pressure += 0.8;
       break;
     case 'reread-artifact':
       pressure += Math.min(1.5, input.documentCount / 8);
@@ -677,13 +821,20 @@ function actionPressure(action: string, input: RollNextMovesInput): number {
     if (
       action === 'disrupt' ||
       action === 'force-bisociation' ||
+      action === 'bisociate' ||
+      action === 'axiomatic-noise' ||
       action === 'connect'
     )
       pressure *= 1.35;
     if (action === 'reread-artifact') pressure *= 1.25;
   } else if (input.workflow === 'coding') {
     if (action === 'reread-artifact' || action === 'deepen') pressure *= 1.35;
-    if (action === 'disrupt' || action === 'force-bisociation')
+    if (
+      action === 'disrupt' ||
+      action === 'force-bisociation' ||
+      action === 'bisociate' ||
+      action === 'axiomatic-noise'
+    )
       pressure *= 0.65;
   } else if (input.workflow === 'research' || input.workflow === 'reading') {
     if (action === 'read-source' || action === 'search') pressure *= 1.4;

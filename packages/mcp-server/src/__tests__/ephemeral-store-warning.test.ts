@@ -19,7 +19,7 @@ import { isEphemeralPath } from '../index.js';
 describe('an ephemeral store is announced as one', () => {
   it.each([
     ['/tmp/ug-run/projects'],
-    ['/private/tmp/ug-fluid-luna2.RHj0yI/projects'],
+    ['/private/tmp/ug-run-2.ABC123/projects'],
     ['/var/folders/xx/T/ug/projects'],
     ['/private/tmp/projects'],
   ])('treats %s as ephemeral', (dir) => {

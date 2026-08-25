@@ -8,7 +8,7 @@ One command to connect, one command to install the local graph workflow.
 ### Fastest: zero-install via npx
 
 ```bash
-claude mcp add ug -- npx -y understanding-graph@0.1.30 mcp
+claude mcp add ug -- npx -y understanding-graph@0.1.31 mcp
 ```
 
 `npx -y` downloads, caches, and runs `understanding-graph` on first
@@ -24,7 +24,7 @@ automatically — run the init flow inside the project directory:
 
 ```bash
 cd your-project
-npx -y understanding-graph@0.1.30 init
+npx -y understanding-graph@0.1.31 init
 ```
 
 This creates:
@@ -53,7 +53,7 @@ listed.
 ## Using with agent teams
 
 Understanding Graph is designed as a shared medium for Claude Code Agent Teams.
-After `npx -y understanding-graph@0.1.30 init`, the lead creates or selects a
+After `npx -y understanding-graph@0.1.31 init`, the lead creates or selects a
 named graph. Every teammate working in that project root can then share it.
 
 ```
@@ -94,4 +94,4 @@ the generated projection directly.
 - **Cursor / Windsurf** — see [cursor.md](cursor.md)
 - **OpenClaw via mcporter** — see [mcporter.md](mcporter.md)
 - **Any MCP client** — Understanding Graph exposes a standard stdio server
-  (`npx -y understanding-graph@0.1.30 mcp`)
+  (`npx -y understanding-graph@0.1.31 mcp`)

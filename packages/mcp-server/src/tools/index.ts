@@ -142,17 +142,16 @@ export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
       'graph_discover',
       'graph_discover_grounded',
       'graph_discover_grounded_chaos',
+      'graph_bisociate',
       'graph_random',
       'graph_chaos',
       'graph_evaluate_variations',
     ].includes(t.name),
   );
-  // Ordinary workflows can compare a grounded random sample or inspect a raw
-  // random sample. Keep the more disruptive chaos pipeline on local full mode.
-  const groundedDiscoveryTools = explorationTools.filter(
-    (tool) =>
-      tool.name === 'graph_discover_grounded' || tool.name === 'graph_random',
-  );
+  // These tools are optional provocations, not a required workflow. Keeping
+  // them visible lets an ordinary agent use creativity when it is useful;
+  // graph_suggest_next({ creativity: false }) only removes them from that roll.
+  const creativityTools = explorationTools;
 
   // Small reflection surface shared by focused workflows.
   const coreReflection = visibleReflectionTools.filter((t) =>
@@ -263,7 +262,7 @@ export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
       ...understandingTools,
       ...coreReflection,
       ...batchTools,
-      ...groundedDiscoveryTools,
+      ...creativityTools,
       ...coreSourceTools,
       ...readingDocumentTools,
       ...coreConceptTools,
@@ -273,13 +272,13 @@ export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
   if (mode === 'general') {
     // Safe cross-domain default: the ordinary understanding loop, atomic
     // mutations, bounded exploration, source work, and addressable artifacts.
-    // Destructive administration, raw bulk mutation, chaos pipelines, and
-    // solver coordination remain explicit full/focused-mode choices.
+    // Destructive administration, raw bulk mutation, and solver coordination
+    // remain explicit full/focused-mode choices.
     return [
       ...understandingTools,
       ...coreReflection,
       ...batchTools,
-      ...groundedDiscoveryTools,
+      ...creativityTools,
       ...coreSourceTools,
       ...ordinaryFullDocumentTools,
       ...coreConceptTools,
@@ -292,7 +291,7 @@ export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
       ...understandingTools,
       ...coreReflection,
       ...batchTools,
-      ...groundedDiscoveryTools,
+      ...creativityTools,
       ...solverTools,
       ...coreSourceTools,
     ];
@@ -305,7 +304,7 @@ export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
       ...understandingTools,
       ...coreReflection,
       ...batchTools,
-      ...groundedDiscoveryTools,
+      ...creativityTools,
       ...codingDocumentTools,
       ...coreConceptTools,
     ];
@@ -317,7 +316,7 @@ export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
       ...understandingTools,
       ...coreReflection,
       ...batchTools,
-      ...groundedDiscoveryTools,
+      ...creativityTools,
       ...codingDocumentTools,
       ...solverTools,
       ...coreConceptTools,
@@ -329,7 +328,7 @@ export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
       ...understandingTools,
       ...coreReflection,
       ...batchTools,
-      ...groundedDiscoveryTools,
+      ...creativityTools,
       ...writingDocumentTools,
       ...coreConceptTools,
     ];
@@ -556,6 +555,7 @@ async function handleToolCallInVisibility(
     name === 'graph_discover' ||
     name === 'graph_discover_grounded' ||
     name === 'graph_discover_grounded_chaos' ||
+    name === 'graph_bisociate' ||
     name === 'graph_random' ||
     name === 'graph_serendipity' ||
     name === 'graph_validate' ||
@@ -599,7 +599,12 @@ async function handleToolCallInVisibility(
     name === 'graph_score' ||
     name === 'graph_practice'
   ) {
-    return handleReflectionTools(name, args, contextManager);
+    return handleReflectionTools(
+      name,
+      args,
+      contextManager,
+      new Set(getToolDefinitions(mode).map((tool) => tool.name)),
+    );
   }
 
   // Document tools (including translate_thinking macro)

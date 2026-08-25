@@ -124,6 +124,12 @@ describe('batch-only doc_split', () => {
       '    total: int',
     ].join('\n');
     const root = await createRoot('models.py', source, 'py');
+    const staleEmbedding = new Float32Array([0.25, 0.75]);
+    sqlite
+      .getDb()
+      .prepare('UPDATE nodes SET embedding = ? WHERE id = ?')
+      .run(Buffer.from(staleEmbedding.buffer), root.id);
+    getGraphStore().invalidateCache();
     const commitsBefore = sqlite.getRecentCommits().length;
 
     const result = await split({
@@ -149,6 +155,7 @@ describe('batch-only doc_split', () => {
     const store = getGraphStore();
     const parent = store.getNode(root.id);
     expect(parent?.content).toBeNull();
+    expect(parent?.embedding).toBeNull();
     expect(parent?.version).toBe(2);
     expect(parent?.revisions[0]?.content).toBe(source);
     expect(store.getChildren(root.id).map((child) => child.title)).toEqual([

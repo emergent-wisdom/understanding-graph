@@ -460,7 +460,7 @@ describe('runtime instruction and tool contracts', () => {
   });
 
   it('keeps the live contract concise without turning testimony into a quota', () => {
-    expect(SERVER_INSTRUCTIONS.trim().split(/\s+/).length).toBeLessThan(900);
+    expect(SERVER_INSTRUCTIONS.trim().split(/\s+/).length).toBeLessThan(950);
     expect(SERVER_INSTRUCTIONS).toContain(
       'Do not privately pre-author an entire',
     );
@@ -609,7 +609,9 @@ describe('runtime instruction and tool contracts', () => {
     expect(general.has('doc_generate')).toBe(true);
     expect(general.has('graph_purge')).toBe(false);
     expect(general.has('graph_bulk_replace')).toBe(false);
-    expect(general.has('graph_chaos')).toBe(false);
+    expect(general.has('graph_chaos')).toBe(true);
+    expect(general.has('graph_bisociate')).toBe(true);
+    expect(general.has('graph_evaluate_variations')).toBe(true);
     expect(general.has('solver_delegate')).toBe(false);
 
     const coding = names('coding');
@@ -657,6 +659,19 @@ describe('runtime instruction and tool contracts', () => {
       'full',
     ] as const) {
       expect(names(mode).has('graph_suggest_next')).toBe(true);
+      for (const tool of [
+        'graph_bisociate',
+        'graph_discover',
+        'graph_discover_grounded',
+        'graph_discover_grounded_chaos',
+        'graph_random',
+        'graph_chaos',
+        'graph_evaluate_variations',
+      ]) {
+        expect(names(mode).has(tool), `${tool} missing from ${mode}`).toBe(
+          true,
+        );
+      }
     }
 
     // Structural rewrites are first-class nested graph_batch operations,

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Exact release tag to resume (for example v0.1.30)'
+        description: 'Exact release tag to resume (for example v0.1.31)'
         required: true
         type: string
 

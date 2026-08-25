@@ -69,6 +69,8 @@ export const CLOUD_SAFE_TOOL_NAMES = [
   'graph_practice',
   'graph_thermostat',
   'graph_batch',
+  'graph_bisociate',
+  'graph_discover',
   'graph_discover_grounded',
   'graph_random',
   'source_load',

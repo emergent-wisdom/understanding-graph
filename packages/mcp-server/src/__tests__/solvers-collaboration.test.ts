@@ -9,7 +9,7 @@ import {
 } from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContextManager } from '../context-manager.js';
-import { handleToolCall } from '../tools/index.js';
+import { getToolDefinitions, handleToolCall } from '../tools/index.js';
 
 let tmpDir: string;
 let contextManager: ContextManager;
@@ -220,6 +220,122 @@ describe('collaborative solver handoffs', () => {
       success: false,
       current_status: 'pending',
     });
+  });
+});
+
+describe('PURE stabilization contract', () => {
+  it('uses PURE after exploration and preserves traffic-light logging and RED rejection metadata', async () => {
+    const definition = getToolDefinitions('collaborative_coding').find(
+      (tool) => tool.name === 'solver_enforce',
+    );
+    expect(definition?.description).toContain(
+      'Post-exploration PURE stabilization check',
+    );
+    expect(definition?.description).toContain(
+      'not as a gate on raw surprises, questions, or hypotheses',
+    );
+    expect(definition?.description).not.toMatch(
+      /Decision Rule: Explore|DO NOT EXPLORE/,
+    );
+
+    for (const mode of ['research', 'collaborative_coding', 'full'] as const) {
+      expect(
+        getToolDefinitions(mode).some((tool) => tool.name === 'solver_enforce'),
+      ).toBe(true);
+    }
+    expect(
+      getToolDefinitions('general').some(
+        (tool) => tool.name === 'solver_enforce',
+      ),
+    ).toBe(false);
+
+    const makeGate = (
+      decision: 'green' | 'yellow' | 'red',
+      reason: string,
+    ) => ({
+      green_case: 'The candidate has a credible success case.',
+      red_case: 'The candidate also has a material failure case.',
+      decision,
+      reason,
+    });
+    const evaluate = async (
+      title: string,
+      decisions: Array<'green' | 'yellow' | 'red'>,
+    ) => {
+      const target = getGraphStore().createNode({
+        title,
+        trigger: 'analysis',
+        understanding: 'A candidate produced by earlier open exploration.',
+        why: 'Exercises post-exploration PURE stabilization wording.',
+      });
+      const [parsimonious, unique, realizable, expansive] = decisions.map(
+        (decision, index) =>
+          makeGate(decision, `Gate ${index + 1} is ${decision}.`),
+      );
+      const result = await call('solver_enforce', {
+        target_id: target.id,
+        parsimonious,
+        unique,
+        realizable,
+        expansive,
+      });
+      return { target, result };
+    };
+
+    const green = await evaluate('Reusable green candidate', [
+      'green',
+      'green',
+      'green',
+      'green',
+    ]);
+    expect(green.result).toMatchObject({
+      light: 'GREEN',
+      verdict: 'STABILIZE FOR REUSE - All PURE gates passed',
+    });
+
+    const yellow = await evaluate('Candidate needing targeted rework', [
+      'green',
+      'yellow',
+      'green',
+      'green',
+    ]);
+    expect(yellow.result).toMatchObject({
+      light: 'YELLOW',
+      verdict: 'REWORK BEFORE STABILIZATION - Fix unique',
+      smallest_lift: {
+        dimension: 'unique',
+        suggestion: 'Fix unique: Gate 2 is yellow.',
+      },
+    });
+
+    const red = await evaluate('Candidate rejected for reuse', [
+      'green',
+      'green',
+      'red',
+      'green',
+    ]);
+    expect(red.result).toMatchObject({
+      light: 'RED',
+      verdict: 'DO NOT STABILIZE FOR REUSE - Failed: realizable',
+    });
+    expect(getGraphStore().getNode(red.target.id)?.metadata).toMatchObject({
+      rejected: 1,
+      rejection_reason: 'realizable: Gate 3 is red.',
+    });
+
+    const logged = sqlite
+      .getDb()
+      .prepare(
+        'SELECT target_id, light FROM enforcement_log ORDER BY created_at, id',
+      )
+      .all() as Array<{ target_id: string; light: string }>;
+    expect(logged).toEqual(
+      expect.arrayContaining([
+        { target_id: green.target.id, light: 'GREEN' },
+        { target_id: yellow.target.id, light: 'YELLOW' },
+        { target_id: red.target.id, light: 'RED' },
+      ]),
+    );
   });
 });
 

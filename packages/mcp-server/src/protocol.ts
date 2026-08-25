@@ -34,6 +34,20 @@ export type UnderstandingMoment = 'entered' | 'encountered' | 'committed';
 export const UNDERSTANDING_PROTOCOL_LABEL =
   'UNDERSTANDING MODE — THE GRAPH IS THE MEDIUM';
 
+export function epistemicStatusForNode(node: {
+  trigger?: string | null;
+  validated?: boolean | null;
+}):
+  | { validated: boolean; epistemicStatus: 'validated' | 'speculative' }
+  | Record<string, never> {
+  if (node.trigger !== 'serendipity') return {};
+  const validated = node.validated === true;
+  return {
+    validated,
+    epistemicStatus: validated ? 'validated' : 'speculative',
+  };
+}
+
 export function understandingMode(
   moment: UnderstandingMoment,
   evidence: Record<string, unknown> = {},

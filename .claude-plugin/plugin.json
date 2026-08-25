@@ -1,12 +1,12 @@
 {
   "name": "understanding-graph",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "description": "A persistent medium for fluid, emergent understanding",
   "skills": "./skills/",
   "mcpServers": {
     "ug": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.1.30", "mcp"],
+      "args": ["-y", "understanding-graph@0.1.31", "mcp"],
       "env": { "PROJECT_DIR": "${CLAUDE_PROJECT_DIR}/projects", "UG_SOURCE_ROOT": "${CLAUDE_PROJECT_DIR}" }
     }
   }

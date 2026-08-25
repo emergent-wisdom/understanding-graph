@@ -2548,7 +2548,9 @@ export async function handleDocumentTools(
       });
       sqlite
         .getDb()
-        .prepare('UPDATE nodes SET content = NULL, summary = NULL WHERE id = ?')
+        .prepare(
+          'UPDATE nodes SET content = NULL, summary = NULL, embedding = NULL WHERE id = ?',
+        )
         .run(container.id);
       store.invalidateCache();
 
@@ -2917,7 +2919,9 @@ export async function handleDocumentTools(
       });
       sqlite
         .getDb()
-        .prepare('UPDATE nodes SET content = NULL, summary = NULL WHERE id = ?')
+        .prepare(
+          'UPDATE nodes SET content = NULL, summary = NULL, embedding = NULL WHERE id = ?',
+        )
         .run(nodeId);
       store.invalidateCache();
 

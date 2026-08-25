@@ -96,6 +96,17 @@ const NODE_CREATING_TOOLS = [
 
 const DOCUMENT_CREATING_TOOLS = new Set(['doc_create', 'doc_create_passages']);
 
+const SEMANTIC_NODE_MUTATION_TOOLS = new Set([
+  ...NODE_CREATING_TOOLS,
+  'graph_revise',
+  'graph_rename',
+  'graph_supersede',
+  'doc_revise',
+  'doc_merge',
+  'doc_split',
+  'doc_to_concept',
+]);
+
 // Tools that mutate documents and should trigger regeneration
 const DOC_MUTATION_TOOLS = [
   'doc_create',
@@ -1199,18 +1210,18 @@ export async function handleBatchTools(
           }
         }
 
-        // Generate embedding immediately for node-creating tools
-        // This ensures duplicate detection works within the same batch
+        // Semantic revisions clear stale embeddings in GraphStore. When the
+        // optional model is already resident, restore current embeddings now;
+        // otherwise null remains the safe signal for later backfill.
         if (
-          NODE_CREATING_TOOLS.includes(op.tool) &&
+          SEMANTIC_NODE_MUTATION_TOOLS.has(op.tool) &&
           EmbeddingService.isModelLoaded()
         ) {
-          const nodeId =
-            (result as Record<string, unknown>).id ||
-            (result as Record<string, unknown>).newId;
-          if (nodeId && typeof nodeId === 'string') {
+          const store = getGraphStore();
+          for (const nodeId of effects.nodeIds) {
+            const current = store.getNode(nodeId);
+            if (!current?.active || current.embedding) continue;
             try {
-              const store = getGraphStore();
               await store.generateAndStoreEmbedding(nodeId);
             } catch {
               // Non-fatal: embedding generation can fail without breaking the batch

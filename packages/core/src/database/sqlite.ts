@@ -1917,6 +1917,7 @@ export function bulkReplace(options: BulkReplaceOptions): BulkReplaceResult {
           understanding = ?,
           content = ?,
           summary = ?,
+          embedding = NULL,
           updated_at = datetime('now')
       WHERE id = ?
     `);
