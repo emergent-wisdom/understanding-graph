@@ -18,7 +18,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -94,7 +94,8 @@ jobs:
               npm publish "$package_path" --access public
             fi
 
-            for attempt in {1..30}; do
+            # npm can accept a trusted publication before it becomes visible to reads.
+            for attempt in {1..150}; do
               if published_head="$(npm view "$spec" gitHead 2>/dev/null)" &&
                 [ "$published_head" = "$RELEASE_COMMIT" ]; then
                 echo "$spec is visible from $RELEASE_COMMIT."
@@ -124,4 +125,13 @@ jobs:
       - name: Publish MCP Registry record
         run: |
           "$RUNNER_TEMP/mcp-publisher" login github-oidc
-          "$RUNNER_TEMP/mcp-publisher" publish server.json
+          if publish_output="$("$RUNNER_TEMP/mcp-publisher" publish server.json 2>&1)"; then
+            echo "$publish_output"
+          elif [[ "$publish_output" == *"cannot publish duplicate version"* ]]; then
+            # Registry versions are immutable, so a resumed successful release is already complete.
+            echo "$publish_output"
+            echo "This MCP Registry version is already published; continuing."
+          else
+            echo "$publish_output"
+            exit 1
+          fi
