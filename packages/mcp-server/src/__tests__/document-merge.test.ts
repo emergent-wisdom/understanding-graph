@@ -383,8 +383,9 @@ describe('doc_merge structural integrity', () => {
 
     expect(result.success).toBe(false);
     expect(result.completed).toBe(0);
-    expect(result.errors?.[0]?.error).toContain(
-      'RESERVED_CLASSIFICATION_MISMATCH',
+    // The thinking guard refuses first; the classification check stays behind it.
+    expect(result.errors?.[0]?.error).toMatch(
+      /RESERVED_THINKING_IMMUTABLE|RESERVED_CLASSIFICATION_MISMATCH/,
     );
     expect(store.getNode(ordinary.id)).toMatchObject({
       content: ordinaryBefore?.content,

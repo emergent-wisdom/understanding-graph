@@ -1186,11 +1186,33 @@ export function generateRegionContext(
     return `<error>Region ${regionId} not found. Available regions: ${Array.from(communities.keys()).join(', ')}</error>`;
   }
 
-  // Filter out superseded nodes unless showEvolution is true
-  const { edges: allEdges } = showEvolution
-    ? store.getAllWithSuperseded()
-    : store.getAll();
-  if (!showEvolution) {
+  const graph = showEvolution ? store.getAllWithSuperseded() : store.getAll();
+  const { edges: allEdges } = graph;
+  const supersededBy = new Map<string, string>();
+  if (showEvolution) {
+    // Regions are detected on the active graph, so a replaced belief has no
+    // region of its own. It belongs to the region of the belief that replaced
+    // it, followed back through every earlier replacement.
+    for (const edge of allEdges) {
+      if (edge.type === 'supersedes') supersededBy.set(edge.toId, edge.fromId);
+    }
+    const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const members = new Set(regionNodes.map((node) => node.id));
+    const queue = [...members];
+    while (queue.length > 0) {
+      const current = queue.shift() as string;
+      for (const edge of allEdges) {
+        if (edge.type !== 'supersedes' || edge.fromId !== current) continue;
+        if (members.has(edge.toId)) continue;
+        const predecessor = nodesById.get(edge.toId);
+        if (!predecessor) continue;
+        members.add(predecessor.id);
+        regionNodes = [...regionNodes, predecessor];
+        queue.push(predecessor.id);
+      }
+    }
+  } else {
+    // Filter out superseded nodes unless showEvolution is true
     const supersededIds = new Set(
       allEdges.filter((e) => e.type === 'supersedes').map((e) => e.toId),
     );
@@ -1244,7 +1266,9 @@ export function generateRegionContext(
         const typeAttr = shouldInclude('trigger', visibleFields)
           ? ` type="${n.trigger || 'general'}"`
           : '';
-        context += `  <concept id="${n.id}"${typeAttr}${epistemicAttributes(n)}>
+        const successor = supersededBy.get(n.id);
+        const supersededAttr = successor ? ` superseded_by="${successor}"` : '';
+        context += `  <concept id="${n.id}"${typeAttr}${epistemicAttributes(n)}${supersededAttr}>
     <name>${escapeXml(n.title)}</name>
 `;
         const understanding = contextUnderstanding(n);

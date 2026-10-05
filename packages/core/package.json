@@ -1,6 +1,6 @@
 {
   "name": "@emergent-wisdom/understanding-graph-core",
-  "version": "0.1.16-rc.1",
+  "version": "0.1.16-rc.2",
   "description": "Core business logic for understanding graph",
   "license": "MIT",
   "repository": {

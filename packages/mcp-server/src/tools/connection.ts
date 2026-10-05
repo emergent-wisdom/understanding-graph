@@ -2,12 +2,27 @@ import {
   EDGE_TYPES,
   type EdgeType,
   getGraphStore,
+  isReservedThinkingNode,
+  sourceChainWritesAllowed,
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
 import { hasAtomicDocumentRewireCapability } from './document-rewire-capability.js';
 
 const DOCUMENT_STRUCTURE_EDGE_TYPES = new Set<EdgeType>(['contains', 'next']);
+
+// A thinking block's outgoing edges record what it synthesized. Only the
+// dedicated thinking tools draw them; generic tools may still point at a block.
+function rejectThinkingEdgeMutation(tool: string, fromId: string): void {
+  if (
+    !sourceChainWritesAllowed() &&
+    isReservedThinkingNode(getGraphStore().getNode(fromId))
+  ) {
+    throw new Error(
+      `RESERVED_THINKING_IMMUTABLE: ${tool} cannot change the edges a thinking block draws. They record what the block synthesized and are written only by doc_append_thinking and doc_insert_thinking.`,
+    );
+  }
+}
 
 function rejectGenericSupersessionMutation(params: {
   currentType?: string;
@@ -290,6 +305,7 @@ export async function handleConnectionTools(
         toArg,
         projectId,
       );
+      rejectThinkingEdgeMutation('graph_connect', fromResolved.id);
 
       const store = getGraphStore();
 
@@ -458,6 +474,7 @@ export async function handleConnectionTools(
       }
 
       for (const edge of toRemove) {
+        rejectThinkingEdgeMutation('graph_disconnect', edge.fromId);
         rejectGenericSupersessionMutation({ currentType: edge.type });
         rejectGenericDocumentStructureMutation({
           currentType: edge.type,
@@ -516,6 +533,7 @@ export async function handleConnectionTools(
 
       const edge = edges[0];
       const oldType = edge.type;
+      rejectThinkingEdgeMutation('edge_update', edge.fromId);
       rejectGenericSupersessionMutation({
         currentType: oldType,
         requestedType: newType,

@@ -1225,11 +1225,12 @@ WORKFLOW:
 VALIDATION:
 - The node MUST have trigger="thinking" - concept nodes will be REJECTED
 - thought_fluid MUST NOT contain any "n_" node references
+- thought_fluid MUST open with the complete identity anchor, word for word (by default the seven-sentence Reader Core)
 
 Example:
   translate_thinking({
     thinking_node_id: "n_think_999",
-    thought_fluid: "The opening hits me hard. The subject focuses on mundane details...",
+    thought_fluid: "${THINKING_IDENTITY_PREAMBLE} The opening hits me hard. The subject focuses on mundane details...",
     commit_message: "Wove mundane focus with denial - the mind/body split emerged"
   })`,
     inputSchema: {
@@ -1270,17 +1271,27 @@ function sourceChainRefusal(
   destinations: unknown[] = [],
 ): { success: false; error: string; message: string } | null {
   if (sourceChainWritesAllowed()) return null;
-  const touchesSource = [...targets, ...destinations].some(
-    (id) =>
-      typeof id === 'string' && id.length > 0 && isInsideSourceDocument(id),
+  const ids = [...targets, ...destinations].filter(
+    (id): id is string => typeof id === 'string' && id.length > 0,
   );
-  return touchesSource
-    ? {
-        success: false,
-        error: SOURCE_PASSAGE_IMMUTABLE,
-        message: sourcePassageImmutableMessage(tool),
-      }
-    : null;
+  // Thinking blocks, inside a source chain or standing alone, are written only
+  // by their dedicated tools. Check them first so the refusal names the reason.
+  const store = getGraphStore();
+  if (ids.some((id) => isReservedThinkingNode(store.getNode(id)))) {
+    return {
+      success: false,
+      error: 'RESERVED_THINKING_IMMUTABLE',
+      message: `${tool} cannot change a thinking block. Thinking blocks and their translations are written only by doc_append_thinking, doc_insert_thinking, doc_sign_thinking and translate_thinking.`,
+    };
+  }
+  if (ids.some((id) => isInsideSourceDocument(id))) {
+    return {
+      success: false,
+      error: SOURCE_PASSAGE_IMMUTABLE,
+      message: sourcePassageImmutableMessage(tool),
+    };
+  }
+  return null;
 }
 
 const SOURCE_CHAIN_TOOLS = new Set([
@@ -1627,6 +1638,12 @@ async function handleDocumentToolsUnscoped(
     }
 
     case 'doc_link_concept': {
+      const thinkingRefusal = sourceChainRefusal('doc_link_concept', [
+        isReservedThinkingNode(store.getNode(args.docNodeId as string))
+          ? args.docNodeId
+          : undefined,
+      ]);
+      if (thinkingRefusal) return thinkingRefusal;
       const edge = store.createEdge({
         fromId: args.docNodeId as string,
         toId: args.conceptId as string,

@@ -7,6 +7,7 @@ import {
   resetGraphStore,
   sqlite,
   THINKING_IDENTITY_PREAMBLE,
+  withReservedThinkingVisibility,
 } from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContextManager } from '../context-manager.js';
@@ -286,6 +287,28 @@ describe('superseded beliefs remain retrievable', () => {
     expect(compact).toContain(oldTitle);
     expect(compact).toContain('superseded_by');
 
+    // The region view returns the replaced belief itself, not only its name.
+    const successorId = (superseded.results as Array<{ newId?: string }>)[0]
+      .newId as string;
+    const regionId = [...getGraphStore().detectCommunities().communities].find(
+      ([, nodes]) => nodes.some((node) => node.id === successorId),
+    )?.[0];
+    expect(regionId).toBeDefined();
+    const oldUnderstanding = `${oldTitle}: an interpretation of the first sentence.`;
+    const region = JSON.stringify(
+      await call('graph_context_region', {
+        region_id: regionId,
+        show_evolution: true,
+      }),
+    );
+    expect(region).toContain(oldUnderstanding);
+    expect(region).toContain('superseded_by');
+    expect(
+      JSON.stringify(
+        await call('graph_context_region', { region_id: regionId }),
+      ),
+    ).not.toContain(oldUnderstanding);
+
     const current = JSON.stringify(
       await call('graph_find_by_trigger', { trigger: 'analysis' }),
     );
@@ -459,7 +482,7 @@ describe('thinking blocks carry the complete identity anchor', () => {
           },
         },
       ]),
-      'IDENTITY ANCHOR VIOLATION',
+      'FORBIDDEN_THINKING_CREATION',
     );
   });
 
@@ -503,5 +526,196 @@ describe('thinking blocks carry the complete identity anchor', () => {
       ]),
       'FORBIDDEN_THINKING_CREATION',
     );
+  });
+
+  it('keeps thinking payloads for their dedicated tools', async () => {
+    const { sourceId, passageId } = await readSource();
+    const appended = await append(
+      sourceId,
+      passageId,
+      `${THINKING_IDENTITY_PREAMBLE} The opening is calm.`,
+    );
+    expect(appended.success, JSON.stringify(appended)).toBe(true);
+    const thinkingId = appended.thinkingNodeId as string;
+    const reserved = () =>
+      withReservedThinkingVisibility(true, () =>
+        getGraphStore().getNode(thinkingId),
+      );
+    const before = reserved();
+
+    refusedFor(
+      await batch('connector', [
+        {
+          tool: 'node_set_metadata',
+          params: {
+            node: thinkingId,
+            metadata: {
+              translated: true,
+              thought_fluid: 'No identity anchor at all.',
+            },
+            commit_message: 'mark translated',
+          },
+        },
+      ]),
+      'RESERVED_THINKING_IMMUTABLE',
+    );
+    refusedFor(
+      await batch('connector', [
+        {
+          tool: 'doc_revise',
+          params: {
+            nodeId: thinkingId,
+            content: 'No identity anchor.',
+            why: 'x',
+          },
+        },
+      ]),
+      'RESERVED_THINKING_IMMUTABLE',
+    );
+    refusedFor(
+      await batch('connector', [
+        {
+          tool: 'graph_rename',
+          params: { node: thinkingId, newName: 'Renamed' },
+        },
+      ]),
+      'RESERVED_THINKING_IMMUTABLE',
+    );
+    const after = reserved();
+    expect(after?.content).toBe(before?.content);
+    expect(after?.title).toBe(before?.title);
+    expect((after?.metadata as Record<string, unknown>)?.translated).not.toBe(
+      true,
+    );
+
+    // The dedicated translation route still works.
+    const translated = await call('translate_thinking', {
+      thinking_node_id: thinkingId,
+      thought_fluid: `${THINKING_IDENTITY_PREAMBLE} The opening is calm, and I want to know why.`,
+      commit_message: 'Translate with the anchor',
+    });
+    expect(translated.success, JSON.stringify(translated)).toBe(true);
+
+    // An older standalone thinking concept, outside any source chain.
+    const legacy = withReservedThinkingVisibility(true, () =>
+      getGraphStore().createNode({
+        title: 'Legacy standalone thinking',
+        trigger: 'thinking',
+        why: 'Created before thinking became dedicated-only.',
+        understanding: `${THINKING_IDENTITY_PREAMBLE} An older block.`,
+      }),
+    );
+    for (const operation of [
+      {
+        tool: 'doc_revise',
+        params: { nodeId: legacy.id, content: 'No identity anchor.', why: 'x' },
+      },
+      {
+        tool: 'node_set_metadata',
+        params: {
+          node: legacy.id,
+          metadata: { translated: true },
+          commit_message: 'mark translated',
+        },
+      },
+    ]) {
+      refusedFor(
+        await batch('connector', [operation]),
+        'RESERVED_THINKING_IMMUTABLE',
+      );
+    }
+
+    // A complete anchor does not open the generic creation route.
+    refusedFor(
+      await batch('synthesizer', [
+        {
+          tool: 'graph_add_concept',
+          params: {
+            title: 'Standalone thinking',
+            trigger: 'thinking',
+            understanding: `${THINKING_IDENTITY_PREAMBLE} I notice the opening.`,
+            why: 'Review creation route',
+            skipDuplicateCheck: true,
+          },
+        },
+        {
+          tool: 'graph_connect',
+          params: {
+            from: '$0.id',
+            to: passageId,
+            type: 'learned_from',
+            why: 'Grounded fixture',
+          },
+        },
+      ]),
+      'FORBIDDEN_THINKING_CREATION',
+    );
+  });
+
+  it('keeps the edges a thinking block draws for its dedicated tools', async () => {
+    const { sourceId, passageId } = await readSource();
+    const conceptId = await addConcept(
+      'Reader response',
+      'analysis',
+      passageId,
+    );
+    const appended = await append(
+      sourceId,
+      passageId,
+      `${THINKING_IDENTITY_PREAMBLE} The opening is calm.`,
+    );
+    expect(appended.success, JSON.stringify(appended)).toBe(true);
+    const thinkingId = appended.thinkingNodeId as string;
+    const drawnEdges = () =>
+      withReservedThinkingVisibility(true, () =>
+        getGraphStore()
+          .getAll()
+          .edges.filter((edge) => edge.fromId === thinkingId)
+          .map((edge) => `${edge.type}:${edge.toId}`)
+          .sort(),
+      );
+    const before = drawnEdges();
+    expect(before).toContain(`refines:${passageId}`);
+
+    for (const operation of [
+      {
+        tool: 'graph_connect',
+        params: {
+          from: thinkingId,
+          to: conceptId,
+          type: 'learned_from',
+          why: 'claim a synthesis after the fact',
+        },
+      },
+      { tool: 'graph_disconnect', params: { from: thinkingId, to: passageId } },
+      {
+        tool: 'edge_update',
+        params: { from: thinkingId, to: passageId, type: 'relates' },
+      },
+      {
+        tool: 'doc_link_concept',
+        params: { docNodeId: thinkingId, conceptId },
+      },
+    ]) {
+      refusedFor(
+        await batch('connector', [operation]),
+        'RESERVED_THINKING_IMMUTABLE',
+      );
+    }
+    expect(drawnEdges()).toEqual(before);
+
+    // Ordinary nodes can still respond to the Reader's thought.
+    const response = await batch('skeptic', [
+      {
+        tool: 'graph_connect',
+        params: {
+          from: conceptId,
+          to: thinkingId,
+          type: 'questions',
+          why: 'A worker questions the Reader.',
+        },
+      },
+    ]);
+    expect(response.success, JSON.stringify(response)).toBe(true);
   });
 });

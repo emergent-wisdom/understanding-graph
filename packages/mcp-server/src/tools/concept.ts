@@ -28,6 +28,20 @@ function isDocumentNode(node: GraphNodeData): boolean {
   );
 }
 
+// Thinking blocks and their translations are written only by their dedicated
+// tools (doc_append_thinking, doc_insert_thinking, doc_sign_thinking,
+// translate_thinking), which check the identity anchor and the reading position.
+function assertThinkingUntouched(tool: string, nodeId: string): void {
+  if (
+    !sourceChainWritesAllowed() &&
+    isReservedThinkingNode(getGraphStore().getNode(nodeId))
+  ) {
+    throw new Error(
+      `RESERVED_THINKING_IMMUTABLE: ${tool} cannot change a thinking block. Thinking blocks and their translations are written only by doc_append_thinking, doc_insert_thinking, doc_sign_thinking and translate_thinking; record a later change of mind as a new node.`,
+    );
+  }
+}
+
 // Passages read from a source keep their content, title, trigger and metadata.
 function assertSourceUnchanged(tool: string, nodeId: string): void {
   if (!sourceChainWritesAllowed() && isSourceDocumentNode(nodeId)) {
@@ -702,6 +716,14 @@ export async function handleConceptTools(
           hint: 'For ordinary cognitive testimony, use the non-thinking trigger that honestly fits (for example surprise, tension, question, hypothesis, prediction, evaluation, decision, or analysis).',
         };
       }
+      if (trigger === 'thinking' && !sourceChainWritesAllowed()) {
+        return {
+          success: false,
+          error: 'FORBIDDEN_THINKING_CREATION',
+          message:
+            'Thinking blocks are created by doc_append_thinking or doc_insert_thinking, which check the identity anchor and the reading position.',
+        };
+      }
       if (trigger === 'thinking') {
         const identityProblem = thinkingIdentityProblem(understanding ?? '');
         if (identityProblem) {
@@ -1047,11 +1069,7 @@ export async function handleConceptTools(
         projectId,
       );
       assertSourceUnchanged('graph_revise', resolved.id);
-      if (isReservedThinkingNode(getGraphStore().getNode(resolved.id))) {
-        throw new Error(
-          'RESERVED_THINKING_IMMUTABLE: graph_revise cannot rewrite a thinking block. A thinking block records what was thought at its pause; record a later change of mind as a new node that refines or supersedes an ordinary concept.',
-        );
-      }
+      assertThinkingUntouched('graph_revise', resolved.id);
 
       // Extract epistemic journey fields
       const before = args.before as string | undefined;
@@ -1254,6 +1272,7 @@ export async function handleConceptTools(
         projectId,
       );
       assertSourceUnchanged('node_set_metadata', resolved.id);
+      assertThinkingUntouched('node_set_metadata', resolved.id);
 
       const commitMessage = args.commit_message as string;
       const agentName = args.agent_name as string | undefined;
@@ -1345,6 +1364,7 @@ export async function handleConceptTools(
         projectId,
       );
       assertSourceUnchanged('graph_rename', resolved.id);
+      assertThinkingUntouched('graph_rename', resolved.id);
 
       const store = getGraphStore();
       const oldName = resolved.title;
@@ -1378,6 +1398,7 @@ export async function handleConceptTools(
       if (!node) {
         throw new Error('Node not found in the current visible graph.');
       }
+      assertThinkingUntouched('graph_archive', resolved.id);
       if (isDocumentNode(node)) {
         throw new Error(
           'DOCUMENT_STRUCTURE_CHANGE_NOT_ALLOWED: graph_archive cannot archive a document node. Use atomic document tools that preserve contains/next topology.',
@@ -1406,6 +1427,7 @@ export async function handleConceptTools(
         projectId,
       );
       assertSourceUnchanged('node_set_trigger', resolved.id);
+      assertThinkingUntouched('node_set_trigger', resolved.id);
 
       const store = getGraphStore();
       const existingNode = store.getNode(resolved.id);
