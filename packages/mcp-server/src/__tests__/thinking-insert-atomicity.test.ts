@@ -6,6 +6,7 @@ import {
   getGraphStore,
   resetGraphStore,
   sqlite,
+  THINKING_IDENTITY_PREAMBLE,
   updateTextSource,
   withReservedThinkingVisibility,
 } from '@emergent-wisdom/understanding-graph-core';
@@ -14,8 +15,7 @@ import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
 const PROJECT_ID = 'thinking-insert-atomicity';
-const THOUGHT =
-  'I feel no fear... The split exposes a transition that the surrounding passages make visible.';
+const THOUGHT = `${THINKING_IDENTITY_PREAMBLE} The split exposes a transition that the surrounding passages make visible.`;
 
 let tmpDir: string;
 let contextManager: ContextManager;

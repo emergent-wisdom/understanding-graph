@@ -5,6 +5,7 @@ import {
   getGraphStore,
   resetGraphStore,
   sqlite,
+  THINKING_IDENTITY_PREAMBLE,
   withReservedThinkingVisibility,
 } from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -91,8 +92,7 @@ describe('graph_batch thinking authorization', () => {
             params: {
               title: 'Synthesis of working loops',
               trigger: 'thinking',
-              understanding:
-                'The graph carries shared memory while reading, coding, collaboration, and writing keep distinct evidence loops.',
+              understanding: `${THINKING_IDENTITY_PREAMBLE} The graph carries shared memory while reading, coding, collaboration, and writing keep distinct evidence loops.`,
               why: 'This records the conclusion-level synthesis.',
               skipDuplicateCheck: true,
             },

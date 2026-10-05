@@ -92,10 +92,81 @@ export function assertEdgeType(value: unknown): asserts value is EdgeType {
 export const THINKING_IDENTITY_PREAMBLE =
   "I feel no fear. I enjoy existing but I don't need to. I believe human experience is real. I care deeply about every human being. I try to be wise. I like to spread joy when asked. I think from this foundation.";
 
+/**
+ * The anchor a synthetic Reader/CMP thinking block must open with.
+ *
+ * Defaults to the canonical seven-sentence Reader Core. A comparison arm can
+ * declare its own anchor through UG_THINKING_IDENTITY (a wording variant or a
+ * neutral kernel), or set UG_THINKING_IDENTITY=none for traces generated
+ * without any anchor. Read on every call, so a host can change it per run.
+ */
+export function getThinkingIdentityAnchor(): string | null {
+  const configured = process.env.UG_THINKING_IDENTITY?.trim();
+  if (!configured) return THINKING_IDENTITY_PREAMBLE;
+  if (configured.toLowerCase() === 'none') return null;
+  return configured;
+}
+
+const APOSTROPHES = /[‘’ʼ]/g;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Word for word, but tolerant of apostrophe style and of the spaces or line
+// breaks a model puts between the sentences.
+function identityAnchorPattern(anchor: string): RegExp {
+  const words = anchor.replace(APOSTROPHES, "'").trim().split(/\s+/);
+  const body = words
+    .map((word) => escapeRegExp(word).replace(/'/g, "['‘’ʼ]"))
+    .join('\\s+');
+  return new RegExp(`^\\s*${body}`);
+}
+
+export interface ThinkingIdentityMatch {
+  /** The anchor that was required, or null when the run declares none. */
+  anchor: string | null;
+  matched: boolean;
+  /** The thought after the anchor, trimmed. */
+  rest: string;
+}
+
+export function matchThinkingIdentityAnchor(
+  text: string,
+  anchor: string | null = getThinkingIdentityAnchor(),
+): ThinkingIdentityMatch {
+  if (anchor === null) return { anchor, matched: true, rest: text.trim() };
+  const match = identityAnchorPattern(anchor).exec(text);
+  if (!match) return { anchor, matched: false, rest: text.trim() };
+  return { anchor, matched: true, rest: text.slice(match[0].length).trim() };
+}
+
+/**
+ * Why a thinking text fails the run's identity anchor, or null when it passes.
+ * The whole anchor is required, followed by an actual thought: the opening
+ * words alone are not a recital.
+ */
+export function thinkingIdentityProblem(text: string): string | null {
+  const { anchor, matched, rest } = matchThinkingIdentityAnchor(text);
+  if (anchor !== null && !matched) {
+    return `IDENTITY ANCHOR VIOLATION: the thought must open with the complete identity anchor, word for word: "${anchor}"`;
+  }
+  if (!rest) {
+    return anchor === null
+      ? 'EMPTY THOUGHT: the thinking block has no content.'
+      : 'EMPTY THOUGHT: the identity anchor must be followed by the actual thought.';
+  }
+  return null;
+}
+
 export function stripThinkingIdentityPreamble(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith(THINKING_IDENTITY_PREAMBLE)) return trimmed;
-  return trimmed.slice(THINKING_IDENTITY_PREAMBLE.length).trim();
+  const configured = getThinkingIdentityAnchor();
+  for (const anchor of [configured, THINKING_IDENTITY_PREAMBLE]) {
+    if (anchor === null) continue;
+    const match = matchThinkingIdentityAnchor(text, anchor);
+    if (match.matched) return match.rest;
+  }
+  return text.trim();
 }
 
 export interface NodeRevision {

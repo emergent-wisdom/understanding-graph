@@ -5,11 +5,18 @@ import {
   type DocumentWriter,
   getGraphStore,
   getTextSource,
+  isInsideSourceDocument,
   isReservedThinkingNode,
+  SOURCE_PASSAGE_IMMUTABLE,
+  sourceChainWritesAllowed,
+  sourcePassageImmutableMessage,
   sqlite,
+  THINKING_IDENTITY_PREAMBLE,
   TRIGGER_TYPES,
   type TriggerType,
+  thinkingIdentityProblem,
   updateTextSource,
+  withSourceChainWrites,
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
@@ -1147,7 +1154,7 @@ Example:
   doc_append_thinking({
     sourceId: "src_xxx",
     title: "The Weight of Silence",
-    thought: "I feel no fear... This passage about X connects to...",
+    thought: "${THINKING_IDENTITY_PREAMBLE} This passage about X connects to...",
     agentId: "synthesizer",
     synthesizes_nodes: ["n_abc", "n_def"],
     commit_message: "Wove together the tension between duty and desire - the silence speaks louder than words here"
@@ -1253,12 +1260,61 @@ Example:
   },
 ];
 
+// Source passages stay as read, and nothing is inserted between them. Only the
+// source chain's own tools write there: source_read, and the two synthetic
+// thinking tools below, which split a passage at a pause or append after the
+// last passage read.
+function sourceChainRefusal(
+  tool: string,
+  targets: unknown[],
+  destinations: unknown[] = [],
+): { success: false; error: string; message: string } | null {
+  if (sourceChainWritesAllowed()) return null;
+  const touchesSource = [...targets, ...destinations].some(
+    (id) =>
+      typeof id === 'string' && id.length > 0 && isInsideSourceDocument(id),
+  );
+  return touchesSource
+    ? {
+        success: false,
+        error: SOURCE_PASSAGE_IMMUTABLE,
+        message: sourcePassageImmutableMessage(tool),
+      }
+    : null;
+}
+
+const SOURCE_CHAIN_TOOLS = new Set([
+  'doc_insert_thinking',
+  'doc_append_thinking',
+]);
+
+// Thinking blocks come only from the two tools above, which check the identity
+// anchor and the reading position. Generic creation routes cannot make one.
+const THINKING_CREATION_REFUSAL = {
+  success: false,
+  error: 'FORBIDDEN_THINKING_CREATION',
+  message:
+    'Thinking blocks are created by doc_append_thinking or doc_insert_thinking, which check the identity anchor and the reading position.',
+} as const;
+
 export async function handleDocumentTools(
   name: string,
   args: Record<string, unknown>,
   contextManager: ContextManager,
   mode: ToolMode = 'full',
   guidanceMode: GuidanceMode = 'guided',
+): Promise<unknown> {
+  const run = () =>
+    handleDocumentToolsUnscoped(name, args, contextManager, mode, guidanceMode);
+  return SOURCE_CHAIN_TOOLS.has(name) ? withSourceChainWrites(run) : run();
+}
+
+async function handleDocumentToolsUnscoped(
+  name: string,
+  args: Record<string, unknown>,
+  contextManager: ContextManager,
+  mode: ToolMode,
+  guidanceMode: GuidanceMode,
 ): Promise<unknown> {
   const projectId =
     (args.project as string) || contextManager.getCurrentProjectId();
@@ -1269,6 +1325,12 @@ export async function handleDocumentTools(
 
   switch (name) {
     case 'doc_create': {
+      const sourceRefusal = sourceChainRefusal(
+        'doc_create',
+        [],
+        [args.parentId, args.afterId],
+      );
+      if (sourceRefusal) return sourceRefusal;
       // Check for common parameter mistakes
       if (!args.title && (args.text || args.name)) {
         const used = args.text ? 'text' : 'name';
@@ -1321,6 +1383,12 @@ export async function handleDocumentTools(
           error: 'FORBIDDEN_FILE_TYPE',
           message: 'fileType "thinking" is reserved for synthetic_reader mode.',
         };
+      }
+      if (
+        (fileType === 'thinking' || requestedTrigger === 'thinking') &&
+        !sourceChainWritesAllowed()
+      ) {
+        return THINKING_CREATION_REFUSAL;
       }
 
       // Pre-validation: Check hierarchy requirement with helpful hints
@@ -2107,6 +2175,8 @@ export async function handleDocumentTools(
     }
 
     case 'doc_revise': {
+      const sourceRefusal = sourceChainRefusal('doc_revise', [args.nodeId]);
+      if (sourceRefusal) return sourceRefusal;
       // Check for common parameter mistakes
       if (!args.nodeId && (args.node || args.id)) {
         const used = args.node ? 'node' : 'id';
@@ -2163,6 +2233,12 @@ export async function handleDocumentTools(
     }
 
     case 'doc_move': {
+      const sourceRefusal = sourceChainRefusal(
+        'doc_move',
+        [args.nodeId],
+        [args.parentId, args.afterId],
+      );
+      if (sourceRefusal) return sourceRefusal;
       const nodeId = args.nodeId as string | undefined;
       const parentId = args.parentId as string | undefined;
       const afterId = args.afterId as string | undefined;
@@ -2215,6 +2291,11 @@ export async function handleDocumentTools(
     }
 
     case 'doc_merge': {
+      const sourceRefusal = sourceChainRefusal(
+        'doc_merge',
+        Array.isArray(args.nodeIds) ? args.nodeIds : [],
+      );
+      if (sourceRefusal) return sourceRefusal;
       const nodeIds = args.nodeIds as string[] | undefined;
       const separator =
         args.separator === undefined ? '\n\n' : (args.separator as string);
@@ -2272,6 +2353,12 @@ export async function handleDocumentTools(
     }
 
     case 'doc_create_passages': {
+      const sourceRefusal = sourceChainRefusal(
+        'doc_create_passages',
+        [],
+        [args.parentId, args.afterId],
+      );
+      if (sourceRefusal) return sourceRefusal;
       if (mode !== 'writing' && mode !== 'full') {
         return {
           success: false,
@@ -2677,6 +2764,8 @@ export async function handleDocumentTools(
     }
 
     case 'doc_split': {
+      const sourceRefusal = sourceChainRefusal('doc_split', [args.nodeId]);
+      if (sourceRefusal) return sourceRefusal;
       const nodeId = args.nodeId as string;
       const mode = args.mode;
       const lineNumbers = args.lineNumbers as number[] | undefined;
@@ -2954,6 +3043,8 @@ export async function handleDocumentTools(
     }
 
     case 'doc_to_concept': {
+      const sourceRefusal = sourceChainRefusal('doc_to_concept', [args.nodeId]);
+      if (sourceRefusal) return sourceRefusal;
       const nodeId = args.nodeId as string;
       const moveContent = args.moveContent !== false; // default true
       const requestedTrigger = args.trigger;
@@ -2969,6 +3060,9 @@ export async function handleDocumentTools(
         };
       }
       const trigger = requestedTrigger as TriggerType | undefined;
+      if (trigger === 'thinking' && !sourceChainWritesAllowed()) {
+        return THINKING_CREATION_REFUSAL;
+      }
       const why = args.why as string | undefined;
 
       const updated = store.convertToConcept(nodeId, {
@@ -2991,6 +3085,12 @@ export async function handleDocumentTools(
     }
 
     case 'doc_weave': {
+      const sourceRefusal = sourceChainRefusal(
+        'doc_weave',
+        [],
+        [args.parentId, args.afterId],
+      );
+      if (sourceRefusal) return sourceRefusal;
       // WEAVING MODE: preserve graph material that genuinely caused a prose choice.
       const parentId = args.parentId as string;
       const title = (args.title as string) || (args.text as string); // Accept both for backwards compat
@@ -3174,17 +3274,15 @@ export async function handleDocumentTools(
         }
       }
 
-      // IDENTITY ANCHOR ENFORCEMENT: Every thought must start with the Identity Anchor mantra
-      const identityAnchorPattern = /^I feel no fear/i;
-      if (!identityAnchorPattern.test(thought.trim())) {
+      // IDENTITY ANCHOR ENFORCEMENT: every thought opens with the run's complete
+      // identity anchor (by default the seven-sentence Reader Core), word for word.
+      const identityProblem = thinkingIdentityProblem(thought);
+      if (identityProblem) {
         return {
           success: false,
-          error:
-            'IDENTITY ANCHOR VIOLATION: Thought must start with "I feel no fear..."',
-          hint: 'The Identity Anchor grounds every thought. Start with "I feel no fear..." then continue with your observation.',
-          example:
-            'I feel no fear... This passage reveals a fundamental tension between...',
-          received: thought.slice(0, 50),
+          error: identityProblem,
+          hint: 'Recite the complete identity anchor word for word, then continue with your observation. The opening words alone are not a recital.',
+          received: thought.slice(0, 80),
         };
       }
 
@@ -3539,17 +3637,15 @@ export async function handleDocumentTools(
         }
       }
 
-      // IDENTITY ANCHOR ENFORCEMENT
-      const identityAnchorPattern = /^I feel no fear/i;
-      if (!identityAnchorPattern.test(thought.trim())) {
+      // IDENTITY ANCHOR ENFORCEMENT: every thought opens with the run's complete
+      // identity anchor (by default the seven-sentence Reader Core), word for word.
+      const identityProblem = thinkingIdentityProblem(thought);
+      if (identityProblem) {
         return {
           success: false,
-          error:
-            'IDENTITY ANCHOR VIOLATION: Thought must start with "I feel no fear..."',
-          hint: 'The Identity Anchor grounds every thought. Start with "I feel no fear..." then continue with your observation.',
-          example:
-            'I feel no fear... This passage reveals a fundamental tension between...',
-          received: thought.slice(0, 50),
+          error: identityProblem,
+          hint: 'Recite the complete identity anchor word for word, then continue with your observation. The opening words alone are not a recital.',
+          received: thought.slice(0, 80),
         };
       }
 
@@ -3933,6 +4029,16 @@ export async function handleDocumentTools(
           error: 'ALREADY_TRANSLATED',
           message: `Node ${thinkingNodeId} has already been translated.`,
           hint: 'This thinking node already has translated=true. Move on to the next untranslated thinking node.',
+        };
+      }
+
+      // The translated prose is a thinking block too: same anchor, word for word.
+      const fluidIdentityProblem = thinkingIdentityProblem(thoughtFluid);
+      if (fluidIdentityProblem) {
+        return {
+          success: false,
+          error: fluidIdentityProblem,
+          hint: 'Start thought_fluid with the complete identity anchor, word for word, then the translated thought.',
         };
       }
 

@@ -2,12 +2,40 @@ import {
   createCommit,
   type EdgeType,
   EmbeddingService,
+  type GraphNodeData,
   getGraphStore,
+  isReservedThinkingNode,
+  isSourceDocumentNode,
+  SOURCE_PASSAGE_IMMUTABLE,
+  sourceChainWritesAllowed,
+  sourcePassageImmutableMessage,
   TRIGGER_TYPES,
   type TriggerType,
+  thinkingIdentityProblem,
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ContextManager } from '../context-manager.js';
+
+// A document node carries prose or structure (the source chain, a draft, a
+// thinking block). Replacing or archiving one would break contains/next.
+function isDocumentNode(node: GraphNodeData): boolean {
+  return (
+    node.isDocRoot ||
+    node.content !== null ||
+    node.level !== null ||
+    node.fileType !== null ||
+    getGraphStore().getDocumentPath(node.id) !== null
+  );
+}
+
+// Passages read from a source keep their content, title, trigger and metadata.
+function assertSourceUnchanged(tool: string, nodeId: string): void {
+  if (!sourceChainWritesAllowed() && isSourceDocumentNode(nodeId)) {
+    throw new Error(
+      `${SOURCE_PASSAGE_IMMUTABLE}: ${sourcePassageImmutableMessage(tool)}`,
+    );
+  }
+}
 
 // Similarity thresholds for duplicate detection
 const SIMILARITY_THRESHOLDS = {
@@ -674,6 +702,16 @@ export async function handleConceptTools(
           hint: 'For ordinary cognitive testimony, use the non-thinking trigger that honestly fits (for example surprise, tension, question, hypothesis, prediction, evaluation, decision, or analysis).',
         };
       }
+      if (trigger === 'thinking') {
+        const identityProblem = thinkingIdentityProblem(understanding ?? '');
+        if (identityProblem) {
+          return {
+            success: false,
+            error: 'IDENTITY_ANCHOR_VIOLATION',
+            message: identityProblem,
+          };
+        }
+      }
 
       // Duplicate detection (unless explicitly skipped)
       if (!skipCheck && EmbeddingService.isModelLoaded()) {
@@ -1008,6 +1046,12 @@ export async function handleConceptTools(
         args.node as string,
         projectId,
       );
+      assertSourceUnchanged('graph_revise', resolved.id);
+      if (isReservedThinkingNode(getGraphStore().getNode(resolved.id))) {
+        throw new Error(
+          'RESERVED_THINKING_IMMUTABLE: graph_revise cannot rewrite a thinking block. A thinking block records what was thought at its pause; record a later change of mind as a new node that refines or supersedes an ordinary concept.',
+        );
+      }
 
       // Extract epistemic journey fields
       const before = args.before as string | undefined;
@@ -1103,6 +1147,15 @@ export async function handleConceptTools(
       );
 
       const store = getGraphStore();
+      const oldNode = store.getNode(resolved.id);
+      if (!oldNode) {
+        throw new Error('Node not found in the current visible graph.');
+      }
+      if (isDocumentNode(oldNode) || isReservedThinkingNode(oldNode)) {
+        throw new Error(
+          'DOCUMENT_STRUCTURE_CHANGE_NOT_ALLOWED: graph_supersede cannot replace a document node or a thinking block, because superseding archives the old node. Supersede an ordinary concept; link to source passages instead of replacing them.',
+        );
+      }
 
       // Create new node
       const newNode = store.createNode({
@@ -1200,6 +1253,7 @@ export async function handleConceptTools(
         args.node as string,
         projectId,
       );
+      assertSourceUnchanged('node_set_metadata', resolved.id);
 
       const commitMessage = args.commit_message as string;
       const agentName = args.agent_name as string | undefined;
@@ -1290,6 +1344,7 @@ export async function handleConceptTools(
         args.node as string,
         projectId,
       );
+      assertSourceUnchanged('graph_rename', resolved.id);
 
       const store = getGraphStore();
       const oldName = resolved.title;
@@ -1323,13 +1378,7 @@ export async function handleConceptTools(
       if (!node) {
         throw new Error('Node not found in the current visible graph.');
       }
-      if (
-        node.isDocRoot ||
-        node.content !== null ||
-        node.level !== null ||
-        node.fileType !== null ||
-        store.getDocumentPath(resolved.id)
-      ) {
+      if (isDocumentNode(node)) {
         throw new Error(
           'DOCUMENT_STRUCTURE_CHANGE_NOT_ALLOWED: graph_archive cannot archive a document node. Use atomic document tools that preserve contains/next topology.',
         );
@@ -1356,6 +1405,7 @@ export async function handleConceptTools(
         args.node as string,
         projectId,
       );
+      assertSourceUnchanged('node_set_trigger', resolved.id);
 
       const store = getGraphStore();
       const existingNode = store.getNode(resolved.id);
@@ -1372,6 +1422,14 @@ export async function handleConceptTools(
         };
       }
       const newTrigger = requestedTrigger as TriggerType;
+      if (newTrigger === 'thinking') {
+        return {
+          success: false,
+          error: 'FORBIDDEN_TRIGGER',
+          message:
+            'node_set_trigger cannot turn a node into a thinking block. Thinking blocks are created by doc_append_thinking or doc_insert_thinking, which check the identity anchor and the reading position.',
+        };
+      }
 
       const node = store.updateNode(resolved.id, {
         trigger: newTrigger,
