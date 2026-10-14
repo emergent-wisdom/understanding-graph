@@ -61,7 +61,7 @@ jobs:
           npm run typecheck
           npm test
           npm run lint
-          npm audit --omit=dev
+          node scripts/audit-production.mjs
           npm run smoke:mcp
           npm run smoke:web-discovery
 

@@ -47,7 +47,7 @@ jobs:
         run: npm run lint
 
       - name: Production dependency audit
-        run: npm audit --omit=dev
+        run: node scripts/audit-production.mjs
 
       - name: Smoke test packaged entry points
         run: |
