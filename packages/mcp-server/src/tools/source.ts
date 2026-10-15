@@ -12,6 +12,7 @@ import {
   reservedThinkingVisible,
   updateTextSource,
   withReservedThinkingVisibility,
+  withSourceChainWrites,
 } from '@emergent-wisdom/understanding-graph-core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js';
@@ -502,39 +503,42 @@ export async function handleSourceTools(
                 },
               ]
             : [];
-          const initialBatch = (await handleBatchTools(
-            'graph_batch',
-            {
-              operations: [
-                {
-                  tool: 'doc_create',
-                  params: {
-                    title: sourceTitle,
-                    content: `# ${sourceTitle}\n\nChronological reading of source material.`,
-                    level: 'document',
-                    isDocRoot: true,
+          const initialBatch = (await withSourceChainWrites(() =>
+            handleBatchTools(
+              'graph_batch',
+              {
+                operations: [
+                  {
+                    tool: 'doc_create',
+                    params: {
+                      title: sourceTitle,
+                      content: `# ${sourceTitle}\n\nChronological reading of source material.`,
+                      level: 'document',
+                      isDocRoot: true,
+                    },
                   },
-                },
-                {
-                  tool: 'doc_create',
-                  params: {
-                    title: `Content ${percent}%`,
-                    content: result.content,
-                    level: 'paragraph',
-                    isDocRoot: false,
-                    parentId: '$0.id',
+                  {
+                    tool: 'doc_create',
+                    params: {
+                      title: `Content ${percent}%`,
+                      content: result.content,
+                      level: 'paragraph',
+                      isDocRoot: false,
+                      parentId: '$0.id',
+                    },
                   },
-                },
-                ...anchorOperation,
-              ],
-              commit_message: commitMessage,
-              agent_name: 'source_reader',
-              workflow: understandingWorkflow,
-              author: typeof args.author === 'string' ? args.author : undefined,
-            },
-            contextManager,
-            sourceMutationMode,
-            guidanceMode,
+                  ...anchorOperation,
+                ],
+                commit_message: commitMessage,
+                agent_name: 'source_reader',
+                workflow: understandingWorkflow,
+                author:
+                  typeof args.author === 'string' ? args.author : undefined,
+              },
+              contextManager,
+              sourceMutationMode,
+              guidanceMode,
+            ),
           )) as {
             success?: boolean;
             results?: Array<{ id?: string }>;
@@ -559,30 +563,33 @@ export async function handleSourceTools(
           });
         } else {
           // Create subsequent content under the existing source document root.
-          const batchResult = (await handleBatchTools(
-            'graph_batch',
-            {
-              operations: [
-                {
-                  tool: 'doc_create',
-                  params: {
-                    title: `Content ${percent}%`,
-                    content: result.content,
-                    level: 'paragraph',
-                    isDocRoot: false,
-                    parentId: rootId,
-                    afterId: prevNodeId || rootId,
+          const batchResult = (await withSourceChainWrites(() =>
+            handleBatchTools(
+              'graph_batch',
+              {
+                operations: [
+                  {
+                    tool: 'doc_create',
+                    params: {
+                      title: `Content ${percent}%`,
+                      content: result.content,
+                      level: 'paragraph',
+                      isDocRoot: false,
+                      parentId: rootId,
+                      afterId: prevNodeId || rootId,
+                    },
                   },
-                },
-              ],
-              commit_message: commitMessage,
-              agent_name: 'source_reader',
-              workflow: understandingWorkflow,
-              author: typeof args.author === 'string' ? args.author : undefined,
-            },
-            contextManager,
-            sourceMutationMode,
-            guidanceMode,
+                ],
+                commit_message: commitMessage,
+                agent_name: 'source_reader',
+                workflow: understandingWorkflow,
+                author:
+                  typeof args.author === 'string' ? args.author : undefined,
+              },
+              contextManager,
+              sourceMutationMode,
+              guidanceMode,
+            ),
           )) as {
             success?: boolean;
             results?: Array<{ id?: string }>;

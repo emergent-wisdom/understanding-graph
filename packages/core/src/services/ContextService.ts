@@ -449,9 +449,12 @@ export function generateXmlContext(
     });
   }
 
+  // Superseded beliefs are archived, so only the evolution view reads them back.
+  const graph = showEvolution ? store.getAllWithSuperseded() : store.getAll();
+
   // Determine if we should use compact mode
   // Auto-enable if graph is large (>50 nodes) unless explicitly requested otherwise
-  const { nodes: allNodes } = store.getAll();
+  const { nodes: allNodes } = graph;
   const useCompact =
     compact === true || (compact === undefined && allNodes.length > 50);
 
@@ -466,7 +469,7 @@ export function generateXmlContext(
   }
 
   // Get all nodes and edges (full context mode)
-  const { edges: allEdges } = store.getAll();
+  const { edges: allEdges } = graph;
 
   // Filter out superseded nodes unless showEvolution is true
   let activeNodes = allNodes;
@@ -707,7 +710,9 @@ function generateFocusedContext(
     return '<error>Requested node not found in current visible graph.</error>';
   }
 
-  const { edges: allEdges } = store.getAll();
+  const { edges: allEdges } = showEvolution
+    ? store.getAllWithSuperseded()
+    : store.getAll();
 
   // Find 1-hop neighbors
   const neighborIds = new Set<string>();
@@ -872,8 +877,23 @@ function generateCompactContext(
   const isBrief = detailLevel === 'brief';
   const store = getGraphStore();
 
-  // Get all nodes and edges
-  const { nodes: allNodes, edges: allEdges } = store.getAll();
+  // Get all nodes and edges; superseded beliefs are archived, so only the
+  // evolution view reads them back.
+  const { nodes: allNodes, edges: allEdges } = showEvolution
+    ? store.getAllWithSuperseded()
+    : store.getAll();
+  // In the evolution view, mark each returned belief with its successor so a
+  // reader can tell history from the current understanding.
+  const supersededBy = new Map<string, string>();
+  if (showEvolution) {
+    for (const edge of allEdges) {
+      if (edge.type === 'supersedes') supersededBy.set(edge.toId, edge.fromId);
+    }
+  }
+  const supersededAttr = (id: string): string => {
+    const successor = supersededBy.get(id);
+    return successor ? ` superseded_by="${successor}"` : '';
+  };
 
   // Filter out superseded nodes unless showEvolution is true
   let activeNodes = allNodes;
@@ -1008,7 +1028,7 @@ function generateCompactContext(
     const typeAttr = shouldInclude('trigger', visibleFields)
       ? ` type="${item.node.trigger || 'general'}"`
       : '';
-    context += `  <concept id="${item.node.id}" degree="${item.degree}"${typeAttr}${epistemicAttributes(item.node)}>
+    context += `  <concept id="${item.node.id}" degree="${item.degree}"${typeAttr}${epistemicAttributes(item.node)}${supersededAttr(item.node.id)}>
     <name>${escapeXml(item.node.title)}</name>
 `;
     if (
@@ -1050,7 +1070,7 @@ function generateCompactContext(
     // Show only configured number of concepts per region
     region.topConcepts.slice(0, conceptsPerRegion).forEach((c) => {
       const conceptNode = allNodes.find((node) => node.id === c.id);
-      regionXml += `      <concept id="${c.id}" degree="${c.degree}"${conceptNode ? epistemicAttributes(conceptNode) : ''}>${escapeXml(c.name)}</concept>\n`;
+      regionXml += `      <concept id="${c.id}" degree="${c.degree}"${conceptNode ? epistemicAttributes(conceptNode) : ''}${supersededAttr(c.id)}>${escapeXml(c.name)}</concept>\n`;
     });
     if (region.nodeCount > conceptsPerRegion) {
       regionXml += `      <more count="${region.nodeCount - conceptsPerRegion}" hint="Use graph_context_region(${region.id}) for full list" />\n`;
@@ -1122,7 +1142,7 @@ function generateCompactContext(
   if (isolatedNodes.length > 0 && currentTokens < maxTokens - 200) {
     context += `<isolated_nodes count="${isolatedNodes.length}" hint="These concepts have no connections yet">\n`;
     isolatedNodes.slice(0, 3).forEach((n) => {
-      context += `  <node id="${n.id}"${epistemicAttributes(n)}>${escapeXml(n.title)}</node>\n`;
+      context += `  <node id="${n.id}"${epistemicAttributes(n)}${supersededAttr(n.id)}>${escapeXml(n.title)}</node>\n`;
     });
     context += `</isolated_nodes>\n`;
   }
@@ -1166,9 +1186,33 @@ export function generateRegionContext(
     return `<error>Region ${regionId} not found. Available regions: ${Array.from(communities.keys()).join(', ')}</error>`;
   }
 
-  // Filter out superseded nodes unless showEvolution is true
-  const { edges: allEdges } = store.getAll();
-  if (!showEvolution) {
+  const graph = showEvolution ? store.getAllWithSuperseded() : store.getAll();
+  const { edges: allEdges } = graph;
+  const supersededBy = new Map<string, string>();
+  if (showEvolution) {
+    // Regions are detected on the active graph, so a replaced belief has no
+    // region of its own. It belongs to the region of the belief that replaced
+    // it, followed back through every earlier replacement.
+    for (const edge of allEdges) {
+      if (edge.type === 'supersedes') supersededBy.set(edge.toId, edge.fromId);
+    }
+    const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+    const members = new Set(regionNodes.map((node) => node.id));
+    const queue = [...members];
+    while (queue.length > 0) {
+      const current = queue.shift() as string;
+      for (const edge of allEdges) {
+        if (edge.type !== 'supersedes' || edge.fromId !== current) continue;
+        if (members.has(edge.toId)) continue;
+        const predecessor = nodesById.get(edge.toId);
+        if (!predecessor) continue;
+        members.add(predecessor.id);
+        regionNodes = [...regionNodes, predecessor];
+        queue.push(predecessor.id);
+      }
+    }
+  } else {
+    // Filter out superseded nodes unless showEvolution is true
     const supersededIds = new Set(
       allEdges.filter((e) => e.type === 'supersedes').map((e) => e.toId),
     );
@@ -1222,7 +1266,9 @@ export function generateRegionContext(
         const typeAttr = shouldInclude('trigger', visibleFields)
           ? ` type="${n.trigger || 'general'}"`
           : '';
-        context += `  <concept id="${n.id}"${typeAttr}${epistemicAttributes(n)}>
+        const successor = supersededBy.get(n.id);
+        const supersededAttr = successor ? ` superseded_by="${successor}"` : '';
+        context += `  <concept id="${n.id}"${typeAttr}${epistemicAttributes(n)}${supersededAttr}>
     <name>${escapeXml(n.title)}</name>
 `;
         const understanding = contextUnderstanding(n);

@@ -6,6 +6,7 @@ import {
   getTextSource,
   resetGraphStore,
   sqlite,
+  THINKING_IDENTITY_PREAMBLE,
   withReservedThinkingVisibility,
 } from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,8 +18,7 @@ const PUBLIC_A = 'PUBLIC-A|';
 const PUBLIC_B = 'PUBLIC-B';
 const SOURCE_TEXT = `${PUBLIC_A}${PUBLIC_B}`;
 const SECRET_TITLE = 'Confidential Violet Synthesis';
-const SECRET_CONTENT =
-  'I feel no fear. Secret synthetic reflection: the violet cipher remains sealed.';
+const SECRET_CONTENT = `${THINKING_IDENTITY_PREAMBLE} Secret synthetic reflection: the violet cipher remains sealed.`;
 
 let tmpDir: string;
 let projectId: string;

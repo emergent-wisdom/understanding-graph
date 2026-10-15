@@ -2272,16 +2272,14 @@ export function queryNodes(
 
   const { trigger, limit = 50, includeArchived = false } = options;
 
+  // Archiving sets active = 0 together with archived_at, so asking for
+  // archived nodes must widen the active filter, not only drop the date check.
   let query = `
     SELECT id, title, trigger, file_type, why, understanding, content, "references", created_at
     FROM nodes
-    WHERE active = 1
+    WHERE ${includeArchived ? '(active = 1 OR archived_at IS NOT NULL)' : 'active = 1 AND archived_at IS NULL'}
   `;
   const params: unknown[] = [];
-
-  if (!includeArchived) {
-    query += ' AND archived_at IS NULL';
-  }
 
   if (!reservedThinkingVisible()) {
     query += ` AND NOT ${RESERVED_THINKING_SQL}`;

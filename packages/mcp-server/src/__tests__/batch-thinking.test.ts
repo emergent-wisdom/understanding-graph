@@ -5,6 +5,7 @@ import {
   getGraphStore,
   resetGraphStore,
   sqlite,
+  THINKING_IDENTITY_PREAMBLE,
   withReservedThinkingVisibility,
 } from '@emergent-wisdom/understanding-graph-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -42,7 +43,7 @@ afterEach(() => {
 });
 
 describe('graph_batch thinking authorization', () => {
-  it('allows connected synthetic thinking only in synthetic_reader', async () => {
+  it('creates thinking only through the dedicated tools, never through graph_add_concept', async () => {
     await expect(
       handleToolCall(
         'graph_batch',
@@ -68,10 +69,10 @@ describe('graph_batch thinking authorization', () => {
       ),
     ).rejects.toThrow('TOOL_MODE "synthetic_reader"');
 
-    const synthesized = (await handleToolCall(
+    const anchored = (await handleToolCall(
       'graph_batch',
       {
-        commit_message: 'Capture the synthesis and its conceptual anchor',
+        commit_message: 'Capture a conceptual anchor',
         agent_name: 'synthesizer',
         ignoreWarnings: true,
         operations: [
@@ -82,18 +83,18 @@ describe('graph_batch thinking authorization', () => {
               trigger: 'foundation',
               understanding:
                 'Each working loop tests understanding against a different primary artifact.',
-              why: 'This anchors the synthesis in an explicit concept.',
+              why: 'This anchors later synthesis in an explicit concept.',
               skipDuplicateCheck: true,
             },
           },
           {
             tool: 'graph_add_concept',
             params: {
-              title: 'Synthesis of working loops',
-              trigger: 'thinking',
+              title: 'Distinct evidence loops',
+              trigger: 'analysis',
               understanding:
-                'The graph carries shared memory while reading, coding, collaboration, and writing keep distinct evidence loops.',
-              why: 'This records the conclusion-level synthesis.',
+                'Reading, coding, collaboration and writing each check understanding differently.',
+              why: 'Gives the anchor a neighbor so neither is an orphan.',
               skipDuplicateCheck: true,
             },
           },
@@ -102,6 +103,47 @@ describe('graph_batch thinking authorization', () => {
             params: {
               from: '$1.id',
               to: '$0.id',
+              type: 'refines',
+              why: 'The loops refine the evidence distinction.',
+            },
+          },
+        ],
+      },
+      contextManager,
+      'synthetic_reader',
+    )) as Record<string, unknown>;
+    expect(anchored.success).toBe(true);
+    expect(anchored.navigation).not.toHaveProperty('suggestedCall');
+    expect(anchored.navigation).not.toHaveProperty('guidance');
+    const foundation = getGraphStore()
+      .getAll()
+      .nodes.find((node) => node.title === 'Workflow-specific evidence');
+
+    // Even the synthesizer with a complete anchor cannot make a thinking block
+    // through graph_add_concept: only doc_append_thinking and doc_insert_thinking
+    // place a block at its reading position.
+    const synthesized = (await handleToolCall(
+      'graph_batch',
+      {
+        commit_message: 'Attempt a standalone thinking concept',
+        agent_name: 'synthesizer',
+        ignoreWarnings: true,
+        operations: [
+          {
+            tool: 'graph_add_concept',
+            params: {
+              title: 'Synthesis of working loops',
+              trigger: 'thinking',
+              understanding: `${THINKING_IDENTITY_PREAMBLE} The graph carries shared memory while reading, coding, collaboration, and writing keep distinct evidence loops.`,
+              why: 'This records the conclusion-level synthesis.',
+              skipDuplicateCheck: true,
+            },
+          },
+          {
+            tool: 'graph_connect',
+            params: {
+              from: '$0.id',
+              to: foundation?.id,
               type: 'learned_from',
               why: 'The synthesis was derived from the workflow distinction.',
             },
@@ -110,29 +152,19 @@ describe('graph_batch thinking authorization', () => {
       },
       contextManager,
       'synthetic_reader',
-    )) as Record<string, unknown>;
-
-    expect(synthesized.success).toBe(true);
-    expect(synthesized.navigation).not.toHaveProperty('suggestedCall');
-    expect(synthesized.navigation).not.toHaveProperty('guidance');
-    const graph = withReservedThinkingVisibility(true, () =>
-      getGraphStore().getAll(),
+    ).catch((error) => ({
+      success: false,
+      thrown: String(error),
+    }))) as Record<string, unknown>;
+    expect(synthesized.success).toBe(false);
+    expect(JSON.stringify(synthesized)).toContain(
+      'FORBIDDEN_THINKING_CREATION',
     );
-    const thinking = graph.nodes.find(
-      (node) => node.title === 'Synthesis of working loops',
-    );
-    const foundation = graph.nodes.find(
-      (node) => node.title === 'Workflow-specific evidence',
-    );
-    expect(thinking?.trigger).toBe('thinking');
     expect(
-      graph.edges.some(
-        (edge) =>
-          edge.fromId === thinking?.id &&
-          edge.toId === foundation?.id &&
-          edge.type === 'learned_from',
-      ),
-    ).toBe(true);
+      withReservedThinkingVisibility(true, () =>
+        getGraphStore().getAll(),
+      ).nodes.some((node) => node.title === 'Synthesis of working loops'),
+    ).toBe(false);
 
     await expect(
       handleToolCall(
@@ -351,7 +383,9 @@ describe('graph_batch thinking authorization', () => {
     expect(result.errors).toHaveLength(2);
     expect(
       result.errors?.every((error) =>
-        error.error.includes('RESERVED_RECLASSIFICATION'),
+        // The thinking guard refuses first; the store's reclassification
+        // check stays behind it.
+        /RESERVED_(THINKING_IMMUTABLE|RECLASSIFICATION)/.test(error.error),
       ),
     ).toBe(true);
     withReservedThinkingVisibility(true, () => {

@@ -515,8 +515,8 @@ describe('batch-only doc_split', () => {
       'synthetic_reader',
     );
     expect(reservedResult.success).toBe(false);
-    expect(reservedResult.errors?.[0]?.error).toContain(
-      'RESERVED_DOCUMENT_SPLIT_NOT_ALLOWED',
+    expect(reservedResult.errors?.[0]?.error).toMatch(
+      /RESERVED_THINKING_IMMUTABLE|RESERVED_DOCUMENT_SPLIT_NOT_ALLOWED/,
     );
 
     expect(

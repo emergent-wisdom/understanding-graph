@@ -77,6 +77,15 @@ export {
   assessPractice,
   isEphemeralPath,
 } from './services/PracticeService.js';
+// Passages read from a source stay as read; only the source chain's own tools write there.
+export {
+  isInsideSourceDocument,
+  isSourceDocumentNode,
+  SOURCE_PASSAGE_IMMUTABLE,
+  sourceChainWritesAllowed,
+  sourcePassageImmutableMessage,
+  withSourceChainWrites,
+} from './sourceIntegrity.js';
 export * from './types/index.js';
 // Mode-scoped visibility for reserved synthetic Reader/CMP artifacts.
 export {
