@@ -169,14 +169,22 @@ describe('source reading bootstrap', () => {
         workflow: 'reading',
         operations: [
           {
-            tool: 'graph_note',
+            tool: 'graph_add_understanding',
             params: {
-              about: firstRead.contentNodeId,
               title: "Protection may be the room's asserted purpose",
               trigger: 'question',
-              testimony:
+              understanding:
                 'The opening asks me to hold protection and confinement apart. I cannot yet tell whether that framing is sincere, imposed, or already unstable.',
               why: 'The later source should be allowed to test this live ambiguity.',
+            },
+          },
+          {
+            tool: 'graph_connect',
+            params: {
+              from: '$0.id',
+              to: firstRead.contentNodeId,
+              type: 'learned_from',
+              why: 'The question arose from the opening passage',
             },
           },
         ],
@@ -312,10 +320,13 @@ describe('source reading bootstrap', () => {
     expect(read.done).toBe(true);
     expect(read.content).toBe(sourceText);
     expect(read.contentNodeId).toEqual(expect.stringMatching(/^n_/));
-    expect(read.hint).toContain('graph_note');
+    expect(read.hint).toContain('graph_add_understanding');
+    expect(read.hint).not.toContain('graph_note');
     expect(read.hint).toContain(`learned_from`);
     expect(read.hint).toContain(read.contentNodeId as string);
-    expect(read.hint).toContain('PRESERVE THE COMMUNICABLE UNDERSTANDING');
+    expect(read.hint).toContain(
+      'PRESERVE THE UNDERSTANDING THIS PASSAGE PRODUCED',
+    );
     expect(read.hint).toContain('OPTIONAL GUIDANCE AT A REAL CHOICE POINT');
     expect(read.navigation).toMatchObject({
       focusNodeIds: [read.contentNodeId],
@@ -479,7 +490,7 @@ describe('source reading bootstrap', () => {
         agent_name: 'reading_test',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Sunlight preservation expectation',
               trigger: 'prediction',
@@ -529,7 +540,7 @@ describe('source reading bootstrap', () => {
         agent_name: 'reading_test',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Covered petals remain vivid',
               trigger: 'surprise',
@@ -627,7 +638,7 @@ describe('source reading bootstrap', () => {
         agent_name: 'Tester',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Existing Frame',
               trigger: 'foundation',
@@ -637,7 +648,7 @@ describe('source reading bootstrap', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Existing Question',
               trigger: 'question',

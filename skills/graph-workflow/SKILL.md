@@ -30,7 +30,7 @@ graph_batch({
   commit_message: "Connected the new failure model to the observed retry burst",
   agent_name: "current-agent",
   operations: [
-    { tool: "graph_add_concept", params: {
+    { tool: "graph_add_understanding", params: {
         title: "Fixed retries synchronize failure",
         trigger: "surprise",
         understanding: "A recovery rule that protects one client can align the population and intensify overload.",
@@ -50,8 +50,7 @@ graph_batch({
 zero. Use the exact field names in the live schema. Common ones are:
 
 ```text
-graph_add_concept  { title, trigger, understanding, why }
-graph_note         { about, testimony, title?, trigger?, why?, status?, relations? }
+graph_add_understanding  { title, trigger, understanding, why }
 graph_connect      { from, to, type, why }
 graph_revise       { node, understanding, before, after, pivot, why }
 doc_create         { title, content?, fileType?, isDocRoot?, parentId?, level?, afterId? }

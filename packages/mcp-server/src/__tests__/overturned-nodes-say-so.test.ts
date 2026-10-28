@@ -25,8 +25,7 @@ import { handleToolCall } from '../tools/index.js';
  * agent following it would redo finished work and arrive at a conclusion the
  * graph already held. That is the tool's core function producing waste.
  *
- * There is no way to resolve an attend after the fact: graph_note takes
- * status 'resolved' only for the note it is creating, and graph_add_concept
+ * There is no way to resolve an attend after the fact: graph_add_understanding
  * always writes attentionStatus 'open'. Marking the node's standing is
  * therefore the available fix, and it is also the more faithful one — the
  * attend should still arrive, it just should not arrive undated.
@@ -85,7 +84,7 @@ async function batch(commit_message: string, operations: unknown[]) {
 /** A claim carrying an instruction, and something that later retires it. */
 async function seed(retiringType: string) {
   const claim = {
-    tool: 'graph_add_concept',
+    tool: 'graph_add_understanding',
     params: {
       title: CLAIM,
       trigger: 'surprise',
@@ -117,7 +116,7 @@ async function seed(retiringType: string) {
   await batch('Record a claim, then relate the evaluation', [
     claim,
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: VERDICT,
         trigger: 'evaluation',

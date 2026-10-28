@@ -76,7 +76,7 @@ async function batch(commit_message: string, operations: unknown[]) {
 async function seed() {
   const result = await batch('Seed two grounded concepts and a document root', [
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: 'A grounding concept',
         trigger: 'foundation',
@@ -85,7 +85,7 @@ async function seed() {
       },
     },
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: 'A second concept',
         trigger: 'analysis',

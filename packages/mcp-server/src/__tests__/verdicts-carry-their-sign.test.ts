@@ -65,7 +65,7 @@ const VERDICT = 'The prediction was refuted by the closest material there is';
 function verdictPair(edge: Record<string, unknown>) {
   return [
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: PREDICTION,
         trigger: 'prediction',
@@ -75,7 +75,7 @@ function verdictPair(edge: Record<string, unknown>) {
       },
     },
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: VERDICT,
         trigger: 'surprise',
@@ -137,7 +137,7 @@ describe('prediction relations do not become verdicts by position alone', () => 
   it('leaves edges onto ordinary concepts alone', async () => {
     const result = await batch('Answer an ordinary open question', [
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Can emergence be compelled without owning the loop',
           trigger: 'question',
@@ -147,7 +147,7 @@ describe('prediction relations do not become verdicts by position alone', () => 
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Two levers remain available',
           trigger: 'analysis',
@@ -188,7 +188,7 @@ describe('prediction relations do not become verdicts by position alone', () => 
 
     const dedicated = await batch('Supersede through the lifecycle operation', [
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'The old governing model',
           trigger: 'model',

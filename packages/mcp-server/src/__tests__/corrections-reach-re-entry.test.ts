@@ -110,7 +110,7 @@ async function seedGraphWithDistantCorrection() {
     'Record a claim about caching, overturn it, and add deployment material',
     [
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Cache invalidation can be left to expiry alone',
           trigger: 'hypothesis',
@@ -130,7 +130,7 @@ async function seedGraphWithDistantCorrection() {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Expiry alone left stale reads under write bursts',
           trigger: 'surprise',
@@ -149,7 +149,7 @@ async function seedGraphWithDistantCorrection() {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Deployment rollout ordering matters for migrations',
           trigger: 'analysis',
@@ -159,7 +159,7 @@ async function seedGraphWithDistantCorrection() {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Deployment rollback needs a tested path',
           trigger: 'tension',

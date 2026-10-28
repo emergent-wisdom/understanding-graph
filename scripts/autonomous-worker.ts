@@ -67,7 +67,7 @@ try {
 // Define the tools that agents can use to commit to the graph
 const AGENT_TOOLS: Anthropic.Tool[] = [
   {
-    name: 'graph_add_concept',
+    name: 'graph_add_understanding',
     description: 'Add a concept to the understanding graph',
     input_schema: {
       type: 'object' as const,
@@ -182,7 +182,7 @@ function findSolver(name: string): { id: string; name: string } | null {
 function executeGraphOperation(toolName: string, input: Record<string, unknown>): { success: boolean; result: unknown } {
   try {
     switch (toolName) {
-      case 'graph_add_concept': {
+      case 'graph_add_understanding': {
         const id = generateId('n');
         const now = new Date().toISOString();
         const data = {
@@ -504,7 +504,7 @@ Execute this task now. Use the graph tools to make changes, then call submit_res
           if (result.success && block.name !== 'submit_result') {
             const resultData = result.result as Record<string, unknown>;
             const entityId = (resultData.id as string) || task.taskId;
-            const summary = block.name === 'graph_add_concept'
+            const summary = block.name === 'graph_add_understanding'
               ? `Added concept: ${resultData.name}`
               : block.name === 'graph_connect'
                 ? `Connected: ${resultData.from} → ${resultData.to}`

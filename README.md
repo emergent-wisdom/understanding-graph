@@ -285,7 +285,7 @@ axis limits what the model may do.
 
 `graph_batch` is the entry point for concept and edge mutations, and for atomic
 multi-step document changes. Inside one batch you can chain
-`graph_add_concept`, `graph_connect`, `graph_question`, `graph_supersede`,
+`graph_add_understanding`, `graph_connect`, `graph_question`, `graph_supersede`,
 `doc_create`, and others. The pre-validation check accepts both ID and *title*
 references for `graph_connect`, and computes transitive reachability (so a chain
 `A → B → existing` is valid even though A doesn't directly touch existing). On
@@ -364,7 +364,7 @@ Isolated graphs for different contexts. Each project has its own SQLite database
 ### Concept & Node Management (batch operations unless listed by the selected mode)
 | Tool | Purpose |
 |------|---------|
-| `graph_add_concept` | Add new concept with duplicate detection |
+| `graph_add_understanding` | Add new concept with duplicate detection |
 | `graph_question` | Create question node for exploration |
 | `graph_revise` | Update concept understanding |
 | `graph_supersede` | Replace outdated concept |

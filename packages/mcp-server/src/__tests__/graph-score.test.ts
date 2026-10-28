@@ -214,7 +214,7 @@ describe('graph_score ordinary graph boundary', () => {
   it('scores the collapsed graph while retaining dedicated supersession history', async () => {
     await batch([
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Fixed-delay retries are safest',
           trigger: 'model',
@@ -223,7 +223,7 @@ describe('graph_score ordinary graph boundary', () => {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Worker scheduling follows the retry model',
           trigger: 'consequence',

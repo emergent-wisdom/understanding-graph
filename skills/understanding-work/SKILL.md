@@ -67,11 +67,10 @@ summarizing it first. `source_load` returns metadata, not the source body.
 
 Encounter the text only through successive `source_read` results, normally in
 bounded 2,000-character passages, and preserve their order. Attend to the
-current passage before requesting the next one. When it produces communicable,
-material understanding that may help continuation, attach ordinary typed
-testimony to that exact content node with `graph_note`; its `learned_from`
-provenance is created automatically. A passage that produces no durable update
-needs no note. Continue from the persisted source cursor, never from an unread
+current passage before requesting the next one. Record each understanding it
+produces with `graph_add_understanding`, one node per understanding, and connect each
+to that exact content node with `learned_from`. Continue from the persisted
+source cursor, never from an unread
 part of the source or generic recall.
 
 This is ordinary reading through the graph. It uses workflow `reading` in the
@@ -98,16 +97,15 @@ changes. This may include:
 - a possible synthesis, including why it might fail;
 - what remains open for the next instance.
 
-Use ordinary typed cognitive nodes and exact provenance. The batch-only
-`graph_note({ about, testimony, title?, trigger?, why?, status? })` attaches
-user-visible testimony to the source, artifact unit, or prior understanding that
-occasioned it. Preserve enough texture to recover how the view was reached and
+Use ordinary typed nodes, one understanding each, with exact provenance:
+connect each to the source passage, artifact unit, or prior understanding that
+occasioned it with `learned_from`. Preserve enough texture to recover how the view was reached and
 what alternatives remained, rather than recording only a verdict.
 
 This is not a request for hidden or token-level chain-of-thought. Never claim
 access to hidden model state, transcribe private token-by-token reasoning, or
 reconstruct a tidy rationale after completion. It is authored, inspectable
-understanding for continuity. Do not manufacture notes to demonstrate activity;
+understanding for continuity. Do not manufacture nodes to demonstrate activity;
 if no communicable, material understanding is present, add nothing.
 
 Ordinary work never creates the reserved `thinking` trigger. Use ordinary types

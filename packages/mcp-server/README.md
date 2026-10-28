@@ -101,7 +101,7 @@ graph_batch({
   agent_name: "coding-agent",
   operations: [
     {
-      tool: "graph_add_concept",
+      tool: "graph_add_understanding",
       params: {
         title: "Adjacent windows need half-open intervals",
         trigger: "decision",

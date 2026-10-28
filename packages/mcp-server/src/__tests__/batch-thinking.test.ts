@@ -43,7 +43,7 @@ afterEach(() => {
 });
 
 describe('graph_batch thinking authorization', () => {
-  it('creates thinking only through the dedicated tools, never through graph_add_concept', async () => {
+  it('creates thinking only through the dedicated tools, never through graph_add_understanding', async () => {
     await expect(
       handleToolCall(
         'graph_batch',
@@ -53,7 +53,7 @@ describe('graph_batch thinking authorization', () => {
           ignoreWarnings: true,
           operations: [
             {
-              tool: 'graph_add_concept',
+              tool: 'graph_add_understanding',
               params: {
                 title: 'Mode-bypassed thinking node',
                 trigger: 'thinking',
@@ -77,7 +77,7 @@ describe('graph_batch thinking authorization', () => {
         ignoreWarnings: true,
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Workflow-specific evidence',
               trigger: 'foundation',
@@ -88,7 +88,7 @@ describe('graph_batch thinking authorization', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Distinct evidence loops',
               trigger: 'analysis',
@@ -120,7 +120,7 @@ describe('graph_batch thinking authorization', () => {
       .nodes.find((node) => node.title === 'Workflow-specific evidence');
 
     // Even the synthesizer with a complete anchor cannot make a thinking block
-    // through graph_add_concept: only doc_append_thinking and doc_insert_thinking
+    // through graph_add_understanding: only doc_append_thinking and doc_insert_thinking
     // place a block at its reading position.
     const synthesized = (await handleToolCall(
       'graph_batch',
@@ -130,7 +130,7 @@ describe('graph_batch thinking authorization', () => {
         ignoreWarnings: true,
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Synthesis of working loops',
               trigger: 'thinking',
@@ -175,7 +175,7 @@ describe('graph_batch thinking authorization', () => {
           ignoreWarnings: true,
           operations: [
             {
-              tool: 'graph_add_concept',
+              tool: 'graph_add_understanding',
               params: {
                 title: 'Unauthorized thinking node',
                 trigger: 'thinking',
@@ -215,7 +215,7 @@ describe('graph_batch thinking authorization', () => {
         ignoreWarnings: true,
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Ordinary continuation',
               trigger: 'analysis',
@@ -299,7 +299,7 @@ describe('graph_batch thinking authorization', () => {
   it('normalizes padded and mixed-case reserved labels before ordinary dispatch', async () => {
     for (const operation of [
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Padded reserved trigger',
           trigger: '  ThInKiNg  ',
@@ -423,7 +423,7 @@ describe('graph_batch thinking authorization', () => {
   it('keeps direct mutations batch-only while allowing ordinary nested operations', async () => {
     await expect(
       handleToolCall(
-        'graph_add_concept',
+        'graph_add_understanding',
         {
           title: 'Uncommitted direct mutation',
           trigger: 'foundation',
@@ -444,7 +444,7 @@ describe('graph_batch thinking authorization', () => {
         ignoreWarnings: true,
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Reader promise',
               trigger: 'foundation',
@@ -455,7 +455,7 @@ describe('graph_batch thinking authorization', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Structural consequence',
               trigger: 'consequence',

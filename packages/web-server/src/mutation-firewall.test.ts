@@ -61,7 +61,7 @@ describe('REST mutation firewall', () => {
         commit_message: 'This REST batch must never execute',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               text: 'Forbidden REST mutation',
               trigger: 'analysis',

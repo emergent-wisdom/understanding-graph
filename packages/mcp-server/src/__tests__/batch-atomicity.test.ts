@@ -54,7 +54,7 @@ describe('graph_batch atomicity', () => {
       {
         commit_message: 'This oversized batch must never begin',
         operations: Array.from({ length: 101 }, (_, index) => ({
-          tool: 'graph_add_concept',
+          tool: 'graph_add_understanding',
           params: {
             title: `Oversized ${index}`,
             trigger: 'analysis',
@@ -356,7 +356,7 @@ describe('graph_batch atomicity', () => {
         agent_name: 'Tester',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Structured Failure A',
               trigger: 'foundation',
@@ -366,7 +366,7 @@ describe('graph_batch atomicity', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Structured Failure B',
               trigger: 'question',
@@ -422,7 +422,7 @@ describe('graph_batch atomicity', () => {
         ignoreWarnings: true,
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Provisional A',
               trigger: 'foundation',
@@ -432,7 +432,7 @@ describe('graph_batch atomicity', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Provisional B',
               trigger: 'question',
@@ -503,7 +503,7 @@ describe('graph_batch atomicity', () => {
         agent_name: 'Tester',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Existing Foundation',
               trigger: 'foundation',
@@ -513,7 +513,7 @@ describe('graph_batch atomicity', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Open Question About Atomicity',
               trigger: 'question',
@@ -549,7 +549,7 @@ describe('graph_batch atomicity', () => {
         agent_name: 'Tester',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Concept A (should not survive)',
               trigger: 'tension',
@@ -558,7 +558,7 @@ describe('graph_batch atomicity', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Concept B (should not survive)',
               trigger: 'decision',
@@ -613,7 +613,7 @@ describe('graph_batch atomicity', () => {
         agent_name: 'Tester',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Survivor A',
               trigger: 'foundation',
@@ -622,7 +622,7 @@ describe('graph_batch atomicity', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Survivor B',
               trigger: 'decision',
@@ -662,7 +662,7 @@ describe('graph_batch atomicity', () => {
         ignoreWarnings: true,
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Archive Anchor',
               trigger: 'foundation',
@@ -672,7 +672,7 @@ describe('graph_batch atomicity', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Successful Archive Target',
               trigger: 'analysis',
@@ -683,7 +683,7 @@ describe('graph_batch atomicity', () => {
             },
           },
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'Rollback Archive Target',
               trigger: 'analysis',
