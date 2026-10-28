@@ -3,6 +3,7 @@ import {
   createCommit,
   createDocumentWriter,
   type DocumentWriter,
+  EmbeddingService,
   getGraphStore,
   getTextSource,
   isInsideSourceDocument,
@@ -3795,6 +3796,10 @@ async function handleDocumentToolsUnscoped(
           revisionWhy: `Auto-signed by creator: ${agentIdForCommit}`,
           conversationId,
         });
+        // Signing changes an embedded field after graph_batch has refreshed it.
+        if (EmbeddingService.isModelLoaded()) {
+          await store.generateAndStoreEmbedding(thinkingNodeId);
+        }
       }
 
       // Update source tracking - the thinking node is now the last in chain
@@ -3895,6 +3900,10 @@ async function handleDocumentToolsUnscoped(
         revisionWhy: `Signed by ${agentId}${contribution ? `: ${contribution.slice(0, 50)}` : ''}`,
         conversationId,
       });
+
+      if (EmbeddingService.isModelLoaded()) {
+        await store.generateAndStoreEmbedding(thinkingId);
+      }
 
       return {
         success: true,
