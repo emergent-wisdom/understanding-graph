@@ -3567,6 +3567,9 @@ async function handleDocumentToolsUnscoped(
           revisionWhy: `Auto-signed by creator: ${agentId}`,
           conversationId,
         });
+        if (EmbeddingService.isModelLoaded()) {
+          await store.generateAndStoreEmbedding(thinkingNodeId);
+        }
       }
 
       // Update source tracking if sourceId is provided

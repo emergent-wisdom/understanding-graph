@@ -119,6 +119,58 @@ Every session opened in the directory shares the same project root. Once a
 named graph is selected, agents working there share it. Use additional agents
 only when the work has real independent seams.
 
+### Upgrading from 0.1.32 to 0.2.0
+
+Version 0.2.0 changes the authoring tool names. Existing graph data, including
+previously recorded notes, remains usable; this release requires no database
+schema migration.
+
+- Replace `graph_add_concept` with `graph_add_understanding`; its parameters
+  stay the same.
+- Replace `graph_note` with `graph_add_understanding` and a separate
+  `graph_connect` operation in the same `graph_batch`. Map `testimony` to
+  `understanding` and `about` to the connection's `to` target. Supply explicit
+  `title`, `trigger`, and `why` values; these are required on the new node.
+- Set optional `attend` to the next question or action when the node should
+  remain open attention. Automatic resurfacing requires a `learned_from` edge
+  to a visible document node; a provenance link alone does not enable it.
+
+For example, pass this to `graph_batch`, replacing `SOURCE_NODE_ID` with the
+existing passage or artifact node that occasioned the understanding:
+
+```json
+{
+  "commit_message": "Record the unresolved retry assumption",
+  "agent_name": "researcher",
+  "operations": [
+    {
+      "tool": "graph_add_understanding",
+      "params": {
+        "title": "Retries may synchronize clients",
+        "trigger": "hypothesis",
+        "understanding": "A fixed retry delay may align clients after a shared failure.",
+        "why": "Questions whether the proposed recovery policy reduces overload",
+        "attend": "Test fixed delays against jitter before choosing the policy."
+      }
+    },
+    {
+      "tool": "graph_connect",
+      "params": {
+        "from": "$0.id",
+        "to": "SOURCE_NODE_ID",
+        "type": "learned_from",
+        "why": "The hypothesis arose while reading this recovery design"
+      }
+    }
+  ]
+}
+```
+
+Run `npx -y understanding-graph@0.2.0 init` in each initialized project to update
+managed MCP configuration and generated workflow guidance, then reconnect the
+MCP client so it loads the new tool catalog. Update custom configuration or
+instructions that the initializer preserves yourself.
+
 ### Raw MCP configuration (advanced)
 
 If a client cannot install plugins or run the initializer, connect the MCP
