@@ -2,20 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { embeddingWarmupEnabled } from '../index.js';
 
 /**
- * The gate on background model warmup.
- *
- * Warming at startup is what makes duplicate detection run by default — for
- * most of this tool's life nothing loaded the model, so sessions wrote whole
- * graphs unchecked while the batch's description asserted otherwise. The gate
- * is tested rather than the warmup itself: loading a real model in a unit test
- * is the same trade rejected everywhere else in this suite, and the warmup
- * body is a straight call to preloadModel with logging.
- *
- * The opt-out matters as much as the default. Embeddings are an optional peer
- * dependency, and the first-ever run downloads ~23 MB; DISABLE_EMBEDDING_WARMUP
- * is the documented way to keep the old lazy behaviour, so its spelling is
- * pinned here — an env var that silently stops working is an opt-out users
- * believe they have.
+ * Background embedding warmup is enabled by default and explicitly declinable.
+ * Test the configuration gate without downloading or loading the optional
+ * model. The documented environment variable must preserve the opt-out.
  */
 describe('embedding warmup is on by default and declinable', () => {
   it('warms when nothing is set', () => {

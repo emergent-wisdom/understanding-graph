@@ -581,9 +581,7 @@ export class GraphStore {
         );
       }
     } else {
-      // Concept node validation. `why` is required here on purpose: it was
-      // relaxed briefly and every node authored while it was optional skipped
-      // it, so optionality is a slow leak rather than a neutral default.
+      // Require each concept's title, trigger, role and understanding together.
       const missing = [];
       if (!input.title) missing.push('title');
       if (!input.trigger) missing.push('trigger');

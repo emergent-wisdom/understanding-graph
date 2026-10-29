@@ -3,20 +3,9 @@ import { BATCH_OPERATION_TOOLS } from '../tools/batch.js';
 import { getToolDefinitions } from '../tools/index.js';
 
 /**
- * graph_batch is where the invariants live. It runs orphan prevention and its
- * post-execution sweep, duplicate detection, cross-mode checks, atomic
- * rollback, and it records the commit that gives every node and edge its
- * provenance.
- *
- * A mutation reachable outside the batch skips all of it. Measured on
- * doc_create called standalone: the node is written, `commit_id` is empty,
- * and no commit row exists — the work is in the graph with no record of why
- * it arrived or what it belonged to.
- *
- * So the rule is structural, not stylistic: if a tool can mutate the graph,
- * it belongs inside graph_batch and must not be separately advertised.
- * Advertising it is what makes it reachable, so that is what these tests
- * check.
+ * Direct mutations belong inside graph_batch, which enforces grounding,
+ * duplicate checks, mode boundaries, atomic rollback, and commit provenance.
+ * Mode catalogs must not advertise a separate route around those invariants.
  */
 describe('only graph_batch may write', () => {
   const MODES = [

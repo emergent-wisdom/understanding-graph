@@ -10,42 +10,13 @@ import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
 /**
- * Is the post-hoc orphan check reachable, or is it dead code?
- *
- * Disabling it leaves the whole suite green, so it is indistinguishable from a
- * no-op — and "untested safety net" and "dead code" call for opposite
- * treatment. The two checks reason over different objects, which is where any
- * divergence has to come from: pre-flight walks a MODEL of the operations
- * before anything runs and decides which new concepts WILL be connected, by
- * matching graph_connect endpoints on title or idRef. The backstop reads the
- * ACTUAL graph afterwards and asks which created node ids have no edge.
- *
- * They share one input, which bounds what the backstop could ever add: both
- * consider only ops whose tool is in NODE_CREATING_TOOLS, so a tool creating a
- * cognitive node from outside that list is invisible to BOTH.
- *
- * The route these tests were written to explore is CLOSED, and the docblock
- * said otherwise until the tests below disproved it. The guess was that a
- * `from` naming an already-existing title is a string pre-flight would credit
- * to the new concept while execution bound it to the older node of that name.
- * It does not: pre-flight resolves the title the way execution would, and
- * refuses. So these tests do not answer the reachability question — they close
- * the most plausible way in, and that is all they claim.
- *
- * What they do establish was not what they went looking for. A concept created
- * under a title already in use cannot be grounded BY TITLE for the rest of
- * that batch, since every by-title reference binds to the pre-existing node.
- *
- * An earlier version of this docblock said it could not be grounded AT ALL,
- * "from either direction". That was false, and the refusal message itself said
- * so — it offers "a batch back-reference such as $0.id", which addresses the
- * new node by POSITION rather than by name, and works. I read the remedy and
- * recorded that no remedy existed. So the message is adequate; what it does
- * not do is explain WHY the title route failed, which leaves a reader free to
- * try the same name again.
+ * Grounding pre-validation resolves names against existing nodes. A new node
+ * sharing an existing title therefore needs an explicit batch back-reference,
+ * such as $0.id, rather than another by-title connection. These tests exercise
+ * refusal and successful explicit references while retaining the orphan guard.
  */
 const PROJECT_ID = 'orphan-backstop';
-const SHARED = 'Access cost is measured against a tolerance';
+const SHARED = 'Synthetic fixture: classify a sensor reading';
 let tmpDir: string;
 let contextManager: ContextManager;
 
@@ -98,7 +69,7 @@ async function seedTwoGrounded() {
         trigger: 'foundation',
         why: 'Anchors the pair so neither stands alone',
         understanding:
-          'Journeys inside the tolerance cost nothing, and journeys beyond it are counted.',
+          'The fixture classifies a reading by comparing it with a configured reference.',
       },
     },
     {

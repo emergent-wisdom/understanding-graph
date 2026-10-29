@@ -11,26 +11,10 @@ import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
 /**
- * `why` is required on nodes and on edges, and this file exists because that
- * was briefly not true.
- *
- * It was relaxed on nodes on the theory that a mandatory why gets filled
- * whether or not there is an answer, and mostly restates the title. Both
- * halves failed against the data. Every node authored in the window where it
- * was optional skipped it — written by an agent who had just designed the
- * field and was watching for exactly that effect — while the whys already in
- * the graph were doing real work, naming what a node does to the understanding
- * around it, which neither `trigger` nor `understanding` records. A required
- * field is a forcing function; an optional one is a slow leak.
- *
- * On edges the requirement was declared but never ran. A tool's inputSchema
- * `required` array is advisory: graph_batch calls handlers directly, so schema
- * validation never executes on the one path that can write. Only a runtime
- * check is real, so these run through graph_batch, and every batch grounds its
- * own concepts because orphan prevention is a live invariant here.
- *
- * `attend` is the optional forward-looking companion — what a later instance
- * should do differently — and is deliberately NOT a replacement for why.
+ * Runtime validation requires why on nodes and edges, including nested batch
+ * calls that do not pass through MCP schema validation. Why names a node's role
+ * in the surrounding understanding. Attend is an optional forward-looking
+ * companion and cannot replace that explanation.
  */
 const PROJECT_ID = 'why-required';
 let tmpDir: string;
@@ -229,19 +213,8 @@ describe('attend points forward without replacing why', () => {
 });
 
 /**
- * A commit without an author is anonymous permanently.
- *
- * agent_name was optional and, across 77 consecutive commits in a real
- * project, never once supplied — by an agent writing at length about
- * provenance while omitting it. Another agent in the same installation
- * supplied it 5 times in 6, which is the worst case for attribution: an empty
- * field becomes ambiguous between anonymous-by-design and could-not-be-
- * bothered, and nothing can separate them afterwards.
- *
- * Requiring a field is dangerous when the honest answer might be nothing —
- * that is why gating on a shared-vocabulary handle was rejected, since it
- * would manufacture filler. This one cannot: an agent always knows its own
- * name, so the correct value is always available and costs nothing.
+ * Every batch requires an author so its nodes and edges retain attributable
+ * provenance. Supplying the author must preserve an otherwise valid batch.
  */
 describe('every commit carries its author', () => {
   it('rejects a batch with no agent_name', async () => {

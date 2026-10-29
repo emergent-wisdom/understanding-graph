@@ -2,33 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { getToolDefinitions } from '../tools/index.js';
 
 /**
- * The cheap path to addressable prose has to be the one the author is already
- * looking at.
- *
- * Passages are meant to be independently revisable: doc_create_passages says
- * "use the smallest unit that may plausibly change independently". In the
- * Khepri dogfood, 31 of 31 prose leaves came out as multi-paragraph blocks
- * (median 173 words), so no beat could be revised without rewriting its
- * neighbours.
- *
- * That was never a comprehension failure. A model authoring prose could see
- * doc_create — one node per call — but not doc_create_passages, which is
- * batch-only. Its choices were N calls with N boundary decisions, or one cheap
- * call producing one coarse block, and it took the cheap one every time.
- * graph_batch's description named the bulk path the whole time, but an author
- * reached for the obvious name and never read graph_batch's text.
- *
- * These assertions were red for days against that topology, and what closed
- * them was an unrelated change. Every mutating document tool is now batch-only,
- * so doc_create cannot be reached for at all: graph_batch is the single
- * authoring door, and it is the door that names the fine-grained path. The
- * coarse route did not get more expensive — the reader stopped being able to
- * walk past the sign.
- *
- * So what is pinned here is the new topology, and both halves of it matter. If
- * a direct document mutator is ever re-advertised, authors get a starting point
- * that says nothing about granularity and the original defect returns. If
- * graph_batch stops naming the bulk path, the only remaining sign comes down.
+ * Atomic authoring must make addressable passage creation discoverable. Document
+ * mutations are batch-only, and the graph_batch contract must name the bulk
+ * passage tool so authors can create independently revisable prose units.
  */
 describe('the cheap path to addressable prose is discoverable', () => {
   const BULK = 'doc_create_passages';

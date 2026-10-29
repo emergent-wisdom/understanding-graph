@@ -2,38 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { describeDuplicateDetection } from './PracticeService.js';
 
 /**
- * The diagnostic has to test the same condition as the guard it describes.
- *
- * The real guard is `checkDuplicates` in the batch tool, which returns early
- * on `stats.withEmbedding === 0 || !EmbeddingService.isModelLoaded()`. The
- * diagnostic tested only the second half, so it reported `active` in a state
- * where the guard compares nothing and refuses nothing. A condition strictly
- * weaker than the one it reports on can only ever fail in this direction: it
- * says the check is working when it is not, never the reverse.
- *
- * Measured, not reasoned: this project's own meta graph held 48 nodes and 0
- * embeddings. Calling `graph_evaluate_variations` — which embeds arbitrary
- * text, and so loads the model without storing anything — flipped the
- * diagnostic to `active` while `checkDuplicates` was still returning an empty
- * warning list on entry.
- *
- * A first version of this test claimed the create path never embeds and that
- * `graph_backfill_embeddings` was the only producer. That was wrong, from a
- * grep too narrow to match `generateAndStoreEmbedding`: `batch.ts` embeds each
- * newly created node, guarded by `isModelLoaded()`, specifically so duplicate
- * detection works within the same batch. The consequence matters for the
- * readings below — an unembedded node is one written while the model was COLD,
- * which need not be a new one, so coverage does not decay while the model
- * stays warm.
+ * Duplicate-detection diagnostics must match the guard's actual conditions:
+ * both a loaded model and stored embeddings are needed for comparison.
+ * Synthetic coverage fixtures distinguish cold, empty, complete, and partial
+ * states without relying on a model download or a private project store.
  */
 const FULL = { total: 40, withEmbedding: 40, coverage: 1 };
-const NONE = { total: 48, withEmbedding: 0, coverage: 0 };
-const PARTIAL = { total: 46, withEmbedding: 24, coverage: 24 / 46 };
+const NONE = { total: 12, withEmbedding: 0, coverage: 0 };
+const PARTIAL = { total: 30, withEmbedding: 12, coverage: 12 / 30 };
 const EMPTY_GRAPH = { total: 0, withEmbedding: 0, coverage: 0 };
 
 describe('duplicate detection reports what it can actually compare against', () => {
   it('still reports NOT RUNNING when the model is cold', () => {
-    // Unchanged behaviour, pinned: a cold model was always reported honestly.
+    // A cold model cannot perform semantic duplicate detection.
     const d = describeDuplicateDetection(false, FULL);
     expect(d.value).toBe('NOT RUNNING');
     expect(d.reading).toContain('graph_backfill_embeddings');
@@ -53,12 +34,11 @@ describe('duplicate detection reports what it can actually compare against', () 
     expect(
       d.value,
       'A warm model on a graph with no embeddings reported `active` while ' +
-        'comparing every new concept against an empty set. Demonstrated live ' +
-        'at 0 of 48 nodes.',
+        'comparing every new concept against an empty set.',
     ).not.toBe('active');
     expect(d.value).toContain('NOT RUNNING');
     // And it has to say why, since the remedy differs from the cold case.
-    expect(d.reading).toContain('0 of 48');
+    expect(d.reading).toContain('0 of 12');
     // The basis has to name BOTH conditions, since a reader judging the proxy
     // needs to know the model being loaded was never sufficient.
     expect(d.basis).toMatch(/loaded/i);
@@ -68,15 +48,13 @@ describe('duplicate detection reports what it can actually compare against', () 
   it('names the fraction when coverage is partial', () => {
     const d = describeDuplicateDetection(true, PARTIAL);
 
-    // Partial coverage is what a session looks like after writing while cold
-    // and then warming the model — the state this project was in.
+    // Warming the model does not backfill nodes written while it was cold.
     expect(d.value).not.toBe('active');
-    expect(d.value).toContain('24 of 46');
+    expect(d.value).toContain('12 of 30');
     expect(
       d.reading,
-      'The reading must say the uncovered nodes are the ones written cold. ' +
-        'Calling them the newest was the earlier, wrong mechanism, and it ' +
-        'points a reader at the wrong nodes.',
+      'The reading must identify nodes written while cold rather than assume ' +
+        'that all uncovered nodes are the newest.',
     ).toMatch(/cold/i);
     expect(d.reading).not.toMatch(/newest/i);
   });
@@ -92,9 +70,9 @@ describe('duplicate detection reports what it can actually compare against', () 
 
     for (const loaded of [true, false]) {
       for (const [withEmbedding, total] of [
-        [0, 48],
-        [1, 48],
-        [24, 46],
+        [0, 12],
+        [1, 12],
+        [12, 30],
         [40, 40],
       ]) {
         const d = describeDuplicateDetection(loaded, {

@@ -10,26 +10,10 @@ import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
 /**
- * The graph recorded what was written and nothing about what was read.
- *
- * Measured on a real project: 122 batches against 6 re-entries and 2 rolled
- * suggestions — a ratio that had to be reconstructed from scratchpad files
- * outside the tool, because tool_calls held zero rows across the entire
- * project. An ordinary agent keeps no such files, so it could not answer "what
- * have I been doing" from its own graph, and the single axis that question
- * turns on — whether the graph is being re-entered or only written to — was
- * the one the graph could not see.
- *
- * The recording machinery already existed in core, complete with indexes on
- * session and tool name, and was called only from test files. This pins it to
- * the dispatch path.
- *
- * It also pins the failure that hid this once already. tool_calls.session_id is
- * a foreign key onto conversations, so a synthesised session id makes every
- * insert fail. Because the recorder must never break the call it is recording,
- * that failure is swallowed — and the first wiring attempt therefore compiled
- * clean, ran clean, and wrote nothing at all. A green build is not evidence
- * here; a row is.
+ * External calls must leave one local tool-use record, including read-only
+ * retrievals. Nested batch operations count as one outer call. Recording must
+ * seed a valid conversation row for its session foreign key and must not break
+ * the tool call when bookkeeping fails.
  */
 const PROJECT_ID = 'tool-use-recorded';
 let tmpDir: string;
@@ -73,8 +57,8 @@ function recorded(): Array<{ tool_name: string; error: string | null }> {
     .all() as Array<{ tool_name: string; error: string | null }>;
 }
 
-const A = 'The graph recorded writes and not reads';
-const B = 'An agent cannot ask its own graph what it has been doing';
+const A = 'Synthetic fixture: inspect a stored sensor reading';
+const B = 'Synthetic fixture: compare the sensor with its reference';
 
 /** Two grounded concepts — the smallest batch an empty graph accepts. */
 const SEED = [
@@ -83,9 +67,9 @@ const SEED = [
     params: {
       title: A,
       trigger: 'analysis',
-      why: 'Names the asymmetry the recorder closes',
+      why: 'Defines the first member of the recorded fixture pair',
       understanding:
-        'tool_calls held zero rows, so the read/write ratio had to be reconstructed from files outside the tool.',
+        'A sensor reading is retained so a later comparison can inspect it.',
     },
   },
   {
@@ -93,9 +77,9 @@ const SEED = [
     params: {
       title: B,
       trigger: 'consequence',
-      why: 'States what the missing read log costs an agent with no scratchpad',
+      why: 'Connects a comparison to the fixture reading it examines',
       understanding:
-        'Reconstruction depended on session files an ordinary agent does not keep.',
+        'Comparing the stored reading with a reference can reveal calibration drift.',
     },
   },
   {
@@ -104,7 +88,7 @@ const SEED = [
       from: B,
       to: A,
       type: 'learned_from',
-      why: 'Following this reaches the recording gap that makes the question unanswerable from inside the tool.',
+      why: 'The comparison depends on the sensor reading stored by the first fixture node.',
     },
   },
 ];
@@ -142,8 +126,7 @@ describe('the graph records that it was read, not only that it was written', () 
 
     expect(
       recorded().map((r) => r.tool_name),
-      'A re-entry left no row. Reads were the invisible half: the graph could ' +
-        'show 122 batches and no evidence that any of them was ever revisited.',
+      'The retrieval must leave a tool-use row independently of the seed batch.',
     ).toContain('graph_understand');
   });
 

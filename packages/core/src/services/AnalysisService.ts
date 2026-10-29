@@ -252,11 +252,7 @@ export function analyzeGraph(
   // asks whether a node is attached to anything; this asks whether anything
   // was thought about it.
   //
-  // Measured on two real projects when this was added: 5 of 6 document nodes
-  // in one and 7 of 18 in the other touched no cognitive node at all. Neither
-  // graph reported a single defect, and the gap was first spotted by a human
-  // looking at a picture of it — which is the argument for counting it here
-  // rather than leaving it to be noticed.
+  // Count artifact-to-cognitive links separately from structural connectivity.
   const ungroundedProse = Object.keys(nodes)
     .filter((id) => nodes[id].isArtifact)
     .filter(

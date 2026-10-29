@@ -140,7 +140,7 @@ PARAMETERS:
         why: {
           type: 'string',
           description:
-            'REQUIRED. One line naming what this node DOES to the understanding around it — what it corrects, reframes, opens, settles, or contradicts. Not a restatement of the title and not a precis of the understanding: state the role. From practice: "Corrects my own earlier recommendation with a sharper mechanism", "Self-observation that contradicts the flattering reading of my own metrics", "Reframes my own diagnosis from a missing action to a degraded operation". If no honest role can be named, that is a signal the node may not be worth creating on its own.',
+            'REQUIRED. One line naming what this node DOES to the understanding around it — what it corrects, reframes, opens, settles, or contradicts. Not a restatement of the title and not a precis of the understanding: state the role. For example: "Corrects the assumption that a cache entry never expires", "Reframes a timeout as a retry-budget problem", "Settles the choice between an in-memory store and a persistent database". If no honest role can be named, that is a signal the node may not be worth creating on its own.',
         },
         attend: {
           type: 'string',
@@ -532,16 +532,9 @@ export async function handleConceptTools(
           }>
         | undefined;
 
-      // `why` is required, and the measurement that settled it is worth
-      // keeping: it was made optional for roughly forty minutes, and every
-      // node authored in that window skipped it — by an agent who had just
-      // designed the field and was watching for this exact effect. The
-      // premise for relaxing it (that it merely restates the title) did not
-      // survive the data either: the whys already in the graph name what a
-      // node does to the understanding around it, which nothing else records.
-      // A required field is a forcing function, and an optional one is a slow
-      // leak. `attend` is the optional forward-looking companion, not a
-      // replacement.
+      // `why` records the node's role in the surrounding understanding and is
+      // required independently of its title and content. Optional `attend`
+      // points to future work and does not replace that role.
       const missing: string[] = [];
       if (!conceptName) missing.push('title');
       if (!trigger) missing.push('trigger');
@@ -729,14 +722,8 @@ export async function handleConceptTools(
     }
 
     case 'graph_question': {
-      // The schema said speculation was optional and the handler defaulted it
-      // to an empty string, which node validation then rejected — so an agent
-      // following the documented contract got ILLEGAL_CONCEPT_NODE and no hint
-      // that speculation was the missing piece. And `why` was a constant,
-      // 'Open question to explore', identical on every question node ever
-      // created: a field required everywhere else precisely because it names
-      // what a node DOES to the understanding around it, carrying zero
-      // information here because it could not vary.
+      // Validate question, speculation and role explicitly so the caller gets
+      // a complete diagnostic before core concept validation runs.
       const missing: string[] = [];
       if (!(args.question as string)?.trim()) missing.push('question');
       if (!(args.speculation as string)?.trim()) missing.push('speculation');

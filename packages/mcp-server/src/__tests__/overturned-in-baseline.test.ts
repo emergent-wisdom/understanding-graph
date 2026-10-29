@@ -10,20 +10,9 @@ import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
 /**
- * An overturned node has to arrive dated wherever it arrives.
- *
- * `overturnedBy` was applied only while framing the RESISTANCE list. Baseline
- * nodes were framed by the same helper with the option omitted, so a retired
- * claim landing in baseline said nothing about its standing — and baseline is
- * the list presented as settled ground, which makes it the worse of the two
- * places to lose the marking.
- *
- * The two lists are not alternatives you can reason about statically: the
- * resistance list is capped, so once more claims are overturned than there are
- * slots, the surplus lands in baseline. Observed on this project's own meta
- * graph — a verdict carrying an inbound `invalidates` was delivered in
- * baseline with no marking at all, while the correction that retired it was
- * delivered in resistance.
+ * Retired claims must carry their standing in baseline as well as resistance.
+ * Resistance has a bounded capacity, so baseline-eligible retired claims must
+ * retain that marking when they fall outside the resistance list.
  */
 const PROJECT_ID = 'overturned-baseline';
 let tmpDir: string;
@@ -68,12 +57,12 @@ interface Packet {
  * `tension` and `question` are resistance triggers and are excluded from
  * baseline outright, so a retired claim carrying one can never land there.
  *
- * `evaluation` retired by `surprise` is the live shape this came from: a
- * verdict node invalidated by a later correction.
+ * These synthetic evaluation nodes are retired by surprise nodes to exercise
+ * baseline eligibility independently of the bounded resistance list.
  */
 const PAIRS = [1, 2, 3, 4, 5].map((n) => ({
-  retired: `Verdict: tolerance ${n} governs the outcome on its own`,
-  corrector: `Correction: tolerance ${n} was not doing the work`,
+  retired: `Verdict: reference ${n} determines calibration on its own`,
+  corrector: `Correction: reference ${n} does not explain the calibration`,
 }));
 
 async function seed() {
@@ -81,11 +70,11 @@ async function seed() {
     {
       tool: 'graph_add_understanding',
       params: {
-        title: 'Access cost is measured against a tolerance',
+        title: 'Synthetic fixture: sensor readings need a reference',
         trigger: 'foundation',
         why: 'Anchors every claim below so none of them stands alone',
         understanding:
-          'Journeys inside the tolerance cost nothing, and journeys beyond it are counted.',
+          'A fixture sensor reading is interpreted relative to its configured reference.',
       },
     },
   ];
@@ -98,9 +87,9 @@ async function seed() {
           // Baseline-eligible on purpose. With a resistance trigger this node
           // could never reach baseline and the test would prove nothing.
           trigger: 'evaluation',
-          why: 'Records what one run appeared to settle about a tolerance',
+          why: 'Records the fixture claim about one reference setting',
           understanding:
-            'A sweep moved this tolerance and the allocation changed, so it looked decisive on its own.',
+            'Changing one fixture reference changed the reported calibration, suggesting a direct effect.',
         },
       },
       {
@@ -110,7 +99,7 @@ async function seed() {
           trigger: 'surprise',
           why: 'Reports the wider test that retired the earlier verdict',
           understanding:
-            'Holding the other tolerance fixed reproduced the same movement, so the effect was not this one.',
+            'A control comparison reproduced the calibration change without changing this reference.',
         },
       },
     );
@@ -121,7 +110,7 @@ async function seed() {
         tool: 'graph_connect',
         params: {
           from: retired,
-          to: 'Access cost is measured against a tolerance',
+          to: 'Synthetic fixture: sensor readings need a reference',
           type: 'learned_from',
           why: 'Following this reaches the definition the claim is about.',
         },
@@ -154,7 +143,7 @@ async function seed() {
 async function frame() {
   const packet = (await handleToolCall(
     'graph_understand',
-    { query: 'verdict tolerance governs the outcome', retrieval: 'lexical' },
+    { query: 'verdict reference determines calibration', retrieval: 'lexical' },
     contextManager,
     'research',
   )) as Packet;
@@ -205,7 +194,9 @@ describe('a retired claim arrives dated in baseline too', () => {
         `"${node.title}" was delivered in baseline — the list a reader takes ` +
           'as settled ground — with nothing to say it had been retired.',
       ).toBeTruthy();
-      expect(node.overturnedBy).toContain('was not doing the work');
+      expect(node.overturnedBy).toBe(
+        PAIRS.find((pair) => pair.retired === node.title)?.corrector,
+      );
     }
   });
 

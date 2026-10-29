@@ -517,12 +517,8 @@ export function rollNextMoves(
       label: 'Check how this graph has been worked, not how it is shaped',
       available: input.nodeCount >= 10,
       // Structural measures cannot distinguish a well-formed graph nobody
-      // re-enters from a well-formed graph that changed someone's mind. On a
-      // real project they reported 0.0% fragmentation, 100% connectivity and
-      // 75/100 while five of six artifact units had no cognitive link at all
-      // — so the diagnostics that would have caught it have to arrive
-      // without being asked for. An agent that has to think of calling this
-      // is an agent that already suspects the answer.
+      // re-enters from one that changes later work. Include conduct checks as
+      // an occasional suggestion without treating their figures as targets.
       whyNow: `${input.nodeCount} nodes exist; an occasional conduct check may show whether the graph is being re-entered and whether artifact units retain links to the understanding that shaped them. It is a mirror, not a missing-work checklist.`,
       steps: [
         {
@@ -543,10 +539,8 @@ export function rollNextMoves(
         : 'Read the current artifact end to end, in order',
       available: input.documentCount >= 3,
       // Faults that belong to the SEQUENCE are invisible to every node-level
-      // check. Measured: a five-passage story passed two rolled
-      // reread-artifact suggestions and a last-sentence sweep, and reading it
-      // whole found that nobody in it wanted anything — every passage
-      // individually fine, the absence a property of the order.
+      // check. Reading the artifact whole can expose gaps that arise from its
+      // order and relationships rather than from a single passage.
       //
       // The natural trigger, time since the agent last read it whole, is
       // unobservable: the graph records writes, never reads. So this uses the

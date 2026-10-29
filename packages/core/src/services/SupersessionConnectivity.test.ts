@@ -51,23 +51,25 @@ describe('supersession does not orphan the nodes pointing at it', () => {
     const store = initializeGraph();
 
     const superseded = store.createNode({
-      title: 'Delivery decides medium from store',
+      title: 'Synthetic fixture: one calibration covers every sensor',
       trigger: 'model',
       why: 'States the position that a later node replaces',
-      understanding: 'An early formulation of the delivery test.',
+      understanding:
+        'A fixture hypothesis that the same calibration applies to all sensors.',
     });
     const replacement = store.createNode({
-      title: 'The delivery test, better phrased',
+      title: 'Synthetic fixture: calibrate each sensor separately',
       trigger: 'model',
       why: 'Replaces the earlier formulation with a sharper one',
-      understanding: 'The same test, stated so it can actually be applied.',
+      understanding:
+        'A replacement fixture hypothesis requiring an individual sensor calibration.',
     });
     const dependent = store.createNode({
-      title: 'This project is a store by its own test',
+      title: 'Synthetic fixture: compare a second sensor',
       trigger: 'tension',
-      why: 'Applies the test to the project that produced it',
+      why: 'Connects a fixture comparison to the calibration hypothesis it evaluates',
       understanding:
-        'Applying the delivery test here is uncomfortable, and the answer is unflattering.',
+        'A second fixture sensor provides a separate comparison for the calibration hypothesis.',
     });
 
     store.createEdge({

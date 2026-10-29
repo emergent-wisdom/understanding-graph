@@ -58,19 +58,9 @@ async function handleToolCallWithLogging(
 }
 
 /**
- * Say so, loudly, when the graph is being written somewhere the OS will delete.
- *
- * This tool's entire claim is that it is a persistent medium rather than a
- * scratch buffer, and it will run happily for days against a temp directory
- * without mentioning it. That happened: two projects and roughly two hundred
- * nodes were written under /private/tmp across two days, and a routine cleanup
- * removed them between sessions. The next call re-initialised an empty
- * database at the same path, so the directory looked intact and held nothing.
- *
- * The default is cwd/projects and is fine. The hazard is an explicit
- * PROJECT_DIR set to somewhere convenient at the start of what was expected to
- * be a short piece of work — which is precisely when nobody is thinking about
- * durability. One line at startup is the whole fix, and there was nothing.
+ * Warn when PROJECT_DIR is under an operating-system temporary directory.
+ * Cleanup can remove the database, after which startup can recreate an empty
+ * store at the same path. The default cwd/projects path avoids that hazard.
  */
 
 export { isEphemeralPath };
@@ -78,16 +68,10 @@ export { isEphemeralPath };
 /**
  * Whether to warm the embedding model in the background at startup.
  *
- * Duplicate detection needs the model loaded in-process, and for most of this
- * tool's life nothing loaded it: the model is lazy, only explicit embedding
- * calls warmed it, and a session that never made one wrote its whole graph
- * unchecked while graph_batch's description asserted the check was running.
- * Measured cost of closing that gap: a cached load is ~205 ms and per-node
- * embedding ~3 ms, so warming is nearly free — EXCEPT the first ever run on a
- * machine, which downloads ~23 MB into node_modules. That is why this warms in
- * the background and never blocks a write, and why it can be declined:
- * embeddings remain an optional peer dependency, and setting
- * DISABLE_EMBEDDING_WARMUP=1 restores the old lazy behaviour exactly.
+ * Duplicate detection requires the optional embedding model to be loaded in
+ * this process. Warm it in the background without blocking writes, since an
+ * initial load may require a download. DISABLE_EMBEDDING_WARMUP=1 keeps loading
+ * lazy and leaves it to an explicit embedding request.
  */
 export function embeddingWarmupEnabled(
   env: Record<string, string | undefined>,
