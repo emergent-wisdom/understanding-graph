@@ -7,10 +7,8 @@ import { getGraphStore } from './GraphStore.js';
  * How the graph has been WORKED, as distinct from how it is SHAPED.
  *
  * graph_analyze and graph_score answer whether a graph is well formed. They
- * are not able to answer whether it is doing anything, and on a real project
- * they reported 0.0% fragmentation, 100% connectivity and 75/100 at the same
- * moment that five of six artifact units were connected to no cognitive
- * testimony at all.
+ * cannot establish whether the graph is being re-entered or whether artifact
+ * units are connected to the understanding that shaped them.
  * A well-formed graph nobody re-enters scores exactly like a well-formed graph
  * that changes someone's mind.
  *
@@ -29,8 +27,7 @@ import { getGraphStore } from './GraphStore.js';
  * never reports zero. A diagnostic tied to an optional cognitive node type is
  * omitted when that type does not exist, so absence does not become a prompt
  * to manufacture it. Silence and absence look identical in a number, and
- * treating an unrecorded quantity as a measured zero is the specific failure
- * that let a graph of unconsidered prose report a clean bill.
+ * an unrecorded quantity must therefore remain distinct from a measured zero.
  *
  * There is deliberately no total. A single score becomes a target, and the
  * contract already says structural scores are diagnostics and never targets.
@@ -64,8 +61,7 @@ export interface PracticeReport {
  *
  * Anchored at the root and tolerant of a missing trailing slash. Both matter:
  * matching the substring anywhere would fire on ordinary paths like
- * ~/tmp-notes and train the reader to ignore the warning, and the failure this
- * comes from was configured as a bare path with no trailing slash.
+ * ~/tmp-notes, while a bare temporary-directory path must still be recognized.
  */
 const EPHEMERAL_PREFIXES = ['/tmp/', '/private/tmp/', '/var/folders/'];
 
@@ -95,10 +91,9 @@ function ratio(numerator: number, denominator: number): string {
  *
  * This must mirror the real guard, which is `checkDuplicates` in the batch
  * tool: `stats.withEmbedding === 0 || !EmbeddingService.isModelLoaded()`
- * returns early and compares nothing. This diagnostic used to test only the
- * second half of that condition, so it reported `active` in a state where the
- * guard demonstrably refuses nothing — observed live on a graph holding 48
- * nodes and 0 embeddings, after an unrelated call warmed the model.
+ * returns early and compares nothing. Both conditions must be reflected in
+ * the diagnostic so a loaded model with no comparable nodes is not reported
+ * as active duplicate detection.
  *
  * Extracted so it can be tested directly. The interesting states need the
  * embedding model reported as loaded, and loading a real one inside a unit
@@ -118,7 +113,7 @@ export function describeDuplicateDetection(
       value: 'NOT RUNNING',
       basis,
       reading:
-        'The embedding model is not loaded IN THIS PROCESS, so duplicate detection is skipped silently on every write, and nothing will stop the same understanding being recorded twice under different titles. The MCP server warms the model in the background at startup, so seeing this there means the warmup is still in flight, failed (one line on stderr says why), or was declined via DISABLE_EMBEDDING_WARMUP — outside the server nothing loads the model until something asks. Call graph_backfill_embeddings to load it now; that also embeds existing nodes, which the warmup alone does not. Measured: a near-duplicate at 0.893 similarity entered a real graph during a cold session and was caught only afterwards.',
+        'The embedding model is not loaded IN THIS PROCESS, so duplicate detection is skipped silently on every write, and nothing will stop the same understanding being recorded twice under different titles. The MCP server warms the model in the background at startup, so seeing this there means the warmup is still in flight, failed (one line on stderr says why), or was declined via DISABLE_EMBEDDING_WARMUP — outside the server nothing loads the model until something asks. Call graph_backfill_embeddings to load it now; that also embeds existing nodes, which the warmup alone does not.',
     };
   }
 
@@ -195,8 +190,7 @@ export function assessPractice(): PracticeReport {
 
   // 1. Re-entry. The tool's whole claim is that returning to prior state
   //    changes later work, so a graph that is only ever written to is a store
-  //    wearing a medium's interface. Measured once at 122 writes to 6
-  //    re-entries, which nothing in the graph could report at the time.
+  //    wearing a medium's interface. Compare successful writes with re-entries.
   // A refused batch is not a write. Counting it as one inflates the ratio and
   // credits the agent for work the tool rolled back.
   const batches = callCounts.graph_batch ?? { calls: 0, refused: 0 };
@@ -255,24 +249,15 @@ export function assessPractice(): PracticeReport {
       storeDir === null
         ? 'The store location is unknown from here, so durability cannot be assessed. It is not safe by default.'
         : isEphemeralPath(storeDir)
-          ? 'The operating system deletes this without notice, and the next run will silently recreate an empty database at the same path — so the directory will look intact and hold nothing. Two hundred nodes were lost this way. Move it before doing work you intend to keep.'
+          ? 'The operating system deletes this without notice, and the next run will silently recreate an empty database at the same path — so the directory will look intact and hold nothing. Move it before doing work you intend to keep.'
           : 'Outside the directories the OS clears on its own. That is not a backup; it only means the store is not scheduled for deletion.',
   });
 
   // 3. Whether duplicate detection is actually running.
   //
-  // graph_batch is described — by its own documentation, and repeatedly in
-  // this project's commit messages — as enforcing orphan prevention,
-  // duplicate detection, atomic rollback and commit provenance. Three of
-  // those always run. The fourth is guarded by
-  // `!skipCheck && EmbeddingService.isModelLoaded()`, so it runs only when the
-  // embedding model happens to be loaded in-process, and says nothing at all
-  // when it is not. A near-duplicate concept was written to a real project
-  // without a murmur while that guarantee was being asserted in writing.
-  //
-  // Silence is the problem, not the condition. Embeddings are an optional peer
-  // dependency and it is reasonable for the check to be unavailable; it is not
-  // reasonable for an agent to be unable to find out.
+  // Duplicate checks depend on the optional embedding model being loaded in
+  // this process and on existing nodes carrying comparable embeddings. Report
+  // those conditions explicitly rather than implying the check always runs.
   worked.push(
     describeDuplicateDetection(
       EmbeddingService.isModelLoaded(),
@@ -331,11 +316,8 @@ export function assessPractice(): PracticeReport {
     // The composition matters as much as the count. This figure has a floor
     // that is not zero: a verdict scoring a prediction, or a decision about
     // the graph's own structure, is ABOUT the work rather than in it and can
-    // never be expressed by the artifact. Measured on a real project, the
-    // count fell from eight to five and every one of the five was a verdict —
-    // at which point the honest move is to stop, and an agent chasing zero
-    // would start forcing method-talk into the artifact. Naming the triggers
-    // lets that be seen instead of re-derived by hand each time.
+    // never be expressed by the artifact. Naming the triggers helps distinguish
+    // these judgments from decisions the artifact has not yet implemented.
     const byTrigger = [...new Set(unbuilt.map((n) => n.trigger))]
       .map((t) => ({
         trigger: t as string,
@@ -395,10 +377,8 @@ export function assessPractice(): PracticeReport {
         : 'Ungrounded artifact units are prose, code, or evidence structure that some understanding may have shaped without the relationship being recorded. That state is indistinguishable from genuine thoughtlessness, and orphan prevention cannot see it.',
   });
 
-  // 6. Practice drift. Measured across two real projects: practices adopted at
-  //    the start held at 100 per cent, and every practice retrofitted mid-way
-  //    decayed. So the first few commits predict the rest, and the comparison
-  //    is worth more than either figure alone.
+  // 6. Practice drift. Compare attribution in the earliest and latest commits
+  //    so the report can show changes in recorded practice over time.
   const early = commits.slice(0, 5);
   const recent = commits.slice(-5);
   const named = (list: typeof commits) =>

@@ -10,25 +10,10 @@ import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
 /**
- * A node that was later overturned has to say so where it is surfaced.
- *
- * Resistance carries overturned nodes deliberately, and carries their `attend`
- * deliberately too: on a node something later contradicted, the attend is the
- * instruction that correction exists to give. But the packet said nothing
- * about the node's standing, so a discharged instruction arrived looking
- * exactly like a pending one.
- *
- * Measured on a real project. A node carried "test this on a larger city with
- * a wider income spread". The test was run, it invalidated the node, a verdict
- * was recorded — and the next re-entry delivered the same attend as live work,
- * with no indication that the finding it belonged to had been retired. An
- * agent following it would redo finished work and arrive at a conclusion the
- * graph already held. That is the tool's core function producing waste.
- *
- * There is no way to resolve an attend after the fact: graph_add_understanding
- * always writes attentionStatus 'open'. Marking the node's standing is
- * therefore the available fix, and it is also the more faithful one — the
- * attend should still arrive, it just should not arrive undated.
+ * Retired claims must carry their standing wherever they are surfaced, including
+ * when they retain a forward-looking attend. These synthetic fixtures exercise
+ * invalidation and supersession without presenting an obsolete instruction as
+ * unfinished work.
  */
 const PROJECT_ID = 'overturned-says-so';
 let tmpDir: string;
@@ -67,8 +52,8 @@ interface Packet {
   frame?: { baseline?: Framed[]; resistance?: Framed[] };
 }
 
-const CLAIM = 'Mixing costs nothing at all';
-const VERDICT = 'The free result was an artifact of a small city';
+const CLAIM = 'Synthetic claim: one calibration covers every sensor';
+const VERDICT = 'Synthetic correction: each sensor needs calibration';
 
 async function batch(commit_message: string, operations: unknown[]) {
   const result = (await handleToolCall(
@@ -90,10 +75,10 @@ async function seed(retiringType: string) {
       trigger: 'surprise',
       why: 'Records what a first run appeared to show',
       understanding:
-        'Two allocations had identical access cost while segregation halved, so mixing looked free. ' +
-        'The city was small enough that almost every journey fell inside the tolerance, which is the part that was never checked.',
+        'Two fixture sensors initially agreed after the same calibration. ' +
+        'A comparison at another reference point is needed before generalizing that result.',
       attend:
-        'Test this on a larger city with a wider income spread before relying on it.',
+        'Compare additional fixture sensors at another reference point before relying on the shared calibration.',
     },
   };
   if (retiringType === 'supersedes') {
@@ -105,7 +90,7 @@ async function seed(retiringType: string) {
           old: CLAIM,
           new_name: VERDICT,
           new_understanding:
-            'On a six-block city the trade-off reappears, so the free result belonged to the demo rather than to cities.',
+            'At another reference point the fixture sensors disagree, so each needs its own calibration.',
           why: 'Following this reaches the claim the wider test settled, and how it came out.',
         },
       },
@@ -122,7 +107,7 @@ async function seed(retiringType: string) {
         trigger: 'evaluation',
         why: 'Reports the test the claim asked for and what it settled',
         understanding:
-          'On a six-block city the trade-off reappears, so the free result belonged to the demo rather than to cities.',
+          'At another reference point the fixture sensors disagree, so each needs its own calibration.',
       },
     },
     {
@@ -160,7 +145,7 @@ describe('a retired claim arrives dated', () => {
 
     // The attend must still arrive — on an overturned node it is the
     // instruction the correction exists to give.
-    expect(claim?.attend).toContain('larger city');
+    expect(claim?.attend).toContain('additional fixture sensors');
     expect(
       claim?.overturnedBy,
       'The packet delivered a discharged instruction with nothing to say the ' +
@@ -179,7 +164,9 @@ describe('a retired claim arrives dated', () => {
     // overturned would settle by fiat an argument the graph is holding open.
     await seed('contradicts');
     const claim = (
-      await framedNodes('what did we conclude about whether mixing is free')
+      await framedNodes(
+        'what did we conclude about whether one calibration covers every sensor',
+      )
     ).find((n) => n.title === CLAIM);
     expect(
       claim,

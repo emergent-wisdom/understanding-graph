@@ -268,17 +268,11 @@ function inferCodeSectionTitle(
  * graph_batch is where the invariants live: orphan prevention and its
  * post-execution sweep, duplicate detection, cross-mode checks, atomic
  * rollback, and the commit that gives every node and edge its provenance. A
- * mutation reachable outside it skips all of that. Measured on doc_create
- * called standalone: the node is written, no commit row exists, and the node's
- * commit_id is empty — the work is in the graph with no record of why it
- * arrived or what it belonged to.
+ * mutation reachable outside it would bypass those checks and provenance.
  *
  * The live call allow-list is DERIVED from this filtering, so a name here is
- * unreachable directly as well as unadvertised. That is why closing the gap
- * cost a test port rather than a one-line edit: the document tests wrote by
- * calling these handlers directly, which is the idiom this forbids, and the
- * suite guarding the feature was therefore certifying the unchecked path. They
- * now write through graph_batch and assert on its verdict.
+ * unreachable directly as well as unadvertised. Tests for these mutations
+ * should call graph_batch and assert on its verdict.
  */
 export const BATCH_ONLY_DOCUMENT_TOOLS = [
   'doc_move',

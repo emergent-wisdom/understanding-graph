@@ -1583,12 +1583,8 @@ export async function handleReflectionTools(
 
       if (includeAll || include.includes('gaps')) {
         result.isolatedNodes = analysis.isolatedNodes;
-        // The count alone cannot be acted on. Told "5 document nodes have no
-        // thinking attached", an agent knows only that something is wrong;
-        // told which five, it can ground them. The repair on two real projects
-        // took two minutes, and only because the list was to hand — from a
-        // direct SQL query, because this tool returned the number and kept the
-        // names.
+        // Return the affected nodes as well as the count so callers can inspect
+        // which artifact units lack cognitive links.
         result.ungroundedProse = analysis.ungroundedProse;
       }
       if (includeAll || include.includes('cycles')) {

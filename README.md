@@ -35,7 +35,7 @@ live:
 
 ```bash
 cd your-project
-npx -y understanding-graph@0.2.0 init
+npx -y understanding-graph@0.2.1 init
 ```
 
 It creates project-scoped MCP configuration for both Codex and Claude Code,
@@ -119,9 +119,9 @@ Every session opened in the directory shares the same project root. Once a
 named graph is selected, agents working there share it. Use additional agents
 only when the work has real independent seams.
 
-### Upgrading from 0.1.32 to 0.2.0
+### Upgrading from 0.1.32 to 0.2.1
 
-Version 0.2.0 changes the authoring tool names. Existing graph data, including
+Version 0.2.1 changes the authoring tool names. Existing graph data, including
 previously recorded notes, remains usable; this release requires no database
 schema migration.
 
@@ -166,7 +166,7 @@ existing passage or artifact node that occasioned the understanding:
 }
 ```
 
-Run `npx -y understanding-graph@0.2.0 init` in each initialized project to update
+Run `npx -y understanding-graph@0.2.1 init` in each initialized project to update
 managed MCP configuration and generated workflow guidance, then reconnect the
 MCP client so it loads the new tool catalog. Update custom configuration or
 instructions that the initializer preserves yourself.
@@ -177,7 +177,7 @@ If a client cannot install plugins or run the initializer, connect the MCP
 server directly:
 
 ```bash
-claude mcp add ug -- npx -y understanding-graph@0.2.0 mcp
+claude mcp add ug -- npx -y understanding-graph@0.2.1 mcp
 ```
 
 MCP initialization still supplies a concise graph-use contract, but client
@@ -196,7 +196,7 @@ Per-client setup guides: [Claude Code](https://github.com/emergent-wisdom/unders
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.2.0", "mcp"],
+      "args": ["-y", "understanding-graph@0.2.1", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects",
         "UG_SOURCE_ROOT": "/path/to/your/source-project"
@@ -218,7 +218,7 @@ Add to your MCP config:
   "mcpServers": {
     "understanding-graph": {
       "command": "npx",
-      "args": ["-y", "understanding-graph@0.2.0", "mcp"],
+      "args": ["-y", "understanding-graph@0.2.1", "mcp"],
       "env": {
         "PROJECT_DIR": "/path/to/your/projects"
       }
@@ -233,7 +233,7 @@ The root npm package includes the built frontend and depends on the web server,
 so the published package can launch the UI directly:
 
 ```bash
-PROJECT_DIR=/path/to/your/projects npx -y understanding-graph@0.2.0 start
+PROJECT_DIR=/path/to/your/projects npx -y understanding-graph@0.2.1 start
 # open http://localhost:3000
 ```
 
@@ -241,8 +241,8 @@ Run independent sidecars by giving each process its own port and project-store
 root. The roots may be sibling directories on the same volume:
 
 ```bash
-PORT=3101 PROJECT_DIR=/srv/undergraph/worker-1 npx -y understanding-graph@0.2.0 start
-PORT=3102 PROJECT_DIR=/srv/undergraph/worker-2 npx -y understanding-graph@0.2.0 start
+PORT=3101 PROJECT_DIR=/srv/undergraph/worker-1 npx -y understanding-graph@0.2.1 start
+PORT=3102 PROJECT_DIR=/srv/undergraph/worker-2 npx -y understanding-graph@0.2.1 start
 ```
 
 Use absolute paths in deployments. Sharing the installed package and its
@@ -257,7 +257,7 @@ closed without both:
 HOST=0.0.0.0 PORT=3101 \
 UG_WORKER_TOKEN=replace-with-a-long-random-secret \
 PROJECT_DIR=/srv/undergraph/worker-1 \
-npx -y understanding-graph@0.2.0 start
+npx -y understanding-graph@0.2.1 start
 ```
 
 The trusted caller must send `Authorization: Bearer <UG_WORKER_TOKEN>` on every
@@ -280,8 +280,8 @@ npm run start:web
 `graph_semantic_search`, `graph_similar`, `graph_semantic_gaps`, and `graph_backfill_embeddings` can use `@huggingface/transformers` (a local embedding model, roughly 160 MB once compiled). It is an *optional peer dependency* so the default install stays small. For an npx-based project, install both packages locally so Node can resolve the peer from the same dependency tree:
 
 ```bash
-npm install --save-dev understanding-graph@0.2.0 @huggingface/transformers@4.2.0
-npx understanding-graph@0.2.0 init
+npm install --save-dev understanding-graph@0.2.1 @huggingface/transformers@4.2.0
+npx understanding-graph@0.2.1 init
 ```
 
 A separate global `@huggingface/transformers` install does not reliably satisfy an
@@ -525,7 +525,7 @@ tool modes.
 
 ## Multi-Agent with Claude Code Agent Teams
 
-Understanding Graph is designed as a shared persistent medium for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams). After running `npx -y understanding-graph@0.2.0 init`, the lead creates or selects a named graph; every teammate working in that project root can then share it -- stigmergy without bundled data.
+Understanding Graph is designed as a shared persistent medium for [Claude Code Agent Teams](https://code.claude.com/docs/en/agent-teams). After running `npx -y understanding-graph@0.2.1 init`, the lead creates or selects a named graph; every teammate working in that project root can then share it -- stigmergy without bundled data.
 
 ### How it works
 
@@ -548,7 +548,7 @@ Claude (Team Lead):
 
 ```bash
 cd your-project
-npx -y understanding-graph@0.2.0 init     # one-time setup
+npx -y understanding-graph@0.2.1 init     # one-time setup
 ```
 
 Then in Claude Code:
@@ -661,7 +661,7 @@ Understanding Graph gives your agents shared *episodic* memory — the recorded 
 
 ```bash
 # Add both to Claude Code
-claude mcp add ug   -- npx -y understanding-graph@0.2.0 mcp
+claude mcp add ug   -- npx -y understanding-graph@0.2.1 mcp
 claude mcp add sema -- uvx --from semahash sema mcp
 ```
 

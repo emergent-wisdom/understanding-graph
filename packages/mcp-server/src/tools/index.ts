@@ -406,13 +406,9 @@ export async function handleToolCall(
 /**
  * A refusal that is returned rather than thrown is still a refusal.
  *
- * graph_batch reports a rejected write by returning success:false and rolling
- * back, so it never throws and the recorder logged it as a completed call.
- * Measured: a refused batch and a successful one were indistinguishable in
- * tool_calls, which made the write count wrong and hid the single most
- * informative thing an agent does — the tool saying no. A guard that never
- * fires is dead weight; one that fires constantly means the tool is fighting
- * its users, and neither could be seen.
+ * graph_batch can report a rejected write by returning success:false after
+ * rollback. Record that outcome separately from a successful call even when
+ * no exception was thrown.
  */
 function refusalIn(result: unknown): string | null {
   if (!result || typeof result !== 'object') return null;
@@ -427,17 +423,8 @@ function refusalIn(result: unknown): string | null {
 }
 
 /**
- * The graph recorded what was written and nothing about what was read.
- *
- * Measured on a real project: 122 writes against 6 re-entries and 2 rolled
- * suggestions — a ratio that had to be reconstructed from files outside the
- * tool, because tool_calls held zero rows. An ordinary agent has no such
- * files, so it could not answer "what have I been doing" from its own graph,
- * and the one axis this distinction turns on — whether the thing is being
- * re-entered or merely written to — was the invisible one.
- *
- * The recording machinery already existed in core, complete with indexes on
- * session and tool name, and was called only from tests. This wires it.
+ * Record public tool calls so practice diagnostics can distinguish writing,
+ * re-entry and refusal using the graph's own call history.
  *
  * Arguments are deliberately NOT stored: they carry the full text of every
  * node written, which would double the database to answer a question about

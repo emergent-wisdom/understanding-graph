@@ -10,22 +10,9 @@ import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
 /**
- * A correction must not depend on the query resembling it.
- *
- * Resistance is otherwise reached by one hop from a seed, and seeds are chosen
- * by similarity to the query. That makes being shown you were wrong contingent
- * on happening to ask about the thing you were wrong about, which is backwards
- * for a tool whose stated purpose is that re-entry changes later work.
- *
- * Measured on a real graph before this floor existed: the identical query run
- * lexically surfaced two overturned positions, and after backfilling
- * embeddings surfaced none. The packet became more on-topic and stopped
- * reporting the corrections — an "upgrade" that made the tool worse at its
- * stated job, and an easy one to mistake for an improvement.
- *
- * Both directions matter, so both are pinned here: the floor must fire when
- * the selection reports no correction, and must NOT displace anything when the
- * query already reached one.
+ * Corrections must remain reachable when their wording is unrelated to the
+ * query. The structural correction floor must surface a retired claim without
+ * displacing corrections already selected by ordinary retrieval.
  */
 const PROJECT_ID = 'corrections-reach';
 let tmpDir: string;
@@ -247,10 +234,7 @@ describe('what re-entry delivers about a correction', () => {
     );
     expect(correction, 'the correction was not surfaced at all').toBeDefined();
 
-    // A correction's payload is its last sentence. Excerpting a node that was
-    // surfaced BECAUSE it overturns something delivers the setup and drops the
-    // finding — measured on a real graph, where a withdrawal was cut at
-    // "So my inference was", immediately before "it was backwards. Withdrawn."
+    // Preserve the concluding correction rather than excerpting only its setup.
     expect(
       correction?.excerpt,
       'The correction was truncated. Its conclusion is what makes it a ' +
@@ -268,8 +252,7 @@ describe('what re-entry delivers about a correction', () => {
       (n) => n.title === OVERTURNED,
     );
 
-    // 82 nodes carried an attend and none had ever reached a packet, so the
-    // field written for a later instance was never delivered to one.
+    // Forward-looking attention must survive framing, not only persistence.
     expect(
       correction?.attend,
       'The correction arrived without its attend. The excerpt tells the story; ' +

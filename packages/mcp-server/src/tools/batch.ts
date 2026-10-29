@@ -946,19 +946,8 @@ export async function handleBatchTools(
     };
   }
 
-  // Enforce agent attribution.
-  //
-  // It was optional, and across 77 consecutive commits in a real project it
-  // was never once supplied — by an agent writing at length about provenance
-  // at the time. Meanwhile another agent in the same installation supplied it
-  // 5 times in 6. Partial compliance is the worst outcome for attribution:
-  // an empty field is then ambiguous between anonymous-by-design and
-  // could-not-be-bothered, and nothing can tell them apart afterwards.
-  //
-  // A required field is dangerous exactly when the honest answer might be
-  // nothing, which is why gating on a shared-vocabulary handle was rejected —
-  // it would manufacture filler. This one cannot: an agent always knows its
-  // own name.
+  // Require attribution before any mutation so every committed node and edge
+  // can be traced to the caller that authored the batch.
   if (!agentName || String(agentName).trim() === '') {
     throw new Error(
       'agent_name is REQUIRED. Give the name of the agent making this commit ' +

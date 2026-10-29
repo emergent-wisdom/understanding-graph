@@ -213,21 +213,15 @@ interface FramedNode {
    *
    * Resistance surfaces overturned nodes deliberately, and carries their
    * `attend` deliberately too — on a node something later contradicted, the
-   * attend is the instruction that correction exists to give. But the packet
-   * said nothing about the node's standing, so a discharged instruction
-   * arrived looking exactly like a pending one. Measured: an attend reading
-   * "test this on a larger city" was delivered as live work after the test had
-   * been run and had invalidated the node that carried it. A later instance
-   * following it would redo finished work and reach a conclusion the graph
-   * already held.
+   * attend may refer to work the correction has already settled. Carry the
+   * node's standing so a later instance can distinguish retired attention
+   * from a pending instruction.
    */
   overturnedBy?: string;
   /**
    * The node's own message to a later instance: what to attend to differently
    * because of it. Carried here because the packet IS the later instance's
-   * arrival, and omitting it delivered the record while dropping the pointer
-   * written for exactly this moment. Measured before this: 82 nodes carried an
-   * attend field and none of them ever reached a packet.
+   * arrival; include that pointer on the channels that request it.
    */
   attend?: string;
 }
@@ -433,26 +427,13 @@ function displayText(node: GraphNodeData): string {
 /**
  * A bare trailing ellipsis lets a fragment read as a whole thought.
  *
- * Measured: predicting three passages from their opening lines produced three
- * correct frames and three missed arguments — an opening supplies the shape
- * and hides the claim. This function was handing an agent the first 600
- * characters of a median 1095-character node in a real graph, manufacturing
- * that same failure on the agent's own past thinking. One case: a node
- * recording a withdrawn claim cut at "So my inference was", immediately before
- * "not merely unsupported, it was backwards. Withdrawn."
- *
- * Naming the remainder does not restore it, but it stops a fragment
- * presenting as complete, which is the specific thing that made frames
- * mistakable for arguments.
+ * Include the omitted-character count so the reader can distinguish an
+ * excerpt from a complete node and choose whether to retrieve the remainder.
  */
 function excerpt(text: string | null | undefined, max = 600): string {
   const compact = (text || '').replace(/\s+/g, ' ').trim();
   if (compact.length <= max) return compact;
-  // Terse on purpose. The long form of this marker cost roughly 74 characters
-  // on every truncated excerpt, which measured at ~3100 characters — 16% of
-  // the whole packet — to carry a passive signal that is untested and, on this
-  // session's evidence, likely to be ignored. The count is what does the work:
-  // it stops the fragment reading as complete. The sermon does not.
+  // Keep the marker compact because it appears on every truncated excerpt.
   const omitted = compact.length - max;
   return `${compact.slice(0, max)}…[+${omitted} chars]`;
 }
@@ -838,12 +819,8 @@ function frameNode(
     // Carried on the same channels as `why`, and only when the node actually
     // has them — which in practice means reference nodes, whose entire payload
     // this is. Costs nothing on every other node.
-    // Opt-in per channel. Carrying it everywhere measured at 10% of the packet
-    // on a controlled comparison, to deliver a pointer whose effect on
-    // behaviour is untested — this field has never once reached a packet, so
-    // there is no evidence either way. It goes where it is most likely to
-    // matter and nowhere else: on a node something later overturned, the
-    // attend is the instruction that correction exists to give.
+    // Attention is opt-in per channel to keep packets bounded. On overturned
+    // nodes, carry the pointer together with the node's corrected standing.
     ...(options.includeAttend && typeof attend === 'string' && attend.trim()
       ? { attend: attend.replace(/\s+/g, ' ').trim() }
       : {}),
@@ -1588,10 +1565,7 @@ export async function handleUnderstandingTools(
   // Everything above reaches resistance by one hop from a seed, and seeds are
   // chosen by similarity to the query. So whether an agent is shown that it
   // was wrong depends on whether it happens to ask about the thing it was
-  // wrong about — which is exactly backwards. Measured: the same query run
-  // lexically surfaced two overturned positions and, after backfilling
-  // embeddings, surfaced none. The packet got more on-topic and stopped
-  // reporting the corrections, which is easy to mistake for an improvement.
+  // wrong about. Similarity alone must not suppress the most recent correction.
   //
   // This is a floor, not a preference. It fires only when seed-adjacent
   // resistance contains no overturned position at all, so it cannot crowd out
@@ -1644,20 +1618,11 @@ export async function handleUnderstandingTools(
 
   // Resistance is the one channel whose whole value lands at the end.
   //
-  // A correction's verdict is its last sentence — "it was backwards.
-  // Withdrawn." — so truncating a node that was surfaced BECAUSE it overturns
-  // something delivers the setup and drops the finding. Measured on this
-  // graph: both correction nodes checked lost their conclusion to the 600
-  // character budget, one of them mid-sentence. Everything else in the packet
-  // stays excerpted; this channel is small (three nodes) and is the reason the
-  // packet claims to change later work at all.
+  // A correction's verdict may occur at the end. Preserve its full text so
+  // the packet includes the finding rather than only its setup.
   const resistance: LinkedNode[] = selectedResistance.map((candidate) => {
-    // Only a CORRECTION has its payload at the end — "it was backwards.
-    // Withdrawn." A tension or an open question is not a verdict and reads
-    // fine from its opening, so untruncating the whole channel was wider than
-    // the problem: measured, it grew the packet by 21.8% and made resistance
-    // the largest single channel. Untruncate exactly the nodes something
-    // later overturned, and leave the rest excerpted-and-marked.
+    // Apply the full-text exception only to corrections. Other resistance
+    // candidates remain bounded excerpts with an omitted-character marker.
     const isCorrection = overturnedIds.has(candidate.node.id);
     return {
       ...frameNode(candidate.node, {

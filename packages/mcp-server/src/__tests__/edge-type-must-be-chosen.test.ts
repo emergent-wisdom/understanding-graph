@@ -10,26 +10,9 @@ import { ContextManager } from '../context-manager.js';
 import { handleToolCall } from '../tools/index.js';
 
 /**
- * An omitted edge type is not a relation, and `relates` has to be asked for.
- *
- * The contract says to use specific typed edges with a truthful `why`, and the
- * handler defaulted an absent `type` to `relates`. So the cheapest possible
- * path — leaving a field out — produced exactly the generic edge the contract
- * discourages, silently, with no refusal anywhere. The advice sat in the
- * instructions and the cheap route led somewhere else, which is the same shape
- * as the passage-granularity defect.
- *
- * Three levers have now been measured on this tool. Advising fails: agent_name
- * was supplied in zero of seventy-seven commits while merely recommended.
- * Refusing works: it has been supplied in every commit since it was required.
- * Removing the alternative works: coarse passages stopped when doc_create
- * ceased to be reachable, and the fine-grained path never got any cheaper.
- * This takes the third lever, and the distinction it turns on is the one these
- * tests pin — the option survives, the accident does not.
- *
- * Removing the default cost nothing: the whole suite passed unchanged, so
- * nothing had been relying on it. A default that no caller wants is a trap
- * rather than a convenience.
+ * Every connection requires an explicit relation type and a truthful why.
+ * Omitting type must fail rather than silently selecting the generic relates
+ * relation; an intentional relates edge remains valid.
  */
 const PROJECT_ID = 'edge-type-chosen';
 let tmpDir: string;

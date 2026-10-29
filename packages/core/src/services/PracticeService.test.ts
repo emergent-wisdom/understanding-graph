@@ -381,12 +381,10 @@ describe('what the diagnostics see in a graph that was worked', () => {
 
 describe('the unexpressed list names what it is made of', () => {
   /**
-   * This figure has a floor that is not zero, and the floor is legible only
-   * from the composition. A verdict scoring a prediction is ABOUT the work
-   * rather than in it, and no artifact can express it. Measured on a real
-   * project the count fell from eight to five and all five were verdicts — the
-   * point at which the right move is to stop. An agent reading only the number
-   * would keep going and start forcing method-talk into the artifact.
+   * The trigger composition distinguishes artifact-relevant understanding from
+   * evaluation records that need not be expressed in the artifact itself.
+   * Synthetic fixtures preserve that distinction without turning a count into
+   * a requirement to generate more content.
    */
   it('groups the residue by trigger, commonest first', () => {
     const store = initializeGraph();
@@ -395,7 +393,7 @@ describe('the unexpressed list names what it is made of', () => {
     // all, which is right: "the artifact has not caught up" means nothing
     // where there is no artifact.
     store.createDocumentNode({
-      title: 'city_dwelling.py',
+      title: 'sensor_fixture.py',
       content: '# a module',
       level: 'document',
       isDocRoot: true,
@@ -407,15 +405,15 @@ describe('the unexpressed list names what it is made of', () => {
         trigger: 'evaluation',
         why: 'Scores a prediction against what the run actually showed',
         understanding:
-          'The wider city reproduced the movement, so the claim survives.',
+          'An independent fixture reference reproduced the reading, so the claim survives.',
       });
     }
     store.createNode({
-      title: 'City shape sets the price of integration',
+      title: 'Synthetic fixture: calibration depends on sensor geometry',
       trigger: 'model',
       why: 'Records a finding about the thing being modelled',
       understanding:
-        'Holding households fixed and changing only geometry moves the price.',
+        'Holding the reference fixed while changing fixture sensor geometry changes its reading.',
     });
 
     const value = diagnostic('understanding_ahead_of_artifact')?.value ?? '';
@@ -433,7 +431,7 @@ describe('the unexpressed list names what it is made of', () => {
     // all, which is right: "the artifact has not caught up" means nothing
     // where there is no artifact.
     store.createDocumentNode({
-      title: 'city_dwelling.py',
+      title: 'sensor_fixture.py',
       content: '# a module',
       level: 'document',
       isDocRoot: true,
@@ -687,16 +685,9 @@ describe('a reading that names one bad end names the other', () => {
 
 describe('edge_vocabulary reports a generic share when there is one', () => {
   /**
-   * This reading had never fired. Both projects dogfooding the tool sat at
-   * 0% generic for its whole life, which is evidence about how those graphs
-   * were written and not evidence that the diagnostic works — a reading nobody
-   * has exercised is one nobody has checked, and 0% is exactly what a broken
-   * counter would also report.
-   *
-   * `relates` is still a legal, deliberate choice: EDGE_TYPE_REQUIRED refuses
-   * an ABSENT type, and its refusal message offers `relates` explicitly for a
-   * connection with no better name. So a non-zero share is a state real graphs
-   * can reach, and the arithmetic behind the warning should be pinned.
+   * Explicit relates edges remain legal and must contribute to the generic
+   * share. Exercise both zero and non-zero cases so an inactive counter cannot
+   * satisfy the diagnostic merely by reporting zero.
    */
   function twoConcepts(store: ReturnType<typeof initializeGraph>) {
     const a = store.createNode({
@@ -795,7 +786,7 @@ describe('the diagnostics that had never seen their own bad state', () => {
         'Segregation halved while access cost held, so mixing looked free.',
     });
     const unit = store.createDocumentNode({
-      title: 'city_dwelling.py',
+      title: 'sensor_fixture.py',
       content: '# a module built on that claim',
       level: 'document',
       isDocRoot: true,
@@ -814,7 +805,7 @@ describe('the diagnostics that had never seen their own bad state', () => {
     // Now retire the decision the artifact is built on. The code did not
     // change, so nothing else in the system can notice this.
     const verdict = store.createNode({
-      title: 'The free result was an artifact of a small city',
+      title: 'Synthetic correction: each sensor needs calibration',
       trigger: 'evaluation',
       why: 'Reports the wider test and what it settled',
       understanding:

@@ -315,29 +315,8 @@ export async function handleConnectionTools(
       // indistinguishable in the structure and the outcome survives only in
       // prose — where nothing can count it.
       //
-      // The tool description already says this, under its own PREDICTIVE
-      // heading, naming both validates and invalidates. It was read and
-      // ignored six times in a row by an agent who had just written about
-      // typed edges making influence inspectable. That is the whole argument
-      // for making it a refusal instead of a sentence: advice this specific
-      // did not move behaviour, and the failing batch does.
-      // An omitted type is not a relation, and `relates` must be asked for.
-      //
-      // The contract says to use specific typed edges, and the schema defaulted
-      // an absent `type` to `relates` — so the cheapest possible path, leaving
-      // a field out, produced exactly the generic edge the contract
-      // discourages, silently and with no refusal. That is the same shape as
-      // the passage-granularity defect: the advice sat in one place and the
-      // cheap route led somewhere else.
-      //
-      // Three levers have now been measured on this tool. Advising fails:
-      // agent_name was supplied in zero of seventy-seven commits while it was
-      // merely recommended. Refusing works: it has been supplied in every
-      // commit since it was required. Removing the alternative works: coarse
-      // passages stopped when doc_create ceased to be reachable, without the
-      // fine-grained path getting any cheaper. This takes the third lever.
-      // `relates` remains available to anyone who means it; it stops being
-      // what you get by accident.
+      // Require the caller to choose a type explicitly. `relates` remains a
+      // valid choice, but an omitted field must not silently select it.
       if (args.type === undefined || args.type === null || args.type === '') {
         return {
           success: false,

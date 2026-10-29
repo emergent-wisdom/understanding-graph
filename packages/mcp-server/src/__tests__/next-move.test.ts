@@ -296,17 +296,9 @@ describe('weighted next-move suggestions', () => {
 });
 
 /**
- * A fault that belongs to the SEQUENCE is invisible to every node-level check.
- *
- * Measured while drafting a five-passage story with the tool driving: two
- * rolled `reread-artifact` suggestions and a last-sentence sweep all passed,
- * and reading the piece end to end found that nobody in it wanted anything.
- * Every passage was individually fine; the absence was a property of the order.
- *
- * The natural trigger — time since the agent last read it whole — is
- * unobservable, because the graph records writes and never reads. So the
- * option keys on a writing-streak proxy instead: prose has accumulated, and
- * has outpaced live thinking.
+ * Sequence-level defects can be absent from individual passages. Once writing
+ * accumulates, a whole-artifact read must be reachable alongside local checks.
+ * The writing streak is a proxy for when that inspection may be useful.
  */
 describe('reading the artifact in order is reachable', () => {
   const base = {

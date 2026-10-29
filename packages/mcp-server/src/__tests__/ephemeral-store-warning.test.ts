@@ -2,19 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { isEphemeralPath } from '../index.js';
 
 /**
- * A graph written to a temp directory is a scratch buffer wearing a medium's
- * interface, and the tool said nothing about it.
- *
- * This is not hypothetical. Two projects holding roughly two hundred nodes
- * were written under /private/tmp across two days of real work. A routine OS
- * cleanup removed them between sessions, and the next call re-initialised an
- * empty database at the same path — so the directory looked intact, reported
- * itself loaded, and held nothing. Nothing in two days of startup output
- * mentioned that the store was ephemeral.
- *
- * The default, cwd/projects, is fine. The hazard is an explicit PROJECT_DIR
- * pointed somewhere convenient at the start of what was expected to be a short
- * piece of work, which is exactly when durability is not on anyone's mind.
+ * Explicit project roots in operating-system temporary directories must be
+ * announced as ephemeral. Durable roots and paths merely containing a similar
+ * substring must not trigger the warning. Bare roots without a trailing slash
+ * need the same classification as their descendants.
  */
 describe('an ephemeral store is announced as one', () => {
   it.each([
@@ -43,9 +34,7 @@ describe('an ephemeral store is announced as one', () => {
   });
 
   it('matches a directory given without its trailing slash', () => {
-    // The real failure was configured as a bare path with no trailing slash,
-    // so a prefix test written against "/private/tmp/" alone would have missed
-    // the exact case that lost the data.
+    // Classify the root itself as well as paths beneath it.
     expect(isEphemeralPath('/private/tmp')).toBe(true);
     expect(isEphemeralPath('/tmp')).toBe(true);
   });

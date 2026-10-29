@@ -10,7 +10,7 @@ tools.
 npm install -g mcporter
 mcporter config add ug \
   --command npx \
-  --arg -y --arg understanding-graph@0.2.0 --arg mcp \
+  --arg -y --arg understanding-graph@0.2.1 --arg mcp \
   --scope home \
   --description "Understanding Graph: a persistent medium for agent understanding"
 ```
@@ -26,7 +26,7 @@ Most agents want a persistent project dir outside the cwd. Pass it via
 ```bash
 mcporter config add ug \
   --command npx \
-  --arg -y --arg understanding-graph@0.2.0 --arg mcp \
+  --arg -y --arg understanding-graph@0.2.1 --arg mcp \
   --env PROJECT_DIR=/Users/you/.ug/projects \
   --scope home
 ```

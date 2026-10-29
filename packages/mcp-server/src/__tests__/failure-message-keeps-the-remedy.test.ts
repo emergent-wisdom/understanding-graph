@@ -2,24 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { getExplicitToolFailure } from '../tools/batch.js';
 
 /**
- * The composer that turns a nested tool's refusal into the batch's message.
- *
- * It read `error` and `message` and nothing else, so everything a tool
- * attached to help the caller recover was discarded — and once the mutating
- * document and concept tools became batch-only, a batch was their only caller,
- * so the loss went from partial to total.
- *
- * The sharp case is near-duplicate detection. It refuses a concept and returns
- * the id and title of the node being duplicated, four concrete calls to make
- * instead, and the escape hatch. Through the batch, all the agent received was
- * "extend or link to existing concept instead of creating new" — an
- * instruction to link to something it had not been shown.
- *
- * This is tested at the composer rather than end to end on purpose. Duplicate
- * detection only runs when the embedding model is loaded in-process, and in
- * this environment it is not — a near-duplicate was written to a real project
- * without a murmur. An end-to-end test would therefore pass by never reaching
- * the code it claims to cover, which is worse than no test at all.
+ * A batch refusal must preserve the nested tool's actionable remedy, including
+ * referenced nodes and suggested calls. Test the composer directly so coverage
+ * does not depend on loading the optional embedding model or reaching a
+ * similarity threshold in an end-to-end fixture.
  */
 describe('a refusal keeps the remedy the tool attached', () => {
   it('returns null for anything that is not an explicit failure', () => {
