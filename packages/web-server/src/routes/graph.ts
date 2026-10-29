@@ -257,7 +257,7 @@ graphRouter.post('/graph/batch', (req, res, next) => {
         let result: Record<string, unknown> = {};
 
         switch (op.tool) {
-          case 'graph_add_concept': {
+          case 'graph_add_understanding': {
             // Validate required fields for concept nodes
             if (!params.trigger || !params.why || !params.understanding) {
               throw new Error(
@@ -350,7 +350,7 @@ graphRouter.post('/graph/batch', (req, res, next) => {
           }
           default:
             throw new Error(
-              `Unknown tool: ${op.tool}. Use graph_add_concept, graph_connect, or graph_revise.`,
+              `Unknown tool: ${op.tool}. Use graph_add_understanding, graph_connect, or graph_revise.`,
             );
         }
 

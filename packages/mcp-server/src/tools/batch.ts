@@ -11,6 +11,7 @@ import { assessArtifactCognitionBalance } from '../artifact-cognition-balance.js
 import type { ContextManager } from '../context-manager.js';
 import { ambientGuidanceEnabled, type GuidanceMode } from '../guidance.js';
 import { understandingMode } from '../protocol.js';
+import { REMOVED_OPERATIONS } from './concept.js';
 import { handleToolCall, type ToolMode } from './index.js';
 
 // Sentinel error class used by handleBatchTools to bubble an
@@ -83,8 +84,7 @@ function isThinkingLabel(value: unknown): boolean {
 
 // Tools that create nodes and need immediate embedding generation
 const NODE_CREATING_TOOLS = [
-  'graph_add_concept',
-  'graph_note',
+  'graph_add_understanding',
   'graph_question',
   'graph_serendipity',
   'graph_decide',
@@ -124,8 +124,7 @@ const DOC_MUTATION_TOOLS = [
  * never become a tunnel to arbitrary routed MCP tools.
  */
 export const BATCH_OPERATION_TOOLS = [
-  'graph_add_concept',
-  'graph_note',
+  'graph_add_understanding',
   'graph_question',
   'graph_revise',
   'graph_supersede',
@@ -285,15 +284,14 @@ Use for:
 Every call requires operations, commit_message, and agent_name.
 
 PARAMETER NAMES (these are strict — wrong names are rejected with an explicit remedy):
-  graph_add_concept: { title, trigger, understanding, why, attend? } — NOT name/body/text; why is one line naming what this node does to the understanding around it (corrects/reframes/opens/settles); attend is an optional pointer to what a later instance should attend to DIFFERENTLY, and marks the node live attention
-  graph_note:        { about, testimony, title?, trigger?, why?, status?: "open"|"resolved", relations? } — preserve a substantive change caused by an exact source, artifact, or prior cognitive node; prefer the specific honest trigger (omission = neutral analysis); routine execution needs no note
+  graph_add_understanding: { title, trigger, understanding, why, attend? } — NOT name/body/text; one understanding per node; why is one line naming what this node does to the understanding around it (corrects/reframes/opens/settles); attend is an optional pointer to what a later instance should attend to DIFFERENTLY, and marks the node live attention
   graph_connect:     { from, to, type, why }                 — NOT source/target/edgeType
   graph_revise:      { node, understanding, before, after, pivot, why }
   graph_serendipity: { name, synthesis, source_elements, why } — after grounded discovery reveals a real unexpected bridge, never merely because random nodes were sampled
   graph_validate:    { node, insight } — preserve why later evidence made a serendipitous bridge survive scrutiny
   graph_decide:      { question, options, chosen, reasoning } — preserve an actual choice and its considered alternatives
   doc_create:        { title, content, purpose?, fileType, isDocRoot, parentId, afterId, level, expressesIds } — purpose records why this exact artifact unit exists; a root uses isDocRoot: true; a child uses parentId; when that parent already has children, append with afterId set to the current tail (or "$N.id" for a sibling created earlier in this batch)
-  doc_revise:        { nodeId, content?, summary?, why } — why preserves the local edit; when a discovered insight/question/tension should influence other passages or future work, pair with graph_note about the exact passage in this batch; purely local revisions need no note
+  doc_revise:        { nodeId, content?, summary?, why } — why preserves the local edit; when a discovered insight/question/tension should influence other passages or future work, pair with graph_add_understanding connected to the exact passage by learned_from in this batch; purely local revisions need no note
   doc_weave:         { parentId, title, targetNodeIds, content, connections, level?, afterId? } — each connection becomes an inspired_by edge whose why preserves the causal influence
   doc_create_passages: { parentId, title, narrativeRole?, containerLevel?: "section"|"subsection"|"scene"|"chapter"|"movement", afterId?, passages: [{ title, content, level: "paragraph"|"sentence", inspirations?: [{ nodeId, why }] }] } — atomically append a coherent scene/chapter/movement and the passages a future writer may move, replace, compare, annotate, or revise independently; scene/chapter/movement render as sections, optional afterId guards the current tail, and inspiration is optional, never forced
   doc_move:          { nodeId, parentId?, afterId? } — omit afterId to place first
@@ -308,7 +306,7 @@ is invalid.
 Supports variable references: use "$N.id" to reference result N's id (0-indexed, counts ALL operations).
 Example: { from: "$0.id", to: "$1.id" } connects first operation's result to second's.
 
-RESERVED SYNTHETIC OUTPUT: trigger="thinking", fileType="thinking", and the dedicated thinking creation/signing/translation tools are accepted only when the MCP server runs in TOOL_MODE="synthetic_reader". Direct graph_add_concept creation also requires agent_name="synthesizer". Ordinary modes should use rich non-thinking typed testimony.`,
+RESERVED SYNTHETIC OUTPUT: trigger="thinking", fileType="thinking", and the dedicated thinking creation/signing/translation tools are accepted only when the MCP server runs in TOOL_MODE="synthetic_reader". Direct graph_add_understanding creation also requires agent_name="synthesizer". Ordinary modes should use rich non-thinking typed testimony.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -461,7 +459,7 @@ const DEFAULT_DUPLICATE_THRESHOLD = 0.8;
  *      node, which forbade this pattern.
  *
  *   3. **The error label needs to be the actual title.** Earlier code read
- *      params.name (which graph_add_concept doesn't define) and always fell
+ *      params.name (which graph_add_understanding doesn't define) and always fell
  *      through to "operation N", which made the error useless.
  *
  * Algorithm: compute the set of all nodes reachable to/from a grounding
@@ -482,8 +480,7 @@ function validateNoOrphans(
 
   // Extract the title (or question) a node-creating op will produce.
   // Different node-creating tools use different schemas:
-  //   graph_add_concept     -> params.title
-  //   graph_note            -> params.title (optional; falls back to $N.id)
+  //   graph_add_understanding     -> params.title
   //   graph_question        -> params.question
   //   graph_supersede       -> params.new_name (the replacement concept's name)
   //   graph_serendipity     -> params.name
@@ -645,18 +642,6 @@ function validateNoOrphans(
       if (optionKey) addEdge(decisionKey, optionKey);
     }
   }
-  // graph_note creates a `learned_from` edge to the exact visible graph node
-  // named by params.about. Keeping implicit-edge modeling here means the generic
-  // grounding traversal treats the note exactly like the persisted graph.
-  for (let i = 0; i < operations.length; i++) {
-    const op = operations[i];
-    if (op.tool !== 'graph_note') continue;
-    const noteEntry = nodeCreatingOps.find((entry) => entry.index === i);
-    if (!noteEntry) continue;
-    const noteKey = noteEntry.title || noteEntry.idRef;
-    const artifactKey = canonicalize(String(op.params.about || ''));
-    if (artifactKey) addEdge(noteKey, artifactKey);
-  }
   // doc_create with parentId creates an implicit `contains` edge from parent
   // to the new doc node. This topology matters when a concept reaches a child
   // document through another relationship, even though documents themselves
@@ -815,8 +800,8 @@ async function checkForDuplicates(
   for (let i = 0; i < operations.length; i++) {
     const op = operations[i];
 
-    // Only check graph_add_concept operations
-    if (op.tool !== 'graph_add_concept') continue;
+    // Only check graph_add_understanding operations
+    if (op.tool !== 'graph_add_understanding') continue;
 
     const name =
       (op.params.title as string) || (op.params.name as string) || '';
@@ -937,6 +922,18 @@ export async function handleBatchTools(
     };
   }
 
+  const removedOperation = operations.find((operation) =>
+    Object.hasOwn(REMOVED_OPERATIONS, operation.tool),
+  );
+  if (removedOperation) {
+    return {
+      success: false,
+      error: 'BATCH_OPERATION_REMOVED',
+      message: REMOVED_OPERATIONS[removedOperation.tool],
+      allowedTools: [...BATCH_OPERATION_TOOLS],
+    };
+  }
+
   const forbiddenOperation = operations.find(
     (operation) => !batchOperationToolNames.has(operation.tool),
   );
@@ -982,7 +979,7 @@ export async function handleBatchTools(
 
   // THINKING NODE RESTRICTION: the selected MCP mode is the primary
   // capability boundary. Agent attribution remains a second check for the
-  // graph_add_concept escape hatch used by the synthetic Reader/CMP producer.
+  // graph_add_understanding escape hatch used by the synthetic Reader/CMP producer.
   for (const op of operations) {
     const isThinkingOperation =
       [
@@ -993,7 +990,7 @@ export async function handleBatchTools(
         'translate_thinking',
       ].includes(op.tool) ||
       ([
-        'graph_add_concept',
+        'graph_add_understanding',
         'doc_create',
         'doc_to_concept',
         'node_set_trigger',
@@ -1009,7 +1006,7 @@ export async function handleBatchTools(
     }
 
     if (
-      op.tool === 'graph_add_concept' &&
+      op.tool === 'graph_add_understanding' &&
       isThinkingLabel(op.params.trigger) &&
       agentName !== 'synthesizer'
     ) {
@@ -1113,7 +1110,7 @@ export async function handleBatchTools(
         // call as well so the synthesizer-only `thinking` path can satisfy
         // the same authorization check during execution.
         if (
-          op.tool === 'graph_add_concept' &&
+          op.tool === 'graph_add_understanding' &&
           agentName &&
           resolvedParams.agent_name === undefined
         ) {

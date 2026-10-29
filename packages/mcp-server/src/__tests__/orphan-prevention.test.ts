@@ -38,7 +38,7 @@ async function seed() {
   return batch(
     [
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Seed Concept',
           trigger: 'foundation',
@@ -48,7 +48,7 @@ async function seed() {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Open Question About Testing',
           trigger: 'question',
@@ -103,7 +103,7 @@ describe('orphan prevention — concept nodes', () => {
     await seed();
     const result = await batch([
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Orphan',
           trigger: 'tension',
@@ -119,7 +119,7 @@ describe('orphan prevention — concept nodes', () => {
   it('rejects single concept in empty graph (no edges)', async () => {
     const result = await batch([
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'First Node',
           trigger: 'foundation',
@@ -135,7 +135,7 @@ describe('orphan prevention — concept nodes', () => {
   it('allows two connected concepts in empty graph', async () => {
     const result = await batch([
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'First Node',
           trigger: 'foundation',
@@ -145,7 +145,7 @@ describe('orphan prevention — concept nodes', () => {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Second Node',
           trigger: 'tension',
@@ -171,7 +171,7 @@ describe('orphan prevention — concept nodes', () => {
     await seed();
     const result = await batch([
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Connected',
           trigger: 'decision',
@@ -281,7 +281,7 @@ describe('orphan prevention — doc_create nodes', () => {
     await seed();
     const result = await batch([
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Design Decision',
           trigger: 'decision',
@@ -331,7 +331,7 @@ describe('orphan prevention — doc_create nodes', () => {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Structural shadowing',
           trigger: 'decision',
@@ -356,7 +356,7 @@ describe('orphan prevention — doc_create nodes', () => {
   it('models doc_create expressesIds as a grounding relationship', async () => {
     const result = await batch([
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Precedence invariant',
           trigger: 'decision',
@@ -390,41 +390,6 @@ describe('orphan prevention — doc_create nodes', () => {
     expect(expressesEdge).toBeTruthy();
   });
 
-  it('models graph_note learned_from as an implicit grounding relationship', async () => {
-    const result = await batch([
-      {
-        tool: 'doc_create',
-        params: {
-          title: 'Merge implementation',
-          content: 'function merge() {}\n',
-          fileType: 'ts',
-          isDocRoot: true,
-        },
-      },
-      {
-        tool: 'graph_note',
-        params: {
-          about: '$0.id',
-          testimony:
-            'Array replacement feels safer than positional merging, but a test with sparse arrays should decide it.',
-        },
-      },
-    ]);
-
-    expect(result.success).toBe(true);
-    const docId = (result.results as Array<{ id?: string }>)[0]?.id;
-    const noteId = (result.results as Array<{ id?: string }>)[1]?.id;
-    const learnedFromEdge = getGraphStore()
-      .getAll()
-      .edges.find(
-        (edge) =>
-          edge.fromId === noteId &&
-          edge.toId === docId &&
-          edge.type === 'learned_from',
-      );
-    expect(learnedFromEdge).toBeTruthy();
-  });
-
   it('still rejects an ungrounded concept beside a valid document', async () => {
     const result = await batch([
       {
@@ -437,7 +402,7 @@ describe('orphan prevention — doc_create nodes', () => {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'Unrelated assertion',
           trigger: 'foundation',

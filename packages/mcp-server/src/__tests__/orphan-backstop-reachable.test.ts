@@ -92,7 +92,7 @@ async function batch(commit_message: string, operations: unknown[]) {
 async function seedTwoGrounded() {
   const result = await batch('Seed a grounded pair', [
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: SHARED,
         trigger: 'foundation',
@@ -102,7 +102,7 @@ async function seedTwoGrounded() {
       },
     },
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: 'A second concept',
         trigger: 'analysis',
@@ -136,7 +136,7 @@ describe('the post-hoc orphan check: reachable or dead', () => {
       'Create a same-titled concept and connect by title',
       [
         {
-          tool: 'graph_add_concept',
+          tool: 'graph_add_understanding',
           params: {
             title: SHARED,
             trigger: 'model',
@@ -192,7 +192,7 @@ describe('the post-hoc orphan check: reachable or dead', () => {
     // above would be pinning the wrong mechanism.
     const result = await batch('The same shape under a title nobody is using', [
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'A claim under a title nobody is using',
           trigger: 'model',
@@ -232,7 +232,7 @@ describe('the post-hoc orphan check: reachable or dead', () => {
       'Try to ground the same-titled concept from the other side',
       [
         {
-          tool: 'graph_add_concept',
+          tool: 'graph_add_understanding',
           params: {
             title: SHARED,
             trigger: 'model',
@@ -242,7 +242,7 @@ describe('the post-hoc orphan check: reachable or dead', () => {
           },
         },
         {
-          tool: 'graph_add_concept',
+          tool: 'graph_add_understanding',
           params: {
             title: 'A distinctly named partner',
             trigger: 'analysis',
@@ -274,7 +274,7 @@ describe('the post-hoc orphan check: reachable or dead', () => {
       'Ground the same-titled concept by back-reference',
       [
         {
-          tool: 'graph_add_concept',
+          tool: 'graph_add_understanding',
           params: {
             title: SHARED,
             trigger: 'model',

@@ -1210,8 +1210,8 @@ function buildPrompt(
             'Begin the native artifact in',
             'the graph with a small useful scaffold and coherent ordered units.',
             'If a real alternative or uncertainty becomes salient while making a',
-            'unit, graph_note can preserve it on that exact artifact inside the',
-            'same atomic batch; otherwise continue without a cognitive note.',
+            'unit, graph_add_understanding can preserve it, connected to that exact',
+            'artifact, inside the same atomic batch.',
           ].join('\n'),
     ...(syntheticReader
       ? [

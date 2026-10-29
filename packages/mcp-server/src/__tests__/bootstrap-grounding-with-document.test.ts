@@ -68,7 +68,7 @@ interface BatchResult {
 
 const CONNECTED_CONCEPTS = [
   {
-    tool: 'graph_add_concept',
+    tool: 'graph_add_understanding',
     params: {
       title: 'A grounding concept',
       trigger: 'foundation',
@@ -77,7 +77,7 @@ const CONNECTED_CONCEPTS = [
     },
   },
   {
-    tool: 'graph_add_concept',
+    tool: 'graph_add_understanding',
     params: {
       title: 'A second concept',
       trigger: 'analysis',
@@ -145,7 +145,7 @@ describe('a document in the batch widens grounding rather than replacing it', ()
     // by abandoning the component requirement would let this through.
     const result = await batch('A concept with no edges, beside a document', [
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'A lone concept',
           trigger: 'foundation',

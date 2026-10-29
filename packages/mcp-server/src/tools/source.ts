@@ -160,7 +160,7 @@ The content is automatically committed to the graph as a document node - perfect
 ORDINARY READING WORKFLOW:
 1. source_read → exact encountered content is appended to the source chain
 2. Stop at a natural, self-selected boundary when something will help later continuation
-3. If warranted, use graph_batch to preserve rich non-"thinking" typed testimony and connect it to the exact content node with learned_from
+3. If warranted, use graph_batch to add each understanding with graph_add_understanding and connect it to the exact content node with learned_from
 4. Continue with source_read; never use unread material or generic recall as evidence
 
 The reserved "thinking" trigger is synthetic Reader/CMP pretraining output and is created only in TOOL_MODE="synthetic_reader". ${ORDINARY_SYNTHETIC_VISIBILITY}`,
@@ -612,8 +612,8 @@ export async function handleSourceTools(
           });
         }
 
-        // Build a directly usable hint. Ordinary reading captures rich typed
-        // testimony in graph_batch; reserved synthetic thinking is a separate
+        // Build a directly usable hint. Ordinary reading records typed
+        // understanding in graph_batch; reserved synthetic thinking is a separate
         // pretraining-production mode.
         const optionalGuidance = ambientGuidanceEnabled(guidanceMode)
           ? `
@@ -624,11 +624,10 @@ OPTIONAL GUIDANCE AT A REAL CHOICE POINT:
           : '';
         const hint = `Content node created: ${contentNodeId}
 
-PRESERVE THE COMMUNICABLE UNDERSTANDING THIS PASSAGE PRODUCED:
-  In one graph_batch, use graph_note({ about: "${contentNodeId}", testimony, trigger, relations? }).
-  It creates learned_from automatically. Preserve questions, interpretations,
-  alternatives, evidence, uncertainty, and what later reading could test. Do not
-  manufacture content merely to demonstrate activity.
+PRESERVE THE UNDERSTANDING THIS PASSAGE PRODUCED:
+  In one graph_batch, add each understanding with graph_add_understanding and connect it
+  to "${contentNodeId}" with learned_from: one node per question, interpretation,
+  alternative, prediction, or piece of evidence, so each can be revised on its own.
 
 ${optionalGuidance}
 ${

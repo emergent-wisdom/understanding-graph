@@ -170,7 +170,7 @@ graph_batch({
   agent_name: "Architect",
   operations: [
     {
-      tool: "graph_add_concept",
+      tool: "graph_add_understanding",
       params: {
         title: "A Bloom filter is an instance of Check#1544",
         trigger: "foundation",
@@ -190,7 +190,7 @@ graph_batch({
       },
     },
     {
-      tool: "graph_add_concept",
+      tool: "graph_add_understanding",
       params: {
         title: "Sizing: 1% FPR at 1000 inserts → m=9586 bits, k=7 hashes",
         trigger: "decision",
@@ -207,7 +207,7 @@ graph_batch({
       },
     },
     {
-      tool: "graph_add_concept",
+      tool: "graph_add_understanding",
       params: {
         title: "Hashing: double hashing to synthesize k hash functions from 2 primitives",
         trigger: "decision",
@@ -224,7 +224,7 @@ graph_batch({
       },
     },
     {
-      tool: "graph_add_concept",
+      tool: "graph_add_understanding",
       params: {
         title: "Hypothesis: actual FPR is within [0.5%, 1.5%] after 1000 inserts",
         trigger: "hypothesis",
@@ -522,7 +522,7 @@ graph_batch({
   agent_name: "Evaluator",
   operations: [
     {
-      tool: "graph_add_concept",
+      tool: "graph_add_understanding",
       params: {
         title: "Empirical: Bloom filter measured FPR is 0.86% (theoretical 1.00%)",
         trigger: "evaluation",
@@ -621,8 +621,8 @@ five ways:
 5. **Live attention can remain causally attached to the artifact.**
    Documents do not need a companion concept merely to exist. When coding
    exposes a real surprise, tension, alternative, experiment, or decision,
-   optional batch-only `graph_note` attaches it to the exact code/test unit and
-   artifact reads or generation resurface it. Mechanical work and an honest
+   record it with `graph_add_understanding`, connected to the exact code/test unit by
+   `learned_from` and with `attend` set; artifact reads or generation resurface it. Mechanical work and an honest
    `no_shift` remain valid; no generic warning asks for a decorative concept.
 
 ## Things to know
@@ -631,7 +631,7 @@ five ways:
   document helpers are exposed as top-level tools, but a batch is the workflow
   contract when related nodes, edges, and artifact changes must land together:
   it enforces atomicity and requires a commit message.
-- **Required fields on `graph_add_concept` are `title`, `trigger`,
+- **Required fields on `graph_add_understanding` are `title`, `trigger`,
   `understanding`, AND `why`.** Omitting `why` or `understanding`
   fails validation.
 - **Required fields on every `graph_connect` are `from`, `to`,

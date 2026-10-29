@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe('artifact-linked live attention', () => {
-  it('captures an optional open thread atomically and resurfaces it on projection', async () => {
+  it('captures an open thread atomically and resurfaces it on projection', async () => {
     const result = (await handleToolCall(
       'graph_batch',
       {
@@ -58,13 +58,24 @@ describe('artifact-linked live attention', () => {
             },
           },
           {
-            tool: 'graph_note',
+            tool: 'graph_add_understanding',
             params: {
-              about: '$0.id',
               title: 'Scalar versus subtree shadowing remains live',
               trigger: 'tension',
-              testimony:
-                'A higher layer could reject shape conflicts or replace the lower subtree. The next merge unit and provenance tests should distinguish the consequences before this becomes a decision.',
+              understanding:
+                'A higher layer could reject shape conflicts or replace the lower subtree.',
+              why: 'Opens the shadowing choice the next merge unit has to settle',
+              attend:
+                'The next merge unit and provenance tests should distinguish the consequences before this becomes a decision.',
+            },
+          },
+          {
+            tool: 'graph_connect',
+            params: {
+              from: '$1.id',
+              to: '$0.id',
+              type: 'learned_from',
+              why: 'The tension arose while starting the resolver',
             },
           },
         ],
@@ -73,39 +84,32 @@ describe('artifact-linked live attention', () => {
       'coding',
     )) as {
       success: boolean;
-      results: Array<{ id: string; edgeId?: string }>;
-      navigation?: {
-        focusNodeIds: string[];
-        suggestedCall: {
-          arguments: Record<string, unknown>;
-        };
-      };
+      results: Array<{ id: string }>;
+      navigation?: { focusNodeIds: string[] };
     };
 
     expect(result.success).toBe(true);
     const rootId = result.results[0]?.id;
-    const noteId = result.results[1]?.id;
-    const noteEdgeId = result.results[1]?.edgeId;
+    const nodeId = result.results[1]?.id;
+    const edgeId = result.results[2]?.id;
     expect(rootId).toBeTruthy();
-    expect(noteId).toBeTruthy();
-    expect(result.navigation?.focusNodeIds.slice(0, 2)).toEqual([
-      noteId,
-      rootId,
-    ]);
+    expect(nodeId).toBeTruthy();
+    expect(result.navigation?.focusNodeIds).toEqual(
+      expect.arrayContaining([nodeId, rootId]),
+    );
 
     const store = getGraphStore();
-    expect(store.getNode(noteId)?.metadata).toEqual(
+    expect(store.getNode(nodeId)?.metadata).toEqual(
       expect.objectContaining({
         liveAttention: true,
         attentionStatus: 'open',
-        aboutNodeId: rootId,
       }),
     );
     expect(store.getAll().edges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: noteEdgeId,
-          fromId: noteId,
+          id: edgeId,
+          fromId: nodeId,
           toId: rootId,
           type: 'learned_from',
         }),
@@ -130,19 +134,19 @@ describe('artifact-linked live attention', () => {
     expect(generated.success).toBe(true);
     expect(generated.openAttention).toEqual([
       expect.objectContaining({
-        id: noteId,
+        id: nodeId,
         aboutNodeId: rootId,
-        excerpt: expect.stringContaining('provenance tests'),
-        edge: { id: noteEdgeId, type: 'learned_from', why: expect.any(String) },
+        excerpt: expect.stringContaining('lower subtree'),
+        edge: { id: edgeId, type: 'learned_from', why: expect.any(String) },
       }),
     ]);
 
     const reentered = (await handleToolCall(
       'graph_understand',
       {
-        query: 'Re-enter the newly recorded provenance concern',
+        query: 'Re-enter the newly recorded shadowing tension',
         workflow: 'coding',
-        focusNodeIds: result.navigation?.focusNodeIds || [],
+        focusNodeIds: [nodeId, rootId],
       },
       contextManager,
       'coding',
@@ -153,14 +157,14 @@ describe('artifact-linked live attention', () => {
       };
     };
     expect(reentered.frame.focus?.map((node) => node.id)).toEqual([
-      noteId,
+      nodeId,
       rootId,
     ]);
     expect(reentered.frame.relations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: noteEdgeId,
-          from: noteId,
+          id: edgeId,
+          from: nodeId,
           to: rootId,
         }),
       ]),
@@ -184,13 +188,22 @@ describe('artifact-linked live attention', () => {
           'Preserve the new question that emerged while re-entering the prior model',
         operations: [
           {
-            tool: 'graph_note',
+            tool: 'graph_add_understanding',
             params: {
-              about: prior.id,
               title: 'Can the graph reveal what its optimization excludes?',
               trigger: 'question',
-              testimony:
-                'Re-entering the earlier model makes exclusion itself newly salient: the next inquiry should compare what the graph repeatedly retrieves with what remains structurally cold.',
+              understanding:
+                'Re-entering the earlier model makes exclusion itself newly salient: compare what the graph repeatedly retrieves with what remains structurally cold.',
+              why: 'Opens a question about what the earlier model leaves out',
+            },
+          },
+          {
+            tool: 'graph_connect',
+            params: {
+              from: '$0.id',
+              to: prior.id,
+              type: 'learned_from',
+              why: 'The question arose while re-entering the earlier model',
             },
           },
         ],
@@ -199,11 +212,10 @@ describe('artifact-linked live attention', () => {
       'coding',
     )) as {
       success: boolean;
-      results: Array<{ id: string; about: { id: string } }>;
+      results: Array<{ id: string }>;
     };
 
     expect(result.success).toBe(true);
-    expect(result.results[0]?.about.id).toBe(prior.id);
     expect(getGraphStore().getAll().edges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -215,176 +227,51 @@ describe('artifact-linked live attention', () => {
     );
   });
 
-  it('keeps graph_note batch-only', async () => {
-    await expect(
-      handleToolCall(
-        'graph_note',
+  it('refuses the removed operation names with a pointer to graph_add_understanding', async () => {
+    for (const name of ['graph_note', 'graph_add_concept']) {
+      await expect(
+        handleToolCall(
+          name,
+          { title: 'x', understanding: 'y' },
+          contextManager,
+          'coding',
+        ),
+      ).rejects.toThrow(/graph_add_understanding/);
+
+      const batch = (await handleToolCall(
+        'graph_batch',
         {
-          about: 'n_missing',
-          testimony: 'This should never bypass the atomic commit surface.',
+          agent_name: 'test-agent',
+          commit_message: 'Attempt a removed operation name',
+          operations: [
+            {
+              tool: name,
+              params: {
+                title: 'Removed operation',
+                trigger: 'question',
+                understanding: 'This must not be written.',
+                why: 'Exercises the refusal',
+              },
+            },
+          ],
         },
         contextManager,
         'coding',
-      ),
-    ).rejects.toThrow(/not available in TOOL_MODE "coding"/);
-  });
-
-  it('optionally preserves a genuine cognitive relationship from the new note', async () => {
-    const result = (await handleToolCall(
-      'graph_batch',
-      {
-        agent_name: 'test-agent',
-        commit_message:
-          'Draft the resolver and preserve how the later question challenges its first assumption',
-        ignoreWarnings: true,
-        operations: [
-          {
-            tool: 'doc_create',
-            params: {
-              title: 'resolver-relations.py',
-              content: 'def resolve(value):\n    return value\n',
-              level: 'document',
-              isDocRoot: true,
-              fileType: 'py',
-            },
-          },
-          {
-            tool: 'graph_note',
-            params: {
-              about: '$0.id',
-              title: 'Resolution currently assumes one stable value',
-              trigger: 'hypothesis',
-              testimony:
-                'The minimal implementation assumes resolution selects one stable value rather than a context-sensitive view.',
-            },
-          },
-          {
-            tool: 'graph_note',
-            params: {
-              about: '$0.id',
-              title: 'Caller context may change what resolution means',
-              trigger: 'question',
-              testimony:
-                'A caller may need the value together with the layer that supplied it, so the current meaning of resolution remains open.',
-              relations: [
-                {
-                  node: 'Resolution currently assumes one stable value',
-                  type: 'questions',
-                  why: 'The later provenance need directly challenges the earlier stable-value assumption.',
-                },
-              ],
-            },
-          },
-        ],
-      },
-      contextManager,
-      'coding',
-    )) as {
-      success: boolean;
-      results: Array<{
-        id: string;
-        affectedEdgeIds?: string[];
-        relations?: Array<{
-          id: string;
-          node: { id: string; title: string };
-          type: string;
-          why: string;
-        }>;
-      }>;
-    };
-
-    expect(result.success).toBe(true);
-    const firstNoteId = result.results[1]?.id;
-    const secondNoteId = result.results[2]?.id;
-    const relation = result.results[2]?.relations?.[0];
-    expect(relation).toEqual(
-      expect.objectContaining({
-        node: {
-          id: firstNoteId,
-          title: 'Resolution currently assumes one stable value',
-        },
-        type: 'questions',
-        why: expect.stringContaining('challenges'),
-      }),
-    );
-    expect(result.results[2]?.affectedEdgeIds).toContain(relation?.id);
-    expect(getGraphStore().getAll().edges).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: relation?.id,
-          fromId: secondNoteId,
-          toId: firstNoteId,
-          type: 'questions',
-          why: expect.stringContaining('challenges'),
-        }),
-      ]),
-    );
-  });
-
-  it('rolls back the whole batch when a graph_note relation target is invalid', async () => {
-    const result = (await handleToolCall(
-      'graph_batch',
-      {
-        agent_name: 'test-agent',
-        commit_message:
-          'Attempt to capture attention with a relationship whose target is unavailable',
-        operations: [
-          {
-            tool: 'doc_create',
-            params: {
-              title: 'rolled-back.py',
-              content: 'VALUE = "provisional"\n',
-              level: 'document',
-              isDocRoot: true,
-              fileType: 'py',
-            },
-          },
-          {
-            tool: 'graph_note',
-            params: {
-              about: '$0.id',
-              title: 'This note must not survive',
-              trigger: 'question',
-              testimony:
-                'The relationship endpoint is missing, so neither the artifact nor this note belongs in the graph.',
-              relations: [
-                {
-                  node: 'A cognitive node that does not exist',
-                  type: 'questions',
-                  why: 'This deliberately unavailable target exercises atomic validation.',
-                },
-              ],
-            },
-          },
-        ],
-      },
-      contextManager,
-      'coding',
-    )) as {
-      success: boolean;
-      completed: number;
-      errors: Array<{ index: number; tool: string; error: string }>;
-    };
-
-    expect(result.success).toBe(false);
-    expect(result.completed).toBe(1);
-    expect(result.errors).toEqual([
-      expect.objectContaining({
-        index: 1,
-        tool: 'graph_note',
-        error: expect.stringContaining('Node not found'),
-      }),
-    ]);
+      )) as { success: boolean; error: string; message: string };
+      expect(batch.success).toBe(false);
+      expect(batch.error).toBe('BATCH_OPERATION_REMOVED');
+      expect(batch.message).toContain('graph_add_understanding');
+    }
     expect(getGraphStore().getAll()).toEqual({ nodes: [], edges: [] });
   });
 
-  it('preserves a resolved note in history without resurfacing it as open attention', async () => {
+  it('does not resurface an understanding recorded without attend', async () => {
     const result = (await handleToolCall(
       'graph_batch',
       {
         agent_name: 'test-agent',
         commit_message:
-          'Record the compatibility finding and complete its correction atomically',
+          'Record the compatibility finding together with its complete correction',
         operations: [
           {
             tool: 'doc_create',
@@ -397,14 +284,22 @@ describe('artifact-linked live attention', () => {
             },
           },
           {
-            tool: 'graph_note',
+            tool: 'graph_add_understanding',
             params: {
-              about: '$0.id',
               title: 'Compatibility mismatch was corrected',
               trigger: 'evaluation',
-              testimony:
+              understanding:
                 'The generated projection exposed a mismatch, and this commit contains the complete correction.',
-              status: 'resolved',
+              why: 'Settles the mismatch the projection exposed',
+            },
+          },
+          {
+            tool: 'graph_connect',
+            params: {
+              from: '$1.id',
+              to: '$0.id',
+              type: 'learned_from',
+              why: 'The finding came from this file',
             },
           },
         ],
@@ -413,17 +308,11 @@ describe('artifact-linked live attention', () => {
       'coding',
     )) as {
       success: boolean;
-      results: Array<{ id: string; status?: string }>;
+      results: Array<{ id: string }>;
     };
 
     expect(result.success).toBe(true);
-    expect(result.results[1]?.status).toBe('resolved');
     const rootId = result.results[0]?.id;
-    const noteId = result.results[1]?.id;
-    expect(getGraphStore().getNode(noteId)?.metadata).toEqual(
-      expect.objectContaining({ attentionStatus: 'resolved' }),
-    );
-
     const reread = (await handleToolCall(
       'doc_read',
       { nodeId: rootId },

@@ -72,7 +72,7 @@ const TO = 'First claim';
 function pair(edge: Record<string, unknown>) {
   return [
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: TO,
         trigger: 'foundation',
@@ -81,7 +81,7 @@ function pair(edge: Record<string, unknown>) {
       },
     },
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: FROM,
         trigger: 'analysis',

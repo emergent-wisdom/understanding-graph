@@ -95,7 +95,7 @@ function pair(
 ) {
   return [
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: EARLIER,
         trigger: 'evaluation',
@@ -105,7 +105,7 @@ function pair(
       },
     },
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: LATER,
         trigger: 'evaluation',

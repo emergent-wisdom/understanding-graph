@@ -95,7 +95,7 @@ async function seedWorkstream(commitMessage = 'Seed collaborative workstream') {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: 'External integration evidence',
           trigger: 'experiment',

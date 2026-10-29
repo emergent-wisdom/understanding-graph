@@ -3,6 +3,7 @@ import {
   createCommit,
   createDocumentWriter,
   type DocumentWriter,
+  EmbeddingService,
   getGraphStore,
   getTextSource,
   isInsideSourceDocument,
@@ -650,7 +651,7 @@ export const documentTools: Tool[] = [
   {
     name: 'doc_revise',
     description:
-      'Update content when the whole leaf remains one coherent unit. If only one of several independently revisable functions, beats, images, or exchanges is changing, split or create addressable children and revise the exact unit instead of repeatedly replacing the whole leaf. The required why records this local edit in revision history. If a discovered insight, question, or tension should influence other passages or future work, make doc_revise and graph_note about this exact passage sibling operations inside graph_batch; if it is purely local, revision history is enough. WARNING: use "nodeId" (NOT "node" or "id"). Updates content, not understanding.',
+      'Update content when the whole leaf remains one coherent unit. If only one of several independently revisable functions, beats, images, or exchanges is changing, split or create addressable children and revise the exact unit instead of repeatedly replacing the whole leaf. The required why records this local edit in revision history. If a discovered insight, question, or tension should influence other passages or future work, make doc_revise and a graph_add_understanding connected to this exact passage by learned_from sibling operations inside graph_batch; if it is purely local, revision history is enough. WARNING: use "nodeId" (NOT "node" or "id"). Updates content, not understanding.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -666,7 +667,7 @@ export const documentTools: Tool[] = [
         why: {
           type: 'string',
           description:
-            'Why this local revision is being made. For reusable understanding, pair the revision with graph_note about this exact passage inside graph_batch.',
+            'Why this local revision is being made. For reusable understanding, pair the revision with graph_add_understanding connected to this exact passage inside graph_batch.',
         },
         summary: {
           type: 'string',
@@ -943,7 +944,7 @@ Provide a concise why for how each chosen target shaped the prose. doc_weave rec
         content: {
           type: 'string',
           description:
-            'The local prose unit. Render the influence in the writing; do not copy cognitive-note testimony into the manuscript.',
+            'The local prose unit. Render the influence in the writing; do not copy understanding nodes from the graph into the manuscript.',
         },
         connections: {
           type: 'array',
@@ -3566,6 +3567,9 @@ async function handleDocumentToolsUnscoped(
           revisionWhy: `Auto-signed by creator: ${agentId}`,
           conversationId,
         });
+        if (EmbeddingService.isModelLoaded()) {
+          await store.generateAndStoreEmbedding(thinkingNodeId);
+        }
       }
 
       // Update source tracking if sourceId is provided
@@ -3795,6 +3799,10 @@ async function handleDocumentToolsUnscoped(
           revisionWhy: `Auto-signed by creator: ${agentIdForCommit}`,
           conversationId,
         });
+        // Signing changes an embedded field after graph_batch has refreshed it.
+        if (EmbeddingService.isModelLoaded()) {
+          await store.generateAndStoreEmbedding(thinkingNodeId);
+        }
       }
 
       // Update source tracking - the thinking node is now the last in chain
@@ -3895,6 +3903,10 @@ async function handleDocumentToolsUnscoped(
         revisionWhy: `Signed by ${agentId}${contribution ? `: ${contribution.slice(0, 50)}` : ''}`,
         conversationId,
       });
+
+      if (EmbeddingService.isModelLoaded()) {
+        await store.generateAndStoreEmbedding(thinkingId);
+      }
 
       return {
         success: true,

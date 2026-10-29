@@ -1082,13 +1082,13 @@ export class GraphStore {
     const fromNode = this.getNode(input.fromId);
     if (!fromNode) {
       throw new Error(
-        `Source node not found: "${input.fromId}". You must create the node first using graph_add_concept.`,
+        `Source node not found: "${input.fromId}". You must create the node first using graph_add_understanding.`,
       );
     }
     const toNode = this.getNode(input.toId);
     if (!toNode) {
       throw new Error(
-        `Target node not found: "${input.toId}". You must create the node first using graph_add_concept.`,
+        `Target node not found: "${input.toId}". You must create the node first using graph_add_understanding.`,
       );
     }
 

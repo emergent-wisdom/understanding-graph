@@ -79,7 +79,7 @@ const B = 'An agent cannot ask its own graph what it has been doing';
 /** Two grounded concepts — the smallest batch an empty graph accepts. */
 const SEED = [
   {
-    tool: 'graph_add_concept',
+    tool: 'graph_add_understanding',
     params: {
       title: A,
       trigger: 'analysis',
@@ -89,7 +89,7 @@ const SEED = [
     },
   },
   {
-    tool: 'graph_add_concept',
+    tool: 'graph_add_understanding',
     params: {
       title: B,
       trigger: 'consequence',
@@ -160,7 +160,7 @@ describe('the graph records that it was read, not only that it was written', () 
     expect(
       recorded().map((r) => r.tool_name),
       'A nested operation was recorded as a top-level call.',
-    ).not.toContain('graph_add_concept');
+    ).not.toContain('graph_add_understanding');
   });
 
   it('records a rejected call rather than losing it', async () => {
@@ -176,7 +176,7 @@ describe('the graph records that it was read, not only that it was written', () 
         commit_message: 'Attempt an operation the tool should refuse',
         operations: [
           {
-            tool: 'graph_add_concept',
+            tool: 'graph_add_understanding',
             params: {
               title: 'A concept with no understanding',
               trigger: 'analysis',

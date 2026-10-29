@@ -49,7 +49,7 @@ graph_batch({
   commit_message: "Researcher: chose StateLock for auth session mutex",
   agent_name: "Researcher",
   operations: [{
-    tool: "graph_add_concept",
+    tool: "graph_add_understanding",
     params: {
       trigger: "decision",
       title: "Session mutex via StateLock",
@@ -82,7 +82,7 @@ graph_batch({
   commit_message: "Architect: HALTed on MechanisticDesignProposal — hash drift",
   agent_name: "Architect",
   operations: [{
-    tool: "graph_add_concept",
+    tool: "graph_add_understanding",
     params: {
       trigger: "tension",
       title: "Disagreement on MechanisticDesignProposal definition",

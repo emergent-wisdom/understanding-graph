@@ -31,7 +31,8 @@ const UNDERSTANDING_WORKFLOWS = [
 function expectChronologicalReaderActivation(contract: string): void {
   expect(contract).toContain('source_load');
   expect(contract).toContain('source_read');
-  expect(contract).toContain('graph_note');
+  expect(contract).toContain('graph_add_understanding');
+  expect(contract).not.toContain('graph_note');
   expect(contract).toMatch(
     /(?:before|without)[^.]{0,160}(?:opening|reading|inspecting|sampling|summarizing)[^.]{0,160}(?:source|file)/i,
   );
@@ -148,17 +149,18 @@ describe('runtime instruction and tool contracts', () => {
     }
   });
 
-  it('teaches corrections as evaluation testimony rather than an invalid trigger', () => {
-    const note = conceptTools.find((tool) => tool.name === 'graph_note');
-    const trigger = note?.inputSchema.properties?.trigger as {
+  it('teaches corrections as evaluations connected to what they correct', () => {
+    const add = conceptTools.find(
+      (tool) => tool.name === 'graph_add_understanding',
+    );
+    const trigger = add?.inputSchema.properties?.trigger as {
       enum?: string[];
     };
 
     expect(trigger.enum).toContain('evaluation');
     expect(trigger.enum).not.toContain('correction');
-    expect(note?.description).toContain('evaluations that record corrections');
     expect(SERVER_INSTRUCTIONS).toContain(
-      'Record a\ncorrection as an `evaluation`',
+      'Record a correction as an `evaluation`\nconnected to what it corrects',
     );
   });
 
@@ -464,16 +466,22 @@ describe('runtime instruction and tool contracts', () => {
     expect(SERVER_INSTRUCTIONS).toContain(
       'Do not privately pre-author an entire',
     );
-    expect(SERVER_INSTRUCTIONS).toMatch(/batch-only\s+`graph_note/);
+    expect(SERVER_INSTRUCTIONS).toContain(
+      'Give each understanding its own node',
+    );
+    expect(SERVER_INSTRUCTIONS).not.toContain('graph_note');
     expect(SERVER_INSTRUCTIONS).toContain(
       'do not manufacture understanding to prove activity',
     );
 
-    expect(BATCH_OPERATION_TOOLS).toContain('graph_note');
-    for (const mode of TOOL_MODES) {
-      expect(
-        getToolDefinitions(mode).some((tool) => tool.name === 'graph_note'),
-      ).toBe(false);
+    expect(BATCH_OPERATION_TOOLS).toContain('graph_add_understanding');
+    for (const removed of ['graph_note', 'graph_add_concept']) {
+      expect(BATCH_OPERATION_TOOLS).not.toContain(removed);
+      for (const mode of TOOL_MODES) {
+        expect(
+          getToolDefinitions(mode).some((tool) => tool.name === removed),
+        ).toBe(false);
+      }
     }
   });
 
@@ -554,7 +562,7 @@ describe('runtime instruction and tool contracts', () => {
     expect(SERVER_INSTRUCTIONS).toContain('`analysis` for a cognitive ratchet');
 
     const addConcept = conceptTools.find(
-      (tool) => tool.name === 'graph_add_concept',
+      (tool) => tool.name === 'graph_add_understanding',
     );
     const triggers = (
       addConcept?.inputSchema.properties?.trigger as { enum?: string[] }
@@ -775,7 +783,12 @@ describe('runtime instruction and tool contracts', () => {
     const sourceRead = getToolDefinitions('reading').find(
       (definition) => definition.name === 'source_read',
     );
-    expect(sourceRead?.description).toContain('non-"thinking" typed testimony');
+    expect(sourceRead?.description).toContain(
+      'add each understanding with graph_add_understanding',
+    );
+    expect(sourceRead?.description).toContain(
+      'reserved "thinking" trigger is synthetic Reader/CMP pretraining output',
+    );
     expect(sourceRead?.description).not.toContain('doc_append_thinking');
     expect(sourceRead?.description).not.toMatch(/25%|50%|75%|MILESTONE/);
   });

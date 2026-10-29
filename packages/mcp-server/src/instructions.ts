@@ -100,9 +100,9 @@ If the selected graph is empty, begin without inventing a past.
 
 For a sequential source, enter reader mode before inspecting its file. Select
 the project; \`source_load\` it without pre-reading, then encounter only bounded,
-cursor-ordered \`source_read\` passages. Attach warranted testimony to the
-passage with batch-only \`graph_note\`; it records \`learned_from\`; no update
-needs no note. Never use unread text. This is workflow \`reading\` in general
+cursor-ordered \`source_read\` passages. Record each understanding with
+\`graph_add_understanding\`, connected to its passage by \`learned_from\`. Never
+use unread text. This is workflow \`reading\` in general
 mode, not \`synthetic_reader\`; never create the reserved \`thinking\` trigger.
 
 ## Work naturally
@@ -120,9 +120,9 @@ Do not privately pre-author an entire artifact and then deposit it with
 retrospective rationale.
 
 Preserve enough texture to recover the live understanding around a choice.
-Batch-only \`graph_note({ about, testimony, ... })\` attaches testimony to the
-exact material that occasioned it. Record a
-correction as an \`evaluation\`.
+Give each understanding its own node, connected by \`learned_from\` to the
+material that occasioned it. Record a correction as an \`evaluation\`
+connected to what it corrects.
 
 Do not transcribe token-level steps or reconstruct rationale;
 do not manufacture understanding to prove activity. Keep unfinished attention open. Testimony is
@@ -220,7 +220,7 @@ Understanding has two complementary layers:
    pivoting encounter, after, evidence, and remaining uncertainty. A shift,
    qualification, open thread, or \`no_shift\` can all be honest outcomes.
 
-Do not manufacture notes, follow a trigger quota, or reconstruct a rationale
+Do not manufacture nodes, follow a trigger quota, or reconstruct a rationale
 after the work is done. The trace is an intentional, user-visible testimony
 for future cognition, not a claim to reveal hidden chain-of-thought.
 
@@ -466,7 +466,7 @@ not how understanding must develop. Read, pause, search, compare, connect,
 question, reread, or test in the order the material warrants. Preserve the live,
 user-visible understanding around a passage—not only a later conclusion—with
 exact learned_from provenance. Re-enter prior or changed graph state whenever it
-could alter the reading. Do not fill categories or manufacture a note when no
+could alter the reading. Do not fill categories or manufacture a node when no
 communicable understanding is present.
 
 ### Good vs Bad Annotation
@@ -474,7 +474,7 @@ communicable understanding is present.
 | Bad (Transcription) | Good (Comprehension) |
 |---------------------|----------------------|
 | Read → commit → next | Read → concepts → connect → reflect → commit |
-| Checklist notes after every chunk | Self-selected, passage-grounded Thought Moments |
+| Checklist nodes after every chunk | Self-selected, passage-grounded Thought Moments |
 | No edges | Rich connections with explicit why |
 | Race to finish | Pause at milestones |
 `,

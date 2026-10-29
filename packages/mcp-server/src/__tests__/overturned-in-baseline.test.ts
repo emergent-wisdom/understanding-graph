@@ -79,7 +79,7 @@ const PAIRS = [1, 2, 3, 4, 5].map((n) => ({
 async function seed() {
   const operations = [
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: 'Access cost is measured against a tolerance',
         trigger: 'foundation',
@@ -92,7 +92,7 @@ async function seed() {
   for (const { retired, corrector } of PAIRS) {
     operations.push(
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: retired,
           // Baseline-eligible on purpose. With a resistance trigger this node
@@ -104,7 +104,7 @@ async function seed() {
         },
       },
       {
-        tool: 'graph_add_concept',
+        tool: 'graph_add_understanding',
         params: {
           title: corrector,
           trigger: 'surprise',

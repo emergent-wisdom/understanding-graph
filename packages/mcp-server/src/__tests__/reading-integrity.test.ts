@@ -114,7 +114,7 @@ async function readMore(sourceId: string) {
 async function addConcept(title: string, trigger: string, passageId: string) {
   const added = await batch('connector', [
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title,
         trigger,
@@ -463,7 +463,7 @@ describe('thinking blocks carry the complete identity anchor', () => {
     refusedFor(
       await batch('synthesizer', [
         {
-          tool: 'graph_add_concept',
+          tool: 'graph_add_understanding',
           params: {
             title: 'Unanchored synthesis',
             trigger: 'thinking',
@@ -629,7 +629,7 @@ describe('thinking blocks carry the complete identity anchor', () => {
     refusedFor(
       await batch('synthesizer', [
         {
-          tool: 'graph_add_concept',
+          tool: 'graph_add_understanding',
           params: {
             title: 'Standalone thinking',
             trigger: 'thinking',

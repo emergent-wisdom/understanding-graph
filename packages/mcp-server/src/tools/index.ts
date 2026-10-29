@@ -7,7 +7,11 @@ import type { ContextManager } from '../context-manager.js';
 import type { GuidanceMode } from '../guidance.js';
 // Import tool handlers
 import { batchTools, handleBatchTools } from './batch.js';
-import { conceptTools, handleConceptTools } from './concept.js';
+import {
+  conceptTools,
+  handleConceptTools,
+  REMOVED_OPERATIONS,
+} from './concept.js';
 import { handleConnectionTools } from './connection.js';
 import {
   BATCH_ONLY_DOCUMENT_TOOLS,
@@ -47,7 +51,6 @@ export const SYNTHETIC_THINKING_TOOLS = [
 ] as const;
 const syntheticThinkingToolNames = new Set<string>(SYNTHETIC_THINKING_TOOLS);
 const batchOnlyDocumentToolNames = new Set<string>(BATCH_ONLY_DOCUMENT_TOOLS);
-const batchOnlyConceptToolNames = new Set(['graph_note']);
 const conceptToolNames = new Set(conceptTools.map((tool) => tool.name));
 
 function isThinkingLabel(value: unknown): boolean {
@@ -82,7 +85,7 @@ function createsThinkingNode(
 
   if (
     [
-      'graph_add_concept',
+      'graph_add_understanding',
       'doc_create',
       'doc_to_concept',
       'node_set_trigger',
@@ -198,10 +201,8 @@ export function getToolDefinitions(mode: ToolMode = 'general'): Tool[] {
   );
 
   // Concept tools needed for reading (read-only metadata access)
-  const coreConceptTools = conceptTools.filter(
-    (t) =>
-      ['node_get_metadata'].includes(t.name) &&
-      !batchOnlyConceptToolNames.has(t.name),
+  const coreConceptTools = conceptTools.filter((t) =>
+    ['node_get_metadata'].includes(t.name),
   );
 
   // Writing uses document trees as its artifact. Reading-specific thinking
@@ -492,6 +493,9 @@ async function handleToolCallInVisibility(
   internal: boolean,
   guidanceMode: GuidanceMode,
 ): Promise<unknown> {
+  if (Object.hasOwn(REMOVED_OPERATIONS, name)) {
+    throw new Error(REMOVED_OPERATIONS[name]);
+  }
   assertSyntheticThinkingAccess(name, args, mode);
   const effectiveGuidanceMode: GuidanceMode =
     mode === 'synthetic_reader' ? 'direct' : guidanceMode;

@@ -119,11 +119,10 @@ than composing a complete file off-graph. Let each later unit encounter the
 structure and open attention already present. The first child needs only
 `parentId`; each later sibling uses `afterId` so generated order is explicit.
 
-When an actual uncertainty appears, `graph_note` is the low-friction path. It
-is optional, batch-only, and automatically attaches ordinary typed testimony to
-the exact artifact with `learned_from`; omit `trigger` if classification would
-prematurely close the question. A subsequent read or generation resurfaces the
-open thread so it can affect the next implementation or test.
+When an actual uncertainty appears, record it with `graph_add_understanding` and
+connect it to the exact artifact unit with `learned_from` in the same batch. Set
+`attend` to what the next implementation or test should look at: a subsequent
+read or generation resurfaces the open thread so it can affect that work.
 
 ```javascript
 graph_batch({
@@ -138,11 +137,16 @@ graph_batch({
         title: "Token model", content: "@dataclass\nclass Token:\n    kind: str\n    value: str",
         parentId: "$0.id", level: "section"
     }},
-    { tool: "graph_note", params: {
-        about: "$1.id",
+    { tool: "graph_add_understanding", params: {
         title: "Token boundaries may belong to the evaluator",
         trigger: "question",
-        testimony: "Keeping positions on tokens makes errors local, but may couple tokenization to evaluation. The first evaluator test should reveal whether the boundary is useful or merely convenient."
+        understanding: "Keeping positions on tokens makes errors local, but may couple tokenization to evaluation.",
+        why: "Opens a design question about where token boundaries belong",
+        attend: "The first evaluator test should reveal whether the boundary is useful or merely convenient."
+    }},
+    { tool: "graph_connect", params: {
+        from: "$2.id", to: "$1.id", type: "learned_from",
+        why: "The question arose while writing the token model"
     }}
   ]
 })

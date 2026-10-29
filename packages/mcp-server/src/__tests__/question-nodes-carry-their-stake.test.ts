@@ -67,7 +67,7 @@ const QUESTION = 'Is the cheap route the one that wins';
 function batchOps(questionParams: Record<string, unknown>) {
   return [
     {
-      tool: 'graph_add_concept',
+      tool: 'graph_add_understanding',
       params: {
         title: 'A grounded claim',
         trigger: 'foundation',

@@ -108,7 +108,7 @@ a specific defensible insight.
 
 ## Write with open attention
 
-Do not pre-assign a note quota, march through trigger categories, or explain the
+Do not pre-assign a node quota, march through trigger categories, or explain the
 work after it is finished. Write. At moments you choose—when an image starts
 pulling, a character resists the plan, a sentence changes the story's center,
 an alternative remains painfully alive, or you genuinely do not know—pause and
@@ -240,7 +240,7 @@ graph_batch({
   commit_message: "Reframed the opening around the reader's real question",
   agent_name: "writing-agent",
   operations: [
-    { tool: "graph_add_concept", params: {
+    { tool: "graph_add_understanding", params: {
         title: "Opening must establish the reader's practical stake",
         trigger: "decision",
         understanding: "The previous conceptual opening delayed the concrete conflict; the revision leads with the decision the reader must make.",
