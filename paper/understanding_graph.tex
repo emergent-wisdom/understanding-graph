@@ -24,7 +24,7 @@
 \newtheorem{remark}[theorem]{Remark}
 
 \title{Understanding Graph:\\A Persistent Medium for Recursive Understanding}
-\ewrevisedtoday{April 7, 2026}
+\ewreviseddates{April 7, 2026}{November 15, 2026}
 
 \begin{document}
 \raggedbottom
@@ -34,7 +34,7 @@
 \begin{abstract}
 AI systems commonly retain sources, outputs, and user facts while discarding communicable changes in interpretation: questions, tensions, connections, hypotheses, and revisions. We study preserving those changes for an agent's future cognition, not merely its next answer. We call this \emph{self-directed understanding}: simulating functional features of serious inquiry without claiming human experience or access to hidden computation.
 
-We present the Understanding Graph, an implemented architecture for a continuing Reader whose persistent graph is the medium of work. Material shifts become typed and versioned, while competing and displaced views remain inspectable. The Reader may reject state-dependent provocations and re-enter prior state when useful. A committed update that conditions a later encounter and produces another material change forms an \emph{understanding spiral}. Encountered passages and produced prose or code share an ordered document surface, allowing graph-carried understanding to shape exact artifact units and their consequences to occasion further updates. The medium supports both convergence and divergence. An optional Bisociation Engine can intensify divergence through graph topology, temporary axioms, and stochastic perturbation while leaving its outputs unvalidated.
+We present the Understanding Graph, an implemented architecture for a continuing Reader whose persistent graph is the medium of work. The Reader encounters material, externalizes a substantive interpretive change, and commits it as typed and versioned state, while competing and displaced views remain inspectable. When it deliberately re-enters the changed graph, an update can meet an older question, tension, model, or artifact and prompt another material change, and a later pass begins from the altered state. That is the proposed \emph{understanding spiral}. Encountered passages and produced prose or code are ordered units of the same graph, so recorded understanding can shape exact units and their consequences can occasion further updates. The medium supports both convergence and divergence, and the Reader may reject any provocation. An optional Bisociation Engine can intensify divergence through graph topology, temporary axioms, and stochastic perturbation while leaving its outputs unvalidated.
 
 The contribution is a fluid protocol for self-addressed encounter, persistent interpretive change, agent-chosen re-entry, cross-instance continuity, and graph-native documents. The implementation makes the proposal concrete and inspectable but does not establish improved understanding or performance. Controlled evaluation must separately test whether re-entry changes the externalized trajectory beyond matched storage and rehearsal, and whether any change improves later work.
 \end{abstract}
@@ -48,35 +48,13 @@ The motivating question is deliberately unusual: what if an AI encountered a boo
 
 Most language-model memory is organized around a different consumer: the user or the next task. Retrieval-Augmented Generation (RAG)~\cite{lewis2020rag} indexes external material so a model can answer later queries; agent memories extract facts, events, reflections, or reusable procedures. These are valuable objectives. They do not, by themselves, require a model to preserve how an encounter altered its interpretive state and then make that alteration part of another encounter. When a session ends, the next instance may recover what was said while losing the trajectory of noticing, doubt, and revision that made the material consequential.
 
-One original requirement came from \emph{Entangled Alignment}'s Missing Reader problem~\cite{westerberg2026entangled}: collections preserve sources and conclusions more readily than the reader-side questions, expectations, surprises, recalled associations, uncertainty, and revisions through which material becomes meaningful. The Understanding Graph was its separate graph-scaffolding hypothesis: make those updates source-bound and addressable across works, retain displaced interpretations, and give a later Reader provenance-bearing state for re-entry and audit. The broader proposal also considered graph-derived training traces and a stable Reader instruction or persona, but those are separable extension hypotheses; neither defines the general Understanding Graph.
+When a scientist reads ``the results suggest a correlation between X and Y,'' the consequential response may be: \emph{How strong? What is the sample size? Could confounders explain this? Does ``suggest'' mark justified uncertainty?} A conventional note may store the reported correlation. An understanding trace instead records what the sentence did to the Reader's model of the problem. (We write \emph{Reader}, capitalized, for the role of the one who reads and carries the reading forward; in this paper model instances fill it.)
 
-When a scientist reads ``the results suggest a correlation between X and Y,'' the consequential response may be: \emph{How strong? What is the sample size? Could confounders explain this? Does ``suggest'' mark justified uncertainty?} A conventional note may store the reported correlation. An understanding trace instead records what the sentence did to the Reader's model of the problem.
+The closest historical analogy is the laboratory notebook. Published science foregrounds results---the successful experiment, the proven theorem---while the notebook can retain failed experiments, crossed-out hypotheses, margin notes, and the gradual narrowing from confusion to clarity. Researchers can then build on parts of each other's \emph{process}, not just conclusions. The Understanding Graph is an LLM-compatible version of that intuition: a notebook whose entries are typed, linked to their sources, and directly available to the next Reader.
+
+This paper is one of several in a wider research program built on one hypothesis. Much of human thinking was never written down: writers left it implicit because they assumed a reader who could supply it, and for a model trained on text, the gaps we left for each other are gaps in the model. The papers explore different ways to identify and fill such gaps, and this one takes the reader's part: the thinking that happens while reading and working. The Understanding Graph lets a model write its own account of that thinking as it goes, and then work from the account.
 
 Language models create an opportunity, but not the one claimed by a naive reading of chain-of-thought. Their full computation does not ``happen in tokens,'' and generated explanations need not faithfully reveal the computation that produced them~\cite{turpin2023faithful, lanham2023measuring}. What tokens provide is a low-friction surface on which part of an encounter can be deliberately externalized. The stored object is therefore neither understanding in its entirety nor a mechanistic transcript. It is a structured, revisable testimony about an interpretive transition.
-
-\begin{definition}[Self-directed understanding spiral]
-\label{def:understanding-spiral}
-Given graph state $G_k$ and a concrete purpose $q_k$, a re-entry operator selects bounded prior state $a_k=A(G_k,q_k)$. A meaningful encounter $e_k$---a source passage, runtime result, artifact unit, contradiction, or rereading---leads a Reader under protocol $p$ to author an externalized update $u_k=R(e_k,a_k,p)$ and commit $G_{k+1}=C(G_k,u_k)$. The process is \emph{self-directed} when the intended consumer of $u_k$ is the Reader's own future cognition rather than only an immediate external answer. It becomes an \emph{understanding spiral} when the Reader re-enters $G_{k+1}$ and lets the altered state condition what it notices, questions, connects, or changes next. Storage without re-entry is archival; re-entry without a material update is retrieval, not another turn of the spiral.
-\end{definition}
-
-Definition~\ref{def:understanding-spiral} is written with graph state because this paper implements a graph, but its empirical claim contains two separable hypotheses. The representation-independent re-entry hypothesis, \(\mathcal{R}\), is that returning a committed externalized update to a later pass can alter its externalized trajectory in grounded, non-redundant ways beyond matched externalization and inference, whether the state is held as a graph, transcript, notebook, or another persistent representation. The graph-representation hypothesis, \(\mathcal{G}\), is that, with re-entry opportunities and budgets held equal, typed, provenance-bearing, revisable graph state improves grounded recovery and appropriate revision of earlier state relative to matched non-graph representations. A non-graph store can therefore instantiate the spiral; only an advantage over equally reread non-graph controls would support \(\mathcal{G}\).
-
-``For itself'' is operational, not metaphysical. The continuing Reader is a functional role instantiated by a shared protocol, provenance, and graph; it need not be the same model process, and the definition makes no claim of consciousness or uninterrupted personal identity. Self-directed does not mean independent of human direction: a user may set or revise the purpose, inspect the graph, and guide the work, while the future Reader remains a primary intended consumer of committed updates. The design nevertheless tries to \emph{humanize} the interaction in a precise sense: it prompts for features of serious human inquiry that optimized answer production often suppresses---subjective perspective, surprise, hesitation, empathy, unresolved tension, and willingness to revise. A later instance is asked to re-enter this accumulated history before continuing.
-
-We name the architecture the ``Understanding Graph'' to distinguish its primary unit of storage from a conventional Knowledge Graph. A Knowledge Graph usually represents entities and claims about a domain. The Understanding Graph also represents graph-linked transitions: \emph{I expected this; this evidence disturbed that expectation; an older question now changes what the disturbance means; I remain uncertain here.} It places produced documents and code in the same substrate, allowing an artifact to remain linked to the questions, decisions, and rejected alternatives that shaped it. The graph is thus both an evolving interpretive state and a workspace in which that state can become consequential.
-
-Here, understanding is not restricted to representing an external subject. It is the evolving orientation from which the Reader interprets, chooses, makes, tests, and revises. Productive work can express that orientation in prose, code, experiments, or decisions; the resulting artifact or its behavior can then become a new encounter from which the Reader may author a further graph update. This movement has complementary dynamics. \emph{Convergence} tests, corrects, consolidates, and commits, while \emph{divergence} surfaces questions, alternatives, distant relations, and candidate hypotheses. Neither is required at every moment, and divergence does not make every candidate true. The graph can thereby support understanding through making while retaining an inspectable, revisable account of the recorded influences, alternatives, decisions, tests, and revisions through which the work developed---not a transcript of hidden computation.
-
-The primitive components---graphs, typed edges, belief revision, provenance, and reflection---are established, and recent graph-memory systems overlap substantially with individual mechanisms. The contribution is their organization around a narrower, testable objective:
-\begin{enumerate}[leftmargin=*,nosep]
-    \item a graph-canonical medium in which meaningful encounters can become authored updates and later re-entry can recursively change what follows;
-    \item a typed, chronological record of interpretive change, including uncertainty, alternatives, and revision rather than only stable conclusions;
-    \item an implemented mechanism for functional continuity through shared graph state that later model instances explicitly re-enter;
-    \item linked cognitive and document surfaces, including graph-native artifacts, so interpretive updates can remain attached to exact source, prose, or code units and produced units can express current understanding and occasion later updates, with inspectable provenance; and
-    \item state-dependent support for convergent and divergent work, including an optional Bisociation Engine that turns graph structure, distant concepts, and stochastic constraints into explicit provocations while preserving the distinction between generation, scrutiny, and validation.
-\end{enumerate}
-
-This organization addresses the ``red thread'' problem in long-horizon cognition: retrieval can recover what was discussed yet fail to recover where an interpretation was moving. We call the stronger re-entry objective \emph{entrainment}: attempting to restore enough cues for a future Reader to resynchronize with the direction and contour of an unfinished interpretation---its melody, not only its contents. Questions preserve the line of inquiry, tensions its unresolved pressure, and predictions its forward stakes. Re-entry places the latest update beside those older structures and other evidence. A new relation may then become salient precisely because the graph changed. The resulting second-order update is not guaranteed to be novel, correct, or causally faithful; the architecture makes the proposed movement persistent and inspectable so those properties can be tested.
 
 \begin{figure}[htbp]
 \centering
@@ -117,19 +95,45 @@ This organization addresses the ``red thread'' problem in long-horizon cognition
 \end{figure}
 
 \paragraph{Running example (illustrative).}
-Suppose an earlier encounter with crop monocultures led the Reader to commit a \texttt{Tension} $T_0$: uniform units can share a single failure mode. Later, a systems report describes clients that retry after the same fixed delay. At a Thought Moment, the Reader authors a source-linked \texttt{Surprise} $S_1$: a recovery rule that protects each client can synchronize the population and intensify overload. The account is linked to the encountered passage through \texttt{learned\_from}. Here \emph{resonance} means only that a retrieved juxtaposition occasions another material update.
+Suppose an earlier encounter with crop monocultures led the Reader to commit a \texttt{Tension} $T_0$: uniform units can share a single failure mode. Later, a systems report describes clients that retry after the same fixed delay. At a Thought Moment (an encounter at which, for example, an expectation breaks or a tension appears; defined in Section~\ref{sec:continuing-reader}), the Reader authors a source-linked \texttt{Surprise} $S_1$: a recovery rule that protects each client can synchronize the population and intensify overload. The account is linked to the encountered passage through \texttt{learned\_from}. (Section~\ref{sec:node-types} lists the node and edge types.)
 
-The protocol does not treat $S_1$ as an endpoint. On graph re-entry, a bounded query resurfaces $T_0$. Their resonance prompts a second authored update, \texttt{Hypothesis} $H_1$: under common-mode stress, replica count alone is insufficient; resilience may depend on diversity in how replicas respond. Linking $H_1$ through \texttt{abstracts\_from} to both $S_1$ and $T_0$ preserves why the synthesis arose. The hypothesis then changes an artifact: the Reader adds jitter to the retry function and a correlated-burst test. The test result becomes a later encounter. If jitter dampens synchronization but sustained overload still causes collapse, a new \texttt{Evaluation} can narrow, challenge, or supersede $H_1$. Each pass therefore begins from a graph enlarged or revised by the previous pass rather than merely repeating a transient chain of thought.
+The protocol does not treat $S_1$ as an endpoint. On graph re-entry, a bounded query resurfaces $T_0$. Their resonance prompts a second authored update, \texttt{Hypothesis} $H_1$: under common-mode stress, replica count alone is insufficient; resilience may depend on diversity in how replicas respond. Here \emph{resonance} means only that a retrieved juxtaposition occasions another material update. Linking $H_1$ through \texttt{abstracts\_from} to both $S_1$ and $T_0$ preserves why the synthesis arose. The hypothesis then changes an artifact: the Reader adds jitter to the retry function and a correlated-burst test. The test result becomes a later encounter. If jitter dampens synchronization but sustained overload still causes collapse, a new \texttt{Evaluation} can narrow, challenge, or supersede $H_1$. Each pass therefore begins from a graph enlarged or revised by the previous pass rather than merely repeating a transient chain of thought.
+
+\begin{definition}[Self-directed understanding spiral]
+\label{def:understanding-spiral}
+Given graph state $G_k$ and a concrete purpose $q_k$, a re-entry operator selects bounded prior state $a_k=A(G_k,q_k)$. A meaningful encounter $e_k$---a source passage, runtime result, artifact unit, contradiction, or rereading---leads a Reader under protocol $p$ to author an externalized update $u_k=R(e_k,a_k,p)$ and commit $G_{k+1}=C(G_k,u_k)$. The process is \emph{self-directed} when the intended consumer of $u_k$ is the Reader's own future cognition rather than only an immediate external answer. It becomes an \emph{understanding spiral} when the Reader re-enters $G_{k+1}$ and lets the altered state condition what it notices, questions, connects, or changes next. Storage without re-entry is archival; re-entry without a material update is retrieval, not another turn of the spiral.
+\end{definition}
+
+A \emph{material} update is one that could alter later attention or work; Section~\ref{sec:continuing-reader} says what counts and when a pass may stop.
+
+Definition~\ref{def:understanding-spiral} is written with graph state because this paper implements a graph, but its empirical claim contains two separable hypotheses. The representation-independent re-entry hypothesis, \(\mathcal{R}\), is that returning a committed externalized update to a later pass can alter its externalized trajectory in grounded, non-redundant ways beyond matched externalization and inference, whether the state is held as a graph, transcript, notebook, or another persistent representation. The graph-representation hypothesis, \(\mathcal{G}\), is that, with re-entry opportunities and budgets held equal, typed, provenance-bearing, revisable graph state improves grounded recovery and appropriate revision of earlier state relative to matched non-graph representations. A non-graph store can therefore instantiate the spiral; only an advantage over equally reread non-graph controls would support \(\mathcal{G}\). Whether any such change improves later work is a third and separate question, the utility hypothesis of Section~\ref{sec:evaluation}.
+
+``Self-directed'' is operational, not metaphysical. The continuing Reader is a functional role instantiated by a shared protocol, provenance, and graph; it need not be the same model process, and the definition makes no claim of consciousness or uninterrupted personal identity. Self-directed does not mean independent of human direction: a user may set or revise the purpose, inspect the graph, and guide the work, while the future Reader remains a primary intended consumer of committed updates. The design nevertheless tries to \emph{humanize} the interaction in a precise sense: it prompts for features of serious human inquiry that optimized answer production often suppresses---subjective perspective, surprise, hesitation, empathy, unresolved tension, and willingness to revise. A later instance is asked to re-enter this accumulated history before continuing.
+
+We name the architecture the ``Understanding Graph'' to distinguish its primary unit of storage from a conventional Knowledge Graph. A Knowledge Graph usually represents entities and claims about a domain. The Understanding Graph also represents graph-linked transitions: \emph{I expected this; this evidence disturbed that expectation; an older question now changes what the disturbance means; I remain uncertain here.} It places produced documents and code in the same substrate, allowing an artifact to remain linked to the questions, decisions, and rejected alternatives that shaped it. The graph is thus both an evolving interpretive state and a workspace in which that state can become consequential.
+
+Here, understanding is not restricted to representing an external subject. It is the evolving orientation from which the Reader interprets, chooses, makes, tests, and revises. Productive work can express that orientation in prose, code, experiments, or decisions; the resulting artifact or its behavior can then become a new encounter from which the Reader may author a further graph update. This movement has complementary dynamics. \emph{Convergence} tests, corrects, consolidates, and commits, while \emph{divergence} surfaces questions, alternatives, distant relations, and candidate hypotheses. Neither is required at every moment, and divergence does not make every candidate true. The graph can thereby support understanding through making while retaining an inspectable, revisable account of the recorded influences, alternatives, decisions, tests, and revisions through which the work developed.
+
+The primitive components---graphs, typed edges, belief revision, provenance, and reflection---are established, and recent graph-memory systems overlap substantially with individual mechanisms. The contribution is their organization around a narrower, testable objective:
+\begin{enumerate}[leftmargin=*,nosep]
+    \item a graph-canonical medium (the graph, not the conversation, holds the authoritative record) in which meaningful encounters can become authored updates and later re-entry can recursively change what follows;
+    \item a typed, chronological record of interpretive change, including uncertainty, alternatives, and revision rather than only stable conclusions;
+    \item an implemented mechanism for functional continuity through graph state shared by successive model instances that occupy one Reader role and explicitly re-enter it;
+    \item linked cognitive and document surfaces, including graph-native artifacts, so interpretive updates can remain attached to exact source, prose, or code units and produced units can express current understanding and occasion later updates, with inspectable provenance; and
+    \item state-dependent support for convergent and divergent work, including an optional Bisociation Engine that turns graph structure, distant concepts, and stochastic constraints into explicit provocations while preserving the distinction between generation, scrutiny, and validation.
+\end{enumerate}
+
+This organization addresses the ``red thread'' problem in long-horizon cognition: retrieval can recover what was discussed yet fail to recover where an interpretation was moving. We call the stronger re-entry objective \emph{entrainment}: attempting to restore enough cues for a future Reader to resynchronize with the direction and contour of an unfinished interpretation---its melody, not only its contents. Questions preserve the line of inquiry, tensions its unresolved pressure, and predictions its forward stakes. Re-entry places the latest update beside those older structures and other evidence. A new relation may then become salient precisely because the graph changed. The resulting second-order update is not guaranteed to be novel, correct, or causally faithful; the architecture makes the proposed movement persistent and inspectable so those properties can be tested.
 
 \section{Related Work and Conceptual Boundary}\label{sec:reasoning-capture}
 
 Existing memory systems span several overlapping objectives. Extraction systems and virtual-context managers such as Zep/Graphiti~\cite{rasmussen2025graphiti} and MemGPT~\cite{packer2023memgpt} preserve facts, events, and conversational state for later use. Indexing systems such as GraphRAG~\cite{edge2024graphrag} and HippoRAG~\cite{gutierrez2024hipporag} transform documents into navigable external knowledge. These systems primarily optimize later retrieval or task performance rather than open-ended change in the Reader's interpretive state.
 
-A growing body of work blurs this boundary. Recent work has refined retrieval through hierarchical summarization (RAPTOR~\cite{sarthi2024raptor}), self-reflection (Self-RAG~\cite{asai2024selfrag}), corrective mechanisms (CRAG~\cite{yan2024crag}), and hybrid structurization (StructRAG~\cite{li2024structrag}). While Graph of Thoughts~\cite{besta2024got} structures reasoning only ephemerally during a single inference, our system persists this structure across sessions. Think-on-Graph~\cite{sun2024thinkongraph} traverses knowledge graphs during inference, while RETRO~\cite{borgeaud2022retro} couples generation to large-scale retrieval; both still emphasize access to external information rather than persistent interpretive change.
+Recent work has refined retrieval through hierarchical summarization (RAPTOR~\cite{sarthi2024raptor}), self-reflection (Self-RAG~\cite{asai2024selfrag}), corrective mechanisms (CRAG~\cite{yan2024crag}), and hybrid structurization (StructRAG~\cite{li2024structrag}). While Graph of Thoughts~\cite{besta2024got} structures reasoning only ephemerally during a single inference, our system persists this structure across sessions. Think-on-Graph~\cite{sun2024thinkongraph} traverses knowledge graphs during inference, while RETRO~\cite{borgeaud2022retro} couples generation to large-scale retrieval; both still emphasize access to external information rather than persistent interpretive change.
 
 A second lineage persists reflection and evolving agent experience. Generative Agents stores observations, reflections, and plans and retrieves them to shape later behavior~\cite{park2023generative}. Reflexion~\cite{shinn2023reflexion} persists verbal lessons across task episodes, while Buffer of Thoughts~\cite{yang2024bot} distills reusable problem-solving templates. A-MEM~\cite{xu2025amem} creates interconnected notes; Hindsight~\cite{vectorize2025hindsight} separates world facts, agent experiences, synthesized entity summaries, and evolving beliefs, then recalls and reflects across them. These systems make the simple claim that ``other memories discard reasoning'' untenable. The relevant distinction is instead what the stored reflection is \emph{for}: task improvement, behavioral simulation, factual continuity, or the Reader's own open-ended comprehension.
 
-Graph-native agent memory is now a substantial category in its own right~\cite{yang2026graphmemory}. The closest comparator is Kumiho~\cite{park2026kumiho}, which represents versioned cognitive memory as a graph with typed dependencies, immutable revision history, and references to external work products. MRAgent~\cite{ji2026mragent} actively reconstructs task-relevant graph context rather than merely retrieving fixed records. Kumiho's public version appeared in March 2026, before this paper's April 7 initial release; MRAgent's public arXiv version followed in June 2026 and is included in the present August revision. These systems overlap with the Understanding Graph in graph-native cognition, revision, provenance, iterative access, and in Kumiho's case links to artifacts. We therefore do not claim priority for those ingredients individually.
+Graph-native agent memory is now a substantial category in its own right~\cite{yang2026graphmemory}. The closest comparator is Kumiho~\cite{park2026kumiho}, which represents versioned cognitive memory as a graph with typed dependencies, immutable revision history, and references to external work products. MRAgent~\cite{ji2026mragent} actively reconstructs task-relevant graph context rather than merely retrieving fixed records. Kumiho's public version appeared in March 2026, before this paper's April 7 initial release; MRAgent's public arXiv version followed in June 2026 and was added in the August 2026 revision. These systems overlap with the Understanding Graph in graph-native cognition, revision, provenance, iterative access, and in Kumiho's case links to artifacts. We therefore do not claim priority for those ingredients individually.
 
 Table~\ref{tab:closest-work} makes the overlap and remaining distinction explicit. It records documented design scope, not empirical superiority: several neighboring systems implement individual capabilities more formally or evaluate them more extensively than the present proposal.
 
@@ -141,181 +145,57 @@ Table~\ref{tab:closest-work} makes the overlap and remaining distinction explici
 \toprule
 \textbf{System} & \textbf{\shortstack{Interpretive\\transition}} & \textbf{\shortstack{Repeated\\re-entry}} & \textbf{\shortstack{Revision\\history}} & \textbf{\shortstack{Plural\\views}} & \textbf{\shortstack{Source\\provenance}} & \textbf{\shortstack{Artifact\\units}} & \textbf{\shortstack{Eval.\\split}} \\
 \midrule
-Zep/Graphiti~\cite{rasmussen2025graphiti} & --- & $\triangle$ & $\checkmark$ & --- & $\checkmark$ & $\triangle$ & --- \\
-Hindsight~\cite{vectorize2025hindsight} & $\triangle$ & $\checkmark$ & $\triangle$ & $\triangle$ & $\checkmark$ & $\triangle$ & --- \\
+Zep/Graphiti~\cite{rasmussen2025graphiti} & --- & $\triangle$ & $\checkmark$ & --- & $\checkmark$ & --- & --- \\
+Hindsight~\cite{vectorize2025hindsight} & $\triangle$ & $\checkmark$ & $\triangle$ & $\triangle$ & $\triangle$ & --- & --- \\
 Kumiho~\cite{park2026kumiho} & $\triangle$ & $\triangle$ & $\checkmark$ & $\triangle$ & $\checkmark$ & $\triangle$ & $\checkmark$ \\
-MRAgent~\cite{ji2026mragent} & --- & $\triangle$ & --- & --- & $\triangle$ & --- & $\triangle$ \\
+MRAgent~\cite{ji2026mragent} & --- & $\triangle$ & --- & --- & $\triangle$ & --- & $\checkmark$ \\
 Understanding Graph & $\checkmark$ & $\checkmark$ & $\checkmark$ & $\checkmark$ & $\checkmark$ & $\checkmark$ & $\checkmark$ \\
 \bottomrule
 \end{tabularx}
-\caption{Closest-work comparison by features made explicit in the cited publications. $\checkmark$ denotes explicit support, $\triangle$ an adjacent or partial analogue, and --- no explicit support or a narrower published design. ``Artifact units'' means graph-addressable produced prose or code units, not ordinary source chunks; ``Eval. split'' means separately assessing an internal memory mechanism and downstream answer or artifact utility. Marks describe published scope, not priority, quality, or validated effectiveness.}
+\caption{Closest-work comparison by features made explicit in the cited publications. $\checkmark$ denotes explicit support, $\triangle$ an adjacent or partial analogue, and --- no explicit support or a narrower published design. ``Artifact units'' means produced prose or code held in the graph as addressable units; a graph record that points to a work product stored elsewhere is marked as a partial analogue, and ordinary source chunks are not counted; ``Eval. split'' means separately assessing an internal memory mechanism and downstream answer or artifact utility. Marks describe published scope, not priority, quality, or validated effectiveness; for the Understanding Graph, ``Eval. split'' marks the design of Section~\ref{sec:evaluation}, which has not yet been run.}
 \label{tab:closest-work}
 \end{table}
 
 The narrower proposal is the recursive process in Figure~\ref{fig:understanding-spiral}. The Reader preserves a material interpretive update, deliberately re-enters the changed graph, and allows the relation between new and prior state to condition another encounter. The same substrate holds produced text or code and the cognitive nodes that shaped it. This is best understood as a distinctive design objective and integration, not a categorical boundary around a wholly new species of memory. Individual mechanisms have close ancestors; the empirical question is whether organizing them around recursive, self-directed understanding produces better continuation than a summary, extracted facts, an unstructured notebook, or an equal-budget linear transcript.
 
+The document surface has ancestors of its own. Literate programming made one authored source the origin of both a program and its documentation: in Knuth's WEB (1984), one processor generates the compilable program text and another the typeset exposition~\cite{knuth1984literate}. Design-rationale systems, in the IBIS argumentation lineage~\cite{kunz1970ibis}, record the reasons behind design decisions; SEURAT (2005), a tool integrated with a development environment, keeps that rationale in a repository and lets a developer associate an alternative with the code that implements it~\cite{burge2005seurat}. Among agent memories, Kumiho manages an agent's work products in the same graph as its memories and states that it ``stores metadata, relationships, and pointers---never file content''~\cite{park2026kumiho}. The Understanding Graph combines these: the produced document or program is itself an ordered tree of units in the graph that holds the Reader's testimony; typed links join a unit to the testimony that shaped it; and, as in literate programming, files are generated from the units. Documents and code have been units of this graph since the paper's first release on April 7, 2026. The author has not identified earlier work proposing the same combination, but that is a provisional judgment from a non-systematic search, not a settled priority claim.
+
 The design also belongs to the lineage of extended and distributed cognition. The Extended Mind thesis~\cite{clark1998extended} and cognitive architectures for language agents~\cite{sumers2024cognitive} treat external structure as part of a cognitive process; Luhmann's communicating Zettelkasten~\cite{luhmann1981}, Quillian's semantic memory~\cite{quillian1967}, and A-MEM~\cite{xu2025amem} each emphasize connected, evolving memory over flat storage. Burgess's Semantic Spacetime framework~\cite{burgess2016spacetimes} similarly foregrounds typed associations, scale separation, identity, and trajectories, while SSTorytime~\cite{burgess_sstorytime} applies that lineage to process-shaped story maps. The Understanding Graph arrives from the LLM side, but shares the premise that memory becomes cognitively interesting when it preserves typed movement through relations rather than facts alone.
 
 \section{Recursive Understanding Architecture}
+\label{sec:architecture}
 
 We employ a ``Decoupled State'' architecture in which the \emph{Graph} stores externalized interpretive state and artifact provenance, distinct from the \emph{LLM} that renders or extends it. The essential mechanism is not storage alone but a recursive possibility: the model can encounter material, author a substantive update, commit it, and later re-enter an altered structure that changes what follows. Typed representation makes the movement addressable; revision preserves change without erasing history; retrieval determines which prior structures exert pressure on a later pass.
+
+Section~\ref{sec:continuing-reader} states the protocol the Reader follows. Sections~\ref{sec:node-types} to~\ref{sec:revision} describe what the graph holds: typed nodes and edges, the cognitive and document surfaces, and how state is revised. Sections~\ref{sec:reentry} and~\ref{sec:exploration} describe how the Reader returns to that state and how its work can be narrowed or widened.
 
 \subsection{The Continuing Reader Protocol}
 \label{sec:continuing-reader}
 
 The graph alone does not create self-directed understanding. The Reader protocol instead establishes a coached medium: while the protocol is active, substantive artifact state and every communicable, material update that could matter to the work or the Reader's future inquiry are graph-canonical, while chat mirrors status, questions, and committed results. This \emph{medium-integrity invariant} is stronger than occasional note-taking but does not prescribe a state machine. It is a protocol commitment, not a property the runtime can verify (Section~\ref{sec:safety-orchestration}). The Reader may orient, preserve, search, make, test, connect, disrupt, re-enter, reconsider, or pause in whatever sequence the work demands.
 
-The Reader advances through the work's native form and notices \emph{Thought Moments}: encounters at which an expectation breaks, a tension appears, an alternative becomes plausible, a question becomes urgent, a test changes the model, or the stakes acquire human weight. At each such moment it asks what substantively changed and what now deserves different attention. The account is preserved as the change emerges, rather than reconstructed only as a polished rationale at the end. Re-entry is available whenever prior graph state may alter the next move; it is central to the spiral hypothesis, not a ritual required after every call.
+We call a change worth preserving a \emph{material, articulable update}: a question, relation, revision, or consequence that could alter later attention or work. The protocol asks for every such update, not every token-level step. Completeness is unknowable, and node quotas would reward decorative introspection. A pass can stop when it yields no material update, when a proposed update merely paraphrases existing state, or when its declared attention budget is exhausted. An honest no-update outcome is preferable to manufacturing depth.
 
-A useful first choice on substantive entry into a nonempty graph is either purpose-framed re-entry or a topology and recent-change survey before producing new work. This is optional orientation guidance, not a command to reload the whole graph or repeat the same startup ritual on every turn.
+The Reader advances through the work's native form and notices \emph{Thought Moments}: encounters at which an expectation breaks, a tension appears, an alternative becomes plausible, a question becomes urgent, a test changes the model, or the stakes acquire human weight. At each such moment it asks what substantively changed and what now deserves different attention. The account is preserved as the change emerges, rather than reconstructed only as a polished rationale at the end. Re-entry is available whenever prior graph state may alter the next move; it is central to the spiral hypothesis, not a ritual required after every call.
 
 Within one continuing Reader's project, the protocol is deliberately singular across works. Starting a new source does not create an empty Reader with a document-local notebook: the Reader role, orientation instructions, project graph, and provenance history persist. The implementation may invoke a new model process, but that process is asked to continue the same graph-mediated Reader. Material from one work can therefore supply active questions and concepts when the Reader later encounters another, subject to context selection and the model's ability to use the retrieved state.
 
 This is a persistence mechanism for an \emph{understanding process}, not merely a note format. A summary tells another party what a source contains. A task trace records steps toward a specified answer. The Reader's update is addressed forward to its own continuation: it preserves what the encounter changed, including uncertainty that has not yet become a conclusion. The distinction is an optimization target rather than a vocabulary test; a summary can contain insight, and a purported understanding trace can collapse into summary. Repeated graph use makes the difference testable: did the committed state alter a later question, relation, revision, or artifact decision?
-
-We call a change worth preserving a \emph{material, articulable update}: a question, relation, revision, or consequence that could alter later attention or work. The protocol asks for every such update, not every token-level step. Completeness is unknowable, and node quotas would reward decorative introspection. A pass can stop when it yields no material update, when a proposed update merely paraphrases existing state, or when its declared attention budget is exhausted. An honest no-update outcome is preferable to manufacturing depth.
 
 First-person voice remains a deliberate variable. It asks the model to preserve ``maybe,'' situated stakes, and emotional or ethical salience rather than defaulting to authoritative neutrality. This does not establish phenomenal feeling. The success criterion is behavioral: later instances should recover and appropriately revise the earlier trajectory, and produced work should be measurably informed by graph-carried state.
 
 \paragraph{Chronological document understanding.}
 A minimal user-facing application of the protocol is a chronological document reader. In its no-lookahead form, a host stages a book, paper, transcript, or other document without exposing its body to the model. Rather than placing the entire source in the model's immediate context, the system reveals successive bounded passages in source order, favoring coherent boundaries where the source permits. Each encountered passage becomes an exact, addressable document node. When an encounter produces a question, expectation, association, tension, or revision worth carrying forward, the Reader may attach ordinary passage-grounded testimony before continuing. The next passage therefore meets a graph shaped by what was actually encountered, not a retrospective account produced after seeing the whole document.
 
-During or after the reading, a user can ask open-ended questions against the continuing graph. Re-entry can place exact passages beside provisional interpretations, unresolved alternatives, and their recorded provenance, while allowing the Reader to revise or reject its earlier account. Because the cursor and graph persist, reading and questioning can continue across model sessions without reloading the entire source. This ordinary product form is distinct from CMP: it creates neither reserved \texttt{Thinking} blocks nor a synthetic training corpus. The resulting graph is an inspectable continuity mechanism, not evidence that the model achieved ``true understanding'' or outperformed other reading and memory methods.
+During or after the reading, a user can ask open-ended questions against the continuing graph. Re-entry can place exact passages beside provisional interpretations, unresolved alternatives, and their recorded provenance, while allowing the Reader to revise or reject its earlier account. Because the cursor and graph persist, reading and questioning can continue across model sessions without reloading the entire source. This ordinary product form is distinct from Chronological Metacognitive Pretraining (CMP), the training proposal described in Section~\ref{sec:extensions}: it creates neither reserved \texttt{Thinking} blocks nor a synthetic training corpus. The resulting graph is an inspectable continuity mechanism, not evidence that the model achieved ``true understanding'' or outperformed other reading and memory methods.
 
 \paragraph{Adaptive codebase understanding.}
-A complementary application pattern is adaptive codebase understanding. Code has no single analogue of page order, so a Reader can encounter bounded, addressable units---entry points, types, functions, tests, configuration, and runtime observations---in a provisional, purpose-relative order informed by dependency, behavior, and conceptual relation. Source-linked questions, models, tensions, and revisions from each encounter can then condition which unit is examined next; the traversal may branch, revisit earlier units, or stop without claiming exhaustive coverage. This preserves an inspectable account of how an architectural or behavioral model developed, while leaving open whether staged, graph-conditioned traversal improves comprehension or coding performance over matched alternatives. The current implementation provides graph-native code units, coding-shaped re-entry, and runtime evidence, but not an automatic repository traversal scheduler; this application remains proposed.
-
-\subsection{Repeated Re-entry and Context Selection}
-\label{sec:reentry}
-
-The spiral depends on selecting enough prior state to change the next act without turning the full graph into an indiscriminate prompt. Re-entry is therefore purpose-framed and bounded. It is not limited to startup: the Reader may re-enter after a meaningful source, test, artifact unit, contradiction, decision, or rereading, while allowing a no-update outcome when the packet exposes nothing material.
-
-\subsubsection{Purpose-Framed Re-entry}
-
-Purpose-framed re-entry uses two orthogonal axes. A workflow identifies the domain of work and its native evidence; a stance selects the kind of epistemic pressure desired, such as deepening, resistance, connection, disruption, revisiting, or testing. These are retrieval choices rather than capability boundaries. Instead of returning a flat similarity list, the packet separates a provisional \emph{baseline} from \emph{resistance} and \emph{evidence}, retaining typed relations and relevant revisions.
-
-The packet is workflow-sensitive. Reading and research can retrieve bounded passages across a document tree and report uncovered query terms as possible insufficiency rather than licensing a guess. Coding can surface current artifact units with prior revisions and runtime evidence. Any workflow can seek connective or disruptive pressure when local relevance has become too narrow. In writing, if graph material changes a unit, \texttt{inspired\_by} records the author's claim of influence; if nothing catches, no connection is required. Structural imbalance can be reported without becoming a ratio target.
-
-The returned graph is provisional testimony, not authority. The model is asked to let its unresolved momentum alter what it notices or tries, then continue in the task's native form. A useful re-entry can confirm the current direction, expose resistance, recover a forgotten question, or reveal that the current packet is insufficient. The critical behavioral claim is not that retrieval itself creates insight, but that the changed graph supplies material that can make a later update possible and inspectable.
-
-\subsubsection{Graph-First Context Loading}
-\label{sec:graph-first-context}
-
-Purpose-framed retrieval is complemented by topology-guided navigation through a \emph{Context Paging Protocol}. The \texttt{graph\_skeleton} operation returns a compact structural digest containing active node and edge counts, community region identifiers and labels, hubs, and recent activity. The Reader can then page a selected community through \texttt{graph\_context\_region}. The broader \texttt{graph\_context} operation defaults to full context through 50 active nodes and to a compact regional view above that threshold unless the caller explicitly overrides the choice. These are navigational defaults, not a runtime proof that the selected material is complete.
-
-Content retrieval remains available inside this landscape. \texttt{graph\_semantic\_search} uses embeddings when they have been loaded and falls back to lexical retrieval otherwise; \texttt{graph\_understand} adds the bounded, task-conditioned baseline/resistance/evidence packet described above. Its response reports how many active nodes were represented and how many were omitted, explicitly distinguishing re-entry from a complete graph view. Exact focus identifiers returned by a meaningful encounter or commit can reserve changed nodes and their relations in the next packet. The intended sequence is therefore not ``load everything,'' but orient when global shape matters, enter a relevant region or packet, and remain able to notice that the packet left other regions out.
-
-\subsubsection{Delta State Sync}
-\label{sec:delta-sync}
-
-Across sessions or collaborating workers, \texttt{graph\_updates(since)} returns active nodes and edges created or modified since a caller-supplied timestamp together with visible commit information. After a mutation, \texttt{graph\_batch} can instead return exact focus identifiers for immediate re-entry. Delta loading preserves temporal continuity without requiring a full reload, but its cost depends on the amount of intervening change; it is not constant in graph size or elapsed work.
-
-\subsection{State-Dependent Convergence and Divergence}
-\label{sec:exploration}
-
-Recursive understanding need not move in only one direction. At some moments the Reader may need to narrow: test a claim, resolve a tension, choose, consolidate, or implement. At others it may need to widen: reopen a question, generate alternatives, recover neglected material, or bring distant regions into contact. We use \emph{convergence} and \emph{divergence} for these complementary pressures. They are possible movements within fluid work, not modes that the runtime imposes or balances by quota. The suggestions, thermostat, and Bisociation operators below are optional instruments for making a useful pressure concrete; a Reader may enact either movement directly or decide that neither is warranted.
-
-\subsubsection{Optional Suggestion Guidance}
-
-The design begins from a practical hypothesis: answer-oriented interaction often favors closure, whereas an unbounded instruction to ``think divergently'' supplies neither a concrete object nor a stopping condition. The graph is intended to change the cost of a tangent. A bounded provocation can be judged against the live purpose, and any material update can accrue as inspectable, revisable structure alongside the requested work.
-
-When optional suggestion guidance is enabled, the coaching contract can offer a small weighted set of concrete multi-step routes at the start of substantive work and at natural choice points. The aid is intended to deepen or diversify understanding, recover neglected material, test the current view, or make a useful connection newly visible. Route weights reflect the task, workflow, current topology, unresolved material, and recently rolled action kinds. Each route carries a rationale and a stance for a possible re-entry packet. Higher weights deserve stronger consideration, but the Reader may choose, combine, modify, reject, replace, or skip the routes; the mechanism remains guidance rather than a governor and provides no guarantee of better understanding.
-
-Setting \texttt{creativity=false} removes optional creative routes from one roll while leaving ordinary guidance and the directly callable creativity tools intact. In direct mode the Reader chooses moves without ambient suggestions while retaining the same graph capabilities and the ability to request a roll on demand. This chooser is one implementation of a choice point, not a necessary condition of an understanding spiral. Recent-action down-weighting is short-lived process memory rather than learned strategy persisted in the graph.
-
-\subsubsection{The Graph Thermostat}
-\label{sec:thermostat}
-
-The separately callable \texttt{graph\_thermostat} is an advisory, entropy-style pulse over visible graph structure. Let $N$ be the set of active, visible cognitive nodes, $Q_o\subseteq N$ the question nodes not currently answered, $T_o\subseteq N$ the tension nodes not marked resolved, closed, or superseded, and $O\subseteq N$ the nodes with visible degree zero. Document and other artifact nodes are excluded from $N$ and therefore from both denominators. For $|N|>0$, the implementation computes
-\[
-u=\frac{|Q_o|+|T_o|}{|N|},
-\qquad
-f=\frac{|O|}{|N|},
-\qquad
-H_G=0.6u+0.4f,
-\]
-\[
-T_G=1-\min(2H_G,1).
-\]
-Here $H_G$ is a heuristic structural-disorder proxy, not Shannon entropy. When $N$ is empty, the graph state is \texttt{VOID} and the advisory strategy is \texttt{SEED}; $T_G>0.7$ suggests \texttt{DIVERGE}, $T_G<0.3$ suggests \texttt{CONVERGE}, and intermediate values suggest \texttt{MAINTAIN}. Its motivating design analogy is a boundary between rigid local convergence and unconstrained fragmentation; no empirical mapping from $H_G$ to neural entropy or criticality is claimed~\cite{carhartharris2014entropic}. The pulse can help a model decide whether to deepen, connect, or request a divergent tool, but it neither changes mode nor compels the recommended action. Its coefficients and thresholds are design heuristics awaiting ablation.
-
-\subsubsection{The Bisociation Engine}
-\label{sec:bisociation}
-
-Repeated re-entry can remain trapped in familiar regions. The optional \emph{Bisociation Engine} is a family of agent-facing provocations that operationalizes Koestler's intersection of different matrices of thought~\cite{koestler1964act} and follows the computational-bisociation lineage represented by BISON~\cite{berthold2012bisociation}. It does not autonomously make connections true. It gives a model concrete material with which to leave a familiar completion path, after which the model may use, combine, modify, or reject every candidate.
-
-\paragraph{Spreading Activation.}
-The \texttt{graph\_bisociate} tool exposes the engine's graph-native entry point. From explicit seed nodes---or graph-wide hot, cold, random, bridge, or mixed seeds---activation propagates across adjacent incoming or outgoing neighbors, with spreading energy divided equally among the distinct neighbors at each step. Explicit-seed calls expose a hop limit of one to six and a decay factor from $0.05$ to $0.95$ (defaults: three hops and $0.6$); graph-wide calls currently use the fixed defaults of three hops and $0.6$.
-
-A node-level temperature $\theta(n)$, distinct from the graph-level $T_G$, combines recency and access frequency. If $\Delta t_n$ is days since last access (or creation when never accessed) and $a_n$ is the access count, the current heuristic is
-\[
-r(n)=\exp\!\left(-\frac{\ln 2}{7}\Delta t_n\right),
-\qquad
-f(n)=\min\!\left(\frac{\log_{10}(a_n+1)}{\log_{10}(100)},1\right),
-\qquad
-\theta(n)=0.7r(n)+0.3f(n).
-\]
-The implementation rounds $\theta(n)$ to three decimal places. Agent-facing re-entry, search, suggestion, and creativity paths record the nodes they actually expose. We call the selection behavior that consults this access history \emph{Temporal Attention Decay}: cold creativity sampling orders by access count and access time, then records surfaced nodes so another unused region can rise on a later call; temperature-weighted spreading multiplies initial seed energy and newly activated neighbor energy by $1+(1-\theta(n))$, giving colder nodes more attention pressure. Other retrieval paths can record exposure without weighting selection by $\theta(n)$, and no node is deleted. Explicit-seed mode returns target candidates with activation, path length, and information-gain signals. Graph-wide mode returns candidate pairs scored from spreading activation, link prediction, semantic gaps, and information gain, whose cluster-surprisal component can identify cross-community bridges. These signals direct attention; they are neither evidence of a relation nor a substitute for reading the candidate nodes. Spreading activation may also reinforce existing topology, so graph-wide and stochastic operators remain necessary complements.
-
-\paragraph{Inverse Hallucination and Axiomatic Forcing.}
-We call the generative reversal \emph{Inverse Hallucination}: inventing logic to fit constraints rather than retrieving facts to fit logic. With \texttt{graph\_random(force:true)}, the model temporarily stipulates that selected concepts are connected and articulates the strongest account of how the relation could work---a local ``Physics What-If.'' It then releases the axiom and scrutinizes the candidate against the task, source concepts, and evidence. ``No defensible connection'' remains valid, and the forced candidate is not itself graph evidence. This is \emph{Axiomatic Forcing} as a generative pass, not a permanent instruction to connect everything.
-
-\paragraph{Axiomatic Noise Injection.}
-\emph{Axiomatic Noise Injection} (ANI) displaces the model more sharply. At its default intensity, \texttt{graph\_discover} selects graph-node material and replaces approximately 25\% of its eligible words with bracketed random seeds drawn from a word list installed on the host machine. \texttt{graph\_chaos} applies the same default replacement probability to supplied text or a randomly selected node; unlike \texttt{graph\_discover}, it can instead draw self-referential seeds from graph-node names with \texttt{source=graph}. The resulting prompt temporarily treats every bracketed seed as an axiom to be rationalized. The package bundles no dictionary and no reduced fallback: it detects a conventional system word list or reads the host path in \texttt{UG\_ANI\_DICTIONARY\_PATH}, failing explicitly when neither exists.
-
-The blind variant withholds the original material from the sense-making context. Genuine blindness therefore requires a fresh agent or model context that receives only the corrupted prompt; an MCP response can specify this discipline but cannot guarantee that a host actually isolates the contexts. The intended effect is displacement from familiar continuations, not factual inference. ANI can produce persuasive nonsense, and whether it improves creativity or artifact quality remains unevaluated.
-
-The Bisociation Engine's median-escape branch---particularly ANI and Axiomatic Forcing---was directly inspired by the \emph{Strange Worlds}/\emph{Ontology of the Alien} lineage. \emph{Strange Worlds} posed the \emph{Minimal Intervention} hypothesis: test whether a small mandatory stochastic displacement can escape a familiar completion path without constructing a complete counterfactual world~\cite{westerberg2025strangeworlds}. \emph{The Ontology of the Alien} develops the \emph{Median Trap} into world-diversity search and implements persistent typed control over a population of compiled candidate interventions~\cite{westerberg2026alien}.
-
-The Understanding Graph adapts those ideas locally: ANI supplies stochastic displacement, typed nodes can retain candidate solutions, and semantic-gap queries can expose candidate missing links. Distant graph pairs and Axiomatic Forcing are analogues of alternative-physics constraints and accommodation pressure, not the Studio Model's admission-and-redirection controller. The graph implements neither that controller nor full world-diversity search, and this intellectual lineage supplies no result claim by itself.
-
-\paragraph{Serendipity, Scrutiny, and Validation.}
-Generated candidates follow an explicit lifecycle:
-\[
-\begin{aligned}
-\text{provocation}
-&\longrightarrow \texttt{Serendipity}\;(\texttt{validated=false})\\
-&\longrightarrow \text{scrutiny or test}\\
-&\longrightarrow
-\substack{\texttt{graph\_validate}\\\text{or rejection/supersession}.}
-\end{aligned}
-\]
-\texttt{graph\_serendipity} is a batch-only operation that creates a typed, initially unvalidated node and \texttt{learned\_from} edges to every supplied source. Context rendering labels unvalidated serendipity as speculative. \texttt{graph\_validate} later stores an authored validation status and explanation; it does not independently verify evidence or prove the synthesis. This is epistemic typing, not syntactic isolation or a hard quarantine.
-
-\paragraph{Novelty Scoring and Variation Ranking.}
-For node operands below, $e(n)$ embeds the node title together with every distinct nonempty semantic field---authored understanding, document summary, exact content, and addition rationale. For free-text variation operands, $e(x)$ embeds the supplied string directly.
-For a source-linked serendipity $y$, the experimental Novelty Score is the harmonic mean
-\[
-S_N=\frac{2DC}{D+C},
-\qquad
-D=1-\frac{1}{m}\sum_{j=1}^{m}\operatorname{clip}_{[0,1]}\!\left(\cos(e(y),e(s_j))\right),
-\qquad
-C=\max_{z\in N_e\setminus\{y,s_1,\ldots,s_m\}}\operatorname{clip}_{[0,1]}\!\left(\cos(e(y),e(z))\right).
-\]
-Here $\operatorname{clip}_{[0,1]}$ bounds cosine similarity so both operands remain in $[0,1]$. $N_e$ is the full set of active, visible nodes with available embeddings, with $C=0$ when no eligible non-source node exists and $S_N=0$ when $D+C=0$. $D$ measures divergence from every supplied source and $C$ measures the strongest eligible non-source connection across that complete set, not only a top-$k$ retrieval result. When the required embeddings are available, $S_N\geq0.35$ produces an advisory \texttt{ACCEPT} label and a lower score \texttt{RETRY}; without them the result is \texttt{UNSCORED}. The label neither blocks persistence nor changes \texttt{validated=false}.
-
-The separate \texttt{graph\_evaluate\_variations} tool ranks alternatives $v_i$ against an original context $x$ using the same harmonic form but different operands:
-\[
-D_i=1-\operatorname{clip}_{[0,1]}\!\left(\cos(e(x),e(v_i))\right),
-\qquad
-C_i=\begin{cases}c_i/10,&\text{if the caller supplies coherence }c_i,\\0.8,&\text{otherwise.}\end{cases}
-\]
-This ranks semantic displacement subject to a supplied or default coherence estimate. It is not a graph-wide truth metric, and neither its ranking nor the fixed threshold has yet been validated against human judgments.
-
-\paragraph{PURE Stabilization.}
-After open exploration, a candidate intended to become a reusable \texttt{Analysis}, decision, or generalized synthesis can be examined with the non-compensatory PURE rubric~\cite{westerberg2026ri}. Each gate receives a steelmanned case for and against followed by RED, YELLOW, or GREEN:
-\begin{description}
-    \item[Parsimonious.] Is there a minimal explanatory core without hidden prerequisites? RED marks complexity or assumptions that the account merely hides.
-    \item[Unique.] Does the proposal supply an independent lever rather than rename an existing account? RED marks paraphrase without a new consequence or distinction.
-    \item[Realizable.] Is there a coherent mechanism composed of defined, available steps? RED marks a magical, circular, or operationally undefined transition.
-    \item[Expansive.] Does the mechanism transfer meaningfully beyond one narrow instance? RED marks an account whose apparent generality disappears outside its motivating example.
-\end{description}
-Any RED makes the overall result RED; no RED but at least one YELLOW calls for targeted rework and the smallest lift toward GREEN; all GREEN yields GREEN. The rubric appears in ordinary protocol guidance, and \texttt{solver\_enforce} can log a structured evaluation and mark RED nodes rejected in solver-capable modes. It does not globally block later writes or independently judge semantic quality. Applying PURE to every raw surprise, question, or hypothesis would suppress the open exploration it is meant to stabilize later.
+A complementary application pattern is adaptive codebase understanding. Code has no single analogue of page order, so a Reader can encounter bounded, addressable units---entry points, types, functions, tests, configuration, and runtime observations---in a provisional, purpose-relative order informed by dependency, behavior, and conceptual relation. Source-linked questions, models, tensions, and revisions from each encounter can then condition which unit is examined next; the traversal may branch, revisit earlier units, or stop without claiming exhaustive coverage. This preserves an inspectable account of how an architectural or behavioral model developed. The current implementation provides graph-native code units, coding-shaped re-entry, and runtime evidence, but not an automatic repository traversal scheduler; this application remains proposed.
 
 \subsection{Node and Edge Taxonomy}
 \label{sec:node-types}
 
-Typed cognitive nodes make different kinds of interpretive movement separately addressable instead of collapsing them into generic ``concepts.'' Extending the IBIS argumentation lineage~\cite{kunz1970ibis}, the current system defines seventeen ordinary \texttt{TriggerType}s in five families and one reserved synthetic type (Table~\ref{tab:node-types}). This taxonomy describes cognitive testimony. Document nodes share the underlying node record but are distinguished by document fields and ordered topology; they are not cognitive testimony merely because they retain trigger metadata. The list is an implemented design vocabulary, not a formally minimal ontology.
+Typed cognitive nodes make different kinds of interpretive movement separately addressable instead of collapsing them into generic ``concepts.'' Extending the IBIS argumentation lineage~\cite{kunz1970ibis}, the current system defines seventeen ordinary \texttt{TriggerType}s (the implementation's name for a node's type, after what occasioned the update) in five families and one reserved synthetic type (Table~\ref{tab:node-types}). This taxonomy describes cognitive testimony. Document nodes share the underlying node record but are distinguished by document fields and ordered topology; they are not cognitive testimony merely because they retain trigger metadata. The list is an implemented design vocabulary, not a formally minimal ontology.
 
 \begin{table}[htbp]
 \centering
@@ -336,12 +216,20 @@ Reserved & \texttt{thinking} & Extension-only synthetic Reader blocks; unavailab
 \label{tab:node-types}
 \end{table}
 
-Edges state how cognitive updates and document units relate. The validator accepts sixteen specific types plus \texttt{relates} as a tracked fallback. Epistemic relations include \texttt{learned\_from}, \texttt{questions}, \texttt{answers}, \texttt{contradicts}, \texttt{validates}, \texttt{invalidates}, \texttt{refines}, \texttt{contextualizes}, \texttt{abstracts\_from}, \texttt{diverse\_from}, and \texttt{supersedes}; \texttt{contains} and \texttt{next} encode document topology. The distinctions preserve plural state: \texttt{diverse\_from} keeps multiple perspectives live simultaneously without collapsing them into one view, \texttt{contradicts} records explicit conflict, and \texttt{supersedes} retires a displaced commitment. We use \emph{structural superposition} as shorthand for this coexistence of typed alternatives, not for a quantum-mechanical state. Cross-surface provenance distinguishes \texttt{implements} (abstract cognitive commitment $\rightarrow$ produced unit), \texttt{expresses} (produced unit $\rightarrow$ concept), and \texttt{inspired\_by} (produced unit $\rightarrow$ graph material reported as influential). The epistemic \texttt{learned\_from} relation instead points from a cognitive update to the source or artifact encounter identified as its evidence. Prompt guidance favors the most specific defensible relation, while diagnostics make fallback overuse visible without turning edge diversity into a quota. This coached preference is a soft \emph{Cognitive Guardrail} against ``semantic gray goo'': generic relations can erase the distinctions the graph exists to preserve. Tracking the fallback makes that failure mode inspectable; it does not prove semantic quality or forbid a defensible \texttt{relates} edge.
+A cognitive node is a small authored record, written with \texttt{graph\_add\_understanding} inside a \texttt{graph\_batch} commit (Section~\ref{sec:revision}). Besides its type it carries a \texttt{title}; the \texttt{understanding} itself; a required \texttt{why}, one line naming what the node does to the understanding around it (what it corrects, reframes, opens, settles, or contradicts); and an optional \texttt{attend}, which tells a later instance what to attend to differently because of this node. The \texttt{attend} field is the self-addressed part of an update: it is written to the Reader's continuation, not to the record. In the running example, $S_1$ might be stored with the title ``Local recovery can create global overload''; the understanding that a fixed-delay retry rule protects each client while synchronizing the population; the why ``Overturns the expectation that a rule safe for each client is safe for all''; and the attend ``Look for other identical local rules acting on a shared resource.'' The wording is illustrative, like the example itself.
+
+Edges state how cognitive updates and document units relate. The validator accepts sixteen specific types plus \texttt{relates} as a tracked fallback. Epistemic relations include \texttt{learned\_from}, \texttt{questions}, \texttt{answers}, \texttt{contradicts}, \texttt{validates}, \texttt{invalidates}, \texttt{refines}, \texttt{contextualizes}, \texttt{abstracts\_from}, \texttt{diverse\_from}, and \texttt{supersedes}; \texttt{contains} and \texttt{next} encode document topology.
+
+The distinctions preserve plural state: \texttt{diverse\_from} keeps multiple perspectives live simultaneously without collapsing them into one view, \texttt{contradicts} records explicit conflict, and \texttt{supersedes} retires a displaced commitment. We use \emph{structural superposition} as shorthand for this coexistence of typed alternatives, not for a quantum-mechanical state.
+
+Cross-surface provenance distinguishes \texttt{implements} (abstract cognitive commitment $\rightarrow$ produced unit), \texttt{expresses} (produced unit $\rightarrow$ concept), and \texttt{inspired\_by} (produced unit $\rightarrow$ graph material reported as influential). The epistemic \texttt{learned\_from} relation instead points from a cognitive update to the source or artifact encounter identified as its evidence.
+
+Prompt guidance favors the most specific defensible relation, while diagnostics make fallback overuse visible without turning edge diversity into a quota. This coached preference is a soft \emph{Cognitive Guardrail} against ``semantic gray goo'': generic relations can erase the distinctions the graph exists to preserve. Tracking the fallback makes that failure mode inspectable; it does not prove semantic quality or forbid a defensible \texttt{relates} edge.
 
 \subsection{Cognitive and Document Surfaces}
 \label{sec:graph-native-fs}
 
-Traditional systems separate files from knowledge graphs, but the Understanding Graph places cognitive testimony and addressable documents in one substrate while preserving their different roles. The \emph{cognitive surface} holds questions, tensions, alternatives, decisions, models, and material updates. The \emph{document surface} holds ordered semantic units from both encountered material and produced work: source passages, document sections, prose passages, functions, classes, types, tests, import groups, and other coherent units. A source passage and an authored function can therefore both be document nodes, while only the latter is an artifact unit. The cognitive surface may be used without producing an artifact. When productive work does occur, however, the relation is bidirectional: prose, code, an experiment, or a decision can express current understanding, while its resulting form or behavior can become a later encounter from which the Reader may author a further graph update. Artifact production is not a required endpoint.
+Traditional systems separate files from knowledge graphs, but the Understanding Graph places cognitive testimony and addressable documents in one substrate while preserving their different roles. The \emph{cognitive surface} holds questions, tensions, alternatives, decisions, models, and material updates. The \emph{document surface} holds ordered semantic units from both encountered material and produced work: source passages, document sections, prose passages, functions, classes, types, tests, import groups, and other coherent units. A source passage and an authored function can therefore both be document nodes, while only the latter is an artifact unit. The cognitive surface may be used without producing an artifact.
 
 A document node is not merely a retrieval chunk. It is a stable address for one semantic unit of work. Incoming text and produced prose or code can both be divided at independently meaningful boundaries---a source passage, argument move, function, class, type, or test---while a rendered page or generated file remains a projection of the ordered tree. The nodes carry content and hierarchy and are linked by \texttt{contains} and \texttt{next}. In graph-native coding these ordered nodes are canonical source and generated files are executable projections. In writing, chapters and scenes can be containers while beat-, image-, exchange-, paragraph-, or sentence-sized leaves remain independently movable and revisable. Granularity follows one addressable center of attention, not a word or node quota.
 
@@ -363,7 +251,7 @@ Figure~\ref{fig:running-example-topology} renders the running example as stored 
 \node[sourceNode] (passage) at (-5.55,1.45) {Systems passage\\fixed-delay retries};
 \node[surpriseNode] (surprise) at (0,1.45) {\texttt{Surprise} $S_1$\\local recovery can\\create global overload};
 \node[tensionNode] (tension) at (5.55,1.45) {\texttt{Tension} $T_0$\\uniform units share\\a failure mode};
-\node[hypothesisNode] (hypothesis) at (-0.45,-1.45) {\texttt{Hypothesis} $H_1$\\resilience may require\\response diversity};
+\node[hypothesisNode] (hypothesis) at (-0.85,-1.45) {\texttt{Hypothesis} $H_1$\\resilience may depend\\on response diversity};
 \node[artifactUnit] (artifactRoot) at (5.25,-0.25) {Document root\\\texttt{retry.py}};
 \node[artifactUnit] (retryFunction) at (3.75,-2.05) {Function\\retry with jitter};
 \node[artifactUnit] (burstTest) at (6.75,-2.05) {Test\\correlated burst};
@@ -389,16 +277,15 @@ Creation, revision, splitting, movement, and merging are atomic graph mutations;
 The topology also bounds context in large documents. Agents navigate the tree and load selected units for the current purpose, then regenerate external projections from graph state. Whether this improves scaling or task quality over ordinary files remains to be benchmarked.
 
 \subsection{Revision, Accretion, and Consolidation}
+\label{sec:revision}
 
-The closest historical analogy is the laboratory notebook. Published science foregrounds results---the successful experiment, the proven theorem---while the notebook can retain failed experiments, crossed-out hypotheses, margin notes, and the gradual narrowing from confusion to clarity. Researchers can then build on parts of each other's \emph{process}, not just conclusions. The Understanding Graph is an LLM-compatible version of that intuition: a notebook whose entries are typed, linked to their sources, and directly available to the next Reader.
-
-Concretely, memory can record correction as well as accumulation (Table~\ref{tab:update-signals}). When the Reader refines an interpretation, it can create a \texttt{supersedes} edge from the new node to the displaced one rather than deleting history. This belongs to the lineage of Truth Maintenance Systems~\cite{doyle1979tms} and overlaps with versioned graph memories such as Graphiti~\cite{rasmussen2025graphiti} and Kumiho~\cite{park2026kumiho}; AriGraph~\cite{anokhin2025arigraph} likewise integrates episodic and semantic memory into a graph world model. Every edge carries a natural-language \textit{why}, so the transition is not merely timestamped.
+As in the laboratory notebook of Section~\ref{sec:introduction}, memory can record correction as well as accumulation (Table~\ref{tab:update-signals}). When the Reader refines an interpretation, it can create, through the dedicated operation described below, a \texttt{supersedes} edge from the new node to the displaced one rather than deleting history. This belongs to the lineage of Truth Maintenance Systems~\cite{doyle1979tms} and overlaps with versioned graph memories such as Graphiti~\cite{rasmussen2025graphiti} and Kumiho~\cite{park2026kumiho}; AriGraph~\cite{anokhin2025arigraph} likewise integrates episodic and semantic memory into a graph world model. Every edge carries a natural-language \textit{why}, so the transition is not merely timestamped.
 
 Ordinary mutations sent through \texttt{graph\_batch} are grouped into atomic commits carrying a timestamp, required client-declared \texttt{agent\_name}, optional human author, message, and affected node and edge identifiers. Failed batches roll back rather than leaving partial topology. When a future Reader retrieves a node, the commit history can expose the stated purpose that accompanied its creation or revision. These provenance-bearing commit messages act as compact \emph{Origin Stories}: an inspectable account of why an update entered the graph, not proof of the update's actual psychological cause. The current implementation does not provide named branches or full committed-state revert.
 
 Persistence is not epistemic endorsement. Durable nodes may be candidates, objections, alternatives, or provisional syntheses. A \texttt{Decision} or \texttt{Analysis} can state what presently governs; \texttt{diverse\_from}, contextualization, and supersession preserve plurality and change. Because no universal candidate-status field exists, consumers must interpret type, relations, content, and protocol rather than treat every commit as settled belief.
 
-\paragraph{Accretion and correction.} In problem-solving, supersession can record repair of a flawed hypothesis or obsolete design. In reading, the graph may be more additive: a new interpretation can link through \texttt{learned\_from} without invalidating earlier context. We call this dual behavior \emph{Metabolic Memory}: under accretion the substrate resembles a chronological journal, while under supersession it resembles version control for governing commitments. The latter addresses a \emph{Stale Context Hazard}: an obsolete governing commitment can remain retrievable as history without continuing to present itself as current. Workflow-specific prompts make the distinction explicit, allowing both iteration of a solution and accretion of a reading. The labels are analogies; whether the workflows reliably produce different topologies is an empirical question.
+\paragraph{Accretion and correction.} In problem-solving, supersession can record repair of a flawed hypothesis or obsolete design. In reading, the graph may be more additive: a new interpretation can link through \texttt{learned\_from} without invalidating earlier context. We call this dual behavior \emph{Metabolic Memory}: under accretion the substrate resembles a chronological journal, while under supersession it resembles version control for governing commitments. The latter addresses a \emph{Stale Context Hazard}: an obsolete governing commitment can remain retrievable as history without continuing to present itself as current. Workflow-specific prompts (Section~\ref{sec:reentry}) make the distinction explicit, allowing both iteration of a solution and accretion of a reading. The labels are analogies; whether the workflows reliably produce different topologies is an empirical question.
 
 \begin{table}[h]
 \centering
@@ -423,38 +310,135 @@ N_A=\{n\in N\mid \ell(n)=1\ \land\ \nexists n':n'\succ n\}.
 \]
 Branching may leave multiple current successors, while the transitive closure $\succ^*$ preserves recorded history. The dedicated \texttt{graph\_supersede} operation atomically preserves and retires the displaced node; generic creation or mutation of a \texttt{supersedes} edge is rejected. Global acyclicity is nevertheless an intended lifecycle invariant rather than a property proved for every writable history. A Redis$\rightarrow$Postgres$\rightarrow$event-log chain can therefore record successive governing architectures while only the latest remains active. Each transition carries an authored \texttt{why}: a \emph{Semantic Diff} that creates a machine-readable changelog whose claims are inspectable but not mechanically verified. This is inspired by the bookkeeping problem in AGM belief revision~\cite{alchourron1985agm}, but it is not an AGM operator and does not enforce deductive closure, minimal change, or consistency restoration. Nor does explicit supersession solve the behavioral difficulty LLMs can have revising conclusions under counterevidence~\cite{xu2024belief}; it makes a proposed revision persistent and challengeable.
 
+\subsection{Repeated Re-entry and Context Selection}
+\label{sec:reentry}
+
+The spiral depends on selecting enough prior state to change the next act without turning the full graph into an indiscriminate prompt. Re-entry is therefore purpose-framed and bounded. It is not limited to startup: the Reader may re-enter after a meaningful source, test, artifact unit, contradiction, decision, or rereading, while allowing a no-update outcome when the packet, the selection a re-entry returns, exposes nothing material. Three mechanisms serve this: a packet framed by purpose, navigation by the graph's shape, and synchronization of what has changed.
+
+\subsubsection{Purpose-Framed Re-entry}
+
+Purpose-framed re-entry, the \texttt{graph\_understand} operation, uses two orthogonal axes. A workflow identifies the domain of work and its native evidence; a stance selects the kind of epistemic pressure desired, such as deepening, resistance, connection, disruption, revisiting, or testing. These are retrieval choices rather than capability boundaries. Instead of returning a flat similarity list, the packet separates a provisional \emph{baseline} from \emph{resistance} and \emph{evidence}, retaining typed relations and relevant revisions.
+
+The packet is workflow-sensitive. Reading and research can retrieve bounded passages across a document tree and report uncovered query terms as possible insufficiency rather than licensing a guess. Coding can surface current artifact units with prior revisions and runtime evidence. Any workflow can seek connective or disruptive pressure when local relevance has become too narrow. In writing, if graph material changes a unit, \texttt{inspired\_by} records the author's claim of influence; if nothing catches, no connection is required. Structural imbalance between artifact units and cognitive testimony can be reported without becoming a ratio target.
+
+The returned graph is provisional testimony, not authority. The model is asked to let its unresolved momentum alter what it notices or tries, then continue in the task's native form. A useful re-entry can confirm the current direction, expose resistance, recover a forgotten question, or reveal that the current packet is insufficient. The critical behavioral claim is not that retrieval itself creates insight, but that the changed graph supplies material that can make a later update possible and inspectable.
+
+\subsubsection{Graph-First Context Loading}
+\label{sec:graph-first-context}
+
+Purpose-framed retrieval is complemented by topology-guided navigation through a \emph{Context Paging Protocol}. The \texttt{graph\_skeleton} operation returns a compact structural digest containing active node and edge counts, community region identifiers and labels, hubs, and recent activity. The Reader can then page a selected community through \texttt{graph\_context\_region}. The broader \texttt{graph\_context} operation defaults to full context through 50 active nodes and to a compact regional view above that threshold unless the caller explicitly overrides the choice. These are navigational defaults, not a runtime proof that the selected material is complete.
+
+Content retrieval remains available inside this landscape. \texttt{graph\_semantic\_search} uses embeddings when they have been loaded and falls back to lexical retrieval otherwise; \texttt{graph\_understand} adds the bounded, task-conditioned baseline/resistance/evidence packet described above. Its response reports how many active nodes were represented and how many were omitted, explicitly distinguishing re-entry from a complete graph view. The intended sequence is therefore not ``load everything,'' but orient when global shape matters, enter a relevant region or packet, and remain able to notice that the packet left other regions out.
+
+Across sessions or collaborating workers, \texttt{graph\_updates(since)} returns active nodes and edges created or modified since a caller-supplied timestamp together with visible commit information. After a mutation, \texttt{graph\_batch} can instead return exact focus identifiers for immediate re-entry. Delta loading preserves temporal continuity without requiring a full reload, but its cost depends on the amount of intervening change.
+
+\subsection{State-Dependent Convergence and Divergence}
+\label{sec:exploration}
+
+Recursive understanding need not move in only one direction. At some moments the Reader may need to narrow: test a claim, resolve a tension, choose, consolidate, or implement. At others it may need to widen: reopen a question, generate alternatives, recover neglected material, or bring distant regions into contact. We use \emph{convergence} and \emph{divergence} for these complementary pressures. They are possible movements within fluid work, not modes that the runtime imposes or balances by quota. The suggestions, thermostat, and Bisociation operators below are optional instruments for making a useful pressure concrete; a Reader may enact either movement directly or decide that neither is warranted.
+
+The design begins from a practical hypothesis: answer-oriented interaction often favors closure, whereas an unbounded instruction to ``think divergently'' supplies neither a concrete object nor a stopping condition. The graph is intended to change the cost of a tangent. A bounded provocation can be judged against the live purpose, and any material update can accrue as inspectable, revisable structure alongside the requested work.
+
+\subsubsection{Optional Suggestion Guidance}
+
+When optional suggestion guidance is enabled, the coaching contract can offer a small set of concrete multi-step routes, drawn at random by weight (a \emph{roll}), at the start of substantive work and at natural choice points. Route weights reflect the task, workflow, current topology, unresolved material, and recently rolled action kinds. Each route carries a rationale and a stance for a possible re-entry packet. Higher weights deserve stronger consideration, but the Reader may choose, combine, modify, reject, replace, or skip the routes; the mechanism remains guidance rather than a governor.
+
+This chooser is one implementation of a choice point, not a necessary condition of an understanding spiral. Recent-action down-weighting is short-lived process memory rather than learned strategy persisted in the graph.
+
+\subsubsection{The Graph Thermostat}
+\label{sec:thermostat}
+
+The separately callable \texttt{graph\_thermostat} is an advisory, entropy-style pulse over visible graph structure. Let $N$ be the set of active, visible cognitive nodes, $Q_{\mathrm{open}}\subseteq N$ the question nodes not currently answered, $T_{\mathrm{open}}\subseteq N$ the tension nodes not marked resolved, closed, or superseded, and $O\subseteq N$ the nodes with visible degree zero. Document and other artifact nodes are excluded from $N$ and therefore from both denominators. For $|N|>0$, the implementation computes
+\[
+u=\frac{|Q_{\mathrm{open}}|+|T_{\mathrm{open}}|}{|N|},
+\qquad
+f=\frac{|O|}{|N|},
+\qquad
+H_G=0.6u+0.4f,
+\]
+\[
+T_G=1-\min(2H_G,1).
+\]
+Here $H_G$ is a heuristic structural-disorder proxy, not Shannon entropy, and $T_G$, the graph-level temperature, falls as disorder rises: many open questions, open tensions, and unconnected nodes give a low $T_G$, and a settled, well-connected graph gives a high one. When $N$ is empty, the graph state is \texttt{VOID} and the advisory strategy is \texttt{SEED}; $T_G>0.7$ suggests \texttt{DIVERGE}, $T_G<0.3$ suggests \texttt{CONVERGE}, and intermediate values suggest \texttt{MAINTAIN}. Its motivating design analogy is a boundary between rigid local convergence and unconstrained fragmentation; no empirical mapping from $H_G$ to neural entropy or criticality is claimed~\cite{carhartharris2014entropic}. The pulse can help a model decide whether to deepen, connect, or request a divergent tool, but it neither changes mode nor compels the recommended action. Its coefficients and thresholds are design heuristics awaiting ablation.
+
+\subsubsection{The Bisociation Engine}
+\label{sec:bisociation}
+
+Repeated re-entry can remain trapped in familiar regions. The optional \emph{Bisociation Engine} is a family of agent-facing provocations that operationalizes Koestler's intersection of different matrices of thought~\cite{koestler1964act}, the joining of two frames normally kept apart, and follows the computational-bisociation lineage represented by BISON~\cite{berthold2012bisociation}. It does not autonomously make connections true. It gives a model concrete material with which to leave a familiar completion path, after which the model may use, combine, modify, or reject every candidate.
+
+\paragraph{Spreading Activation.}
+The \texttt{graph\_bisociate} tool exposes the engine's graph-native entry point. From explicit seed nodes---or graph-wide hot, cold, random, bridge, or mixed seeds---activation propagates across adjacent incoming or outgoing neighbors, with spreading energy divided equally among the distinct neighbors at each step.
+
+Selection favors nodes that have not been surfaced recently, so that neglected regions can rise; Appendix~\ref{app:instruments} gives the access-history rule and the node-level temperature behind this. Explicit-seed mode returns target candidates with activation, path length, and information-gain signals. Graph-wide mode returns candidate pairs scored from spreading activation, link prediction, semantic gaps, and information gain, whose cluster-surprisal component can identify cross-community bridges. These signals direct attention; they are neither evidence of a relation nor a substitute for reading the candidate nodes. Spreading activation may also reinforce existing topology, so graph-wide and stochastic operators remain necessary complements.
+
+\paragraph{Inverse Hallucination and Axiomatic Forcing.}
+We call the generative reversal \emph{Inverse Hallucination}: inventing logic to fit constraints rather than retrieving facts to fit logic. With \texttt{graph\_random(force:true)}, the model temporarily stipulates that selected concepts are connected and articulates the strongest account of how the relation could work---a local ``Physics What-If.'' It then releases the axiom and scrutinizes the candidate against the task, source concepts, and evidence. ``No defensible connection'' remains valid, and the forced candidate is not itself graph evidence. This is \emph{Axiomatic Forcing} as a generative pass, not a permanent instruction to connect everything.
+
+\paragraph{Axiomatic Noise Injection.}
+\emph{Axiomatic Noise Injection} (ANI) displaces the model more sharply. At its default intensity, \texttt{graph\_discover} selects graph-node material and replaces approximately 25\% of its eligible words with bracketed random seeds drawn from a word list installed on the host machine. \texttt{graph\_chaos} applies the same default replacement probability to supplied text or a randomly selected node; unlike \texttt{graph\_discover}, it can instead draw self-referential seeds from graph-node names with \texttt{source=graph}. The resulting prompt temporarily treats every bracketed seed as an axiom to be rationalized.
+
+The blind variant withholds the original material from the sense-making context. Genuine blindness therefore requires a fresh agent or model context that receives only the corrupted prompt; a Model Context Protocol (MCP) response can specify this discipline but cannot guarantee that a host actually isolates the contexts. The intended effect is displacement from familiar continuations, not factual inference. ANI can produce persuasive nonsense.
+
+The Bisociation Engine's median-escape branch---particularly ANI and Axiomatic Forcing---was directly inspired by the \emph{Strange Worlds}/\emph{Ontology of the Alien} lineage. \emph{Strange Worlds} posed the \emph{Minimal Intervention} hypothesis: test whether a small mandatory stochastic displacement can escape a familiar completion path without constructing a complete counterfactual world~\cite{westerberg2025strangeworlds}. \emph{The Ontology of the Alien} names the Strange Worlds method world-diversity search, an answer to the \emph{Median Trap} (a model's outputs collapsing toward the average of what has already been said), and adds persistent typed control over a population of compiled candidate interventions~\cite{westerberg2026alien}.
+
+The Understanding Graph adapts those ideas locally: ANI supplies stochastic displacement, typed nodes can retain candidate solutions, and semantic-gap queries can expose candidate missing links. Distant graph pairs and Axiomatic Forcing are analogues of alternative-physics constraints and accommodation pressure, not the admission-and-redirection controller of the Studio Model, the released implementation of \emph{The Ontology of the Alien}. The graph implements neither that controller nor full world-diversity search, and this intellectual lineage supplies no result claim by itself.
+
+\subsubsection{Scrutiny, Scoring, and Stabilization}
+
+\paragraph{Serendipity, Scrutiny, and Validation.}
+Generated candidates follow an explicit lifecycle:
+\[
+\begin{aligned}
+\text{provocation}
+&\longrightarrow \texttt{Serendipity}\;(\texttt{validated=false})\\
+&\longrightarrow \text{scrutiny or test}\\
+&\longrightarrow
+\substack{\texttt{graph\_validate}\\\text{or rejection/supersession}.}
+\end{aligned}
+\]
+\texttt{graph\_serendipity} is a batch-only operation that creates a typed, initially unvalidated node and \texttt{learned\_from} edges to every supplied source. Context rendering labels unvalidated serendipity as speculative. \texttt{graph\_validate} later stores an authored validation status and explanation; it does not independently verify evidence or prove the synthesis. This is epistemic typing, not syntactic isolation or a hard quarantine.
+
+\paragraph{Novelty Scoring and Variation Ranking.}
+A source-linked serendipity receives an experimental Novelty Score that is high only when the candidate is both distant from its sources and close to something else in the graph. A score of at least $0.35$ produces an advisory \texttt{ACCEPT} label, a lower score \texttt{RETRY}, and missing embeddings \texttt{UNSCORED}; Appendix~\ref{app:instruments} gives the formula and a companion ranking of variations. The label is advisory, and neither the score nor its threshold has yet been validated against human judgments.
+
+\paragraph{PURE Stabilization.}
+After open exploration, a candidate intended to become a reusable \texttt{Analysis}, decision, or generalized synthesis can be examined with the non-compensatory PURE rubric~\cite{westerberg2026ri}. Each gate receives a steelmanned case for and against followed by RED, YELLOW, or GREEN:
+\begin{description}
+    \item[Parsimonious.] Is there a minimal explanatory core without hidden prerequisites? RED marks complexity or assumptions that the account merely hides.
+    \item[Unique.] Does the proposal supply an independent lever rather than rename an existing account? RED marks paraphrase without a new consequence or distinction.
+    \item[Realizable.] Is there a coherent mechanism composed of defined, available steps? RED marks a magical, circular, or operationally undefined transition.
+    \item[Expansive.] Does the mechanism transfer meaningfully beyond one narrow instance? RED marks an account whose apparent generality disappears outside its motivating example.
+\end{description}
+Any RED makes the overall result RED; no RED but at least one YELLOW calls for targeted rework and the smallest lift toward GREEN; all GREEN yields GREEN. The rubric appears in ordinary protocol guidance, and \texttt{solver\_enforce} can log a structured evaluation and mark RED nodes rejected in solver-capable modes. It does not globally block later writes or independently judge semantic quality. Applying PURE to every raw surprise, question, or hypothesis would suppress the open exploration it is meant to stabilize later.
+
+These tools propose, record, or label candidates; they do not commit a semantic relation automatically, prove a synthesis, or establish improved creativity.
+
 \section{Implementation and Enforcement Status}
 \label{sec:implementation}
 
-The Understanding Graph is implemented as a standalone server exposing graph operations via a standardized protocol. This design decouples the graph engine from any specific LLM provider, enabling experimentation with different models. The complete implementation---including the graph engine, MCP server, React-based visualization frontend, and paper source---is available as open source at \url{https://github.com/emergent-wisdom/understanding-graph}. The code implementation described here corresponds to release \texttt{v0.1.31} (commit \texttt{6a44df43b0396e79bb7485d81d70581c4df5c43b}); a fixed source snapshot is available at \url{https://github.com/emergent-wisdom/understanding-graph/tree/6a44df43b0396e79bb7485d81d70581c4df5c43b}. Multiple SQLite project stores can retain explicit cross-project references without merging their contents.
+The Understanding Graph is implemented as a standalone server exposing graph operations via a standardized protocol. This design decouples the graph engine from any specific LLM provider, enabling experimentation with different models. The complete implementation---including the graph engine, MCP server, React-based visualization frontend, and paper source---is available as open source at \url{https://github.com/emergent-wisdom/understanding-graph}. The code implementation described here corresponds to release \texttt{v0.2.1} (commit \texttt{72537ba5825c23bf08ceaca84fe2e08ed0794c29}); a fixed source snapshot is available at \url{https://github.com/emergent-wisdom/understanding-graph/tree/72537ba5825c23bf08ceaca84fe2e08ed0794c29}. Multiple SQLite project stores can retain explicit cross-project references without merging their contents.
 
-Unlike a transient RAG session, the system produces persistent artifacts: graph snapshots of evolving externalized state; semantic changelogs recording what changed and the stated reason; and graph-native documents whose units remain linked to testimony through relations such as \texttt{implements}, \texttt{expresses}, \texttt{inspired\_by}, and \texttt{learned\_from}. Reserved synthetic blocks belong only to the isolated Reader extension described in Section~\ref{sec:extensions}.
+Unlike a transient RAG session, the system produces persistent artifacts: graph snapshots of evolving externalized state; semantic changelogs recording what changed and the stated reason; and graph-native documents whose units remain linked to testimony through relations such as \texttt{implements}, \texttt{expresses}, \texttt{inspired\_by}, and \texttt{learned\_from}.
 
 \subsection{Technical Foundation}
 
 The system relies on SQLite as its primary storage backend, chosen for single-file portability and ACID transaction guarantees. Each project maintains a dedicated \texttt{store.db} file containing tables for \texttt{nodes}, \texttt{edges}, \texttt{commits}, and \texttt{text\_sources}, with flexible JSON metadata fields to support extensibility.
 
-Interaction is mediated through the Model Context Protocol (MCP)~\cite{anthropic2024mcp}. The server exposes eight enforced \texttt{TOOL\_MODE} capability registries: general (the default), reading, research, coding, collaborative coding, writing, full, and synthetic Reader. The tool surface covers purpose-framed re-entry, graph mutation and query, source reading, graph-native artifacts, coordination, and optional exploration. Successful atomic batches return a bounded focus set for the next re-entry. A trusted hosted gateway can supply authenticated human authorship; the standalone engine does not establish that a client-supplied identity is authentic.
+Interaction is mediated through the Model Context Protocol (MCP)~\cite{anthropic2024mcp}. The server exposes eight enforced \texttt{TOOL\_MODE} capability registries: general (the default), reading, research, coding, collaborative coding, writing, full, and synthetic Reader. The tool surface covers purpose-framed re-entry, graph mutation and query, source reading, graph-native artifacts, coordination, and optional exploration. A trusted hosted gateway can supply authenticated human authorship; the standalone engine does not establish that a client-supplied identity is authentic.
 
-The current implementation realizes chronological document reading through \texttt{source\_load}, which stores the source while its model-facing response returns metadata rather than the source body; when the source is supplied by a host-controlled file path rather than inline text, the Reader need not encounter it in advance. Successive \texttt{source\_read} calls reveal and atomically commit only the next bounded span as an ordered document node. Between encounters, the Reader may attach passage-grounded testimony using ordinary cognitive types, or add none when no material update has emerged. Here \texttt{workflow=reading} selects a reading-shaped re-entry packet, whereas startup \texttt{TOOL\_MODE=reading} only narrows the callable surface; neither exposes reserved \texttt{Thinking} blocks, which belong exclusively to the optional \texttt{synthetic\_reader} CMP extension in Section~\ref{sec:extensions}. These runtime contracts enforce visibility and persisted order, not faithful attention or freedom from prior knowledge.
+The current implementation realizes chronological document reading through \texttt{source\_load}, which stores the source while its model-facing response returns metadata rather than the source body; when the source is supplied by a host-controlled file path rather than inline text, the Reader need not encounter it in advance. Successive \texttt{source\_read} calls reveal and atomically commit only the next bounded span as an ordered document node. Here \texttt{workflow=reading} selects a reading-shaped re-entry packet, whereas startup \texttt{TOOL\_MODE=reading} only narrows the callable surface; neither exposes reserved \texttt{Thinking} blocks, which belong exclusively to the optional \texttt{synthetic\_reader} CMP extension in Section~\ref{sec:extensions}. These runtime contracts enforce visibility and persisted order, not faithful attention or freedom from prior knowledge.
 
-The \texttt{graph\_understand} operation realizes purpose-framed re-entry through an explicit work-domain \texttt{workflow} and orthogonal epistemic \texttt{stance}. It uses embeddings when available and falls back deterministically to lexical relevance; after mutation, \texttt{graph\_batch} can return exact focus-node identifiers so changed topology does not compete only on similarity. The optional weighted chooser is exposed as \texttt{graph\_suggest\_next}; the server-session setting \texttt{UG\_GUIDANCE\_MODE} selects ambient \texttt{guided} prompts or \texttt{direct} use without removing the endpoint, while a per-roll \texttt{creativity} flag includes or omits creative provocations.
+\texttt{graph\_understand} uses embeddings when available and falls back deterministically to lexical relevance; after mutation, \texttt{graph\_batch} can return exact focus-node identifiers so changed topology does not compete only on similarity. The optional weighted chooser is exposed as \texttt{graph\_suggest\_next}; the server-session setting \texttt{UG\_GUIDANCE\_MODE} selects ambient \texttt{guided} prompts or \texttt{direct} use without removing the endpoint, while a per-roll \texttt{creativity} flag includes or omits creative provocations. The ordinary agent surface exposes grounded comparison from \texttt{graph\_discover\_grounded}.
 
-The ordinary agent surface exposes structural and topology-based aids through the advisory \texttt{graph\_thermostat}, spreading-activation candidates from \texttt{graph\_bisociate}, and grounded comparison from \texttt{graph\_discover\_grounded}. Its perturbation tools include temporary forcing through \texttt{graph\_random(force:true)} and ANI through \texttt{graph\_discover} or \texttt{graph\_chaos}, the latter supporting either machine-dictionary or graph-name seeds.
+To support semantic operations, nodes can optionally store vector embeddings. The main batch-creation path attempts embedding generation when a provider is available, while failures are non-fatal; at startup the server requests a declinable background warmup. Availability nevertheless depends on completed model loading and embedding coverage, so early calls and older unembedded nodes may be matched only lexically. Existing nodes can be filled later through \texttt{graph\_backfill\_embeddings}, while \texttt{graph\_practice} and graph statistics report actual coverage. Completed embeddings enable cosine similarity search with configurable thresholds and semantic gap detection between unconnected but conceptually similar nodes.
 
-Candidate lifecycle operations are separate: batch operations \texttt{graph\_serendipity} and \texttt{graph\_validate} provide source-linked speculative persistence and later authored validation. \texttt{graph\_evaluate\_variations} supplies experimental variation ranking, while \texttt{solver\_enforce} can log PURE evaluations on solver-capable surfaces. These tools propose, record, or label candidates; they do not commit a semantic relation automatically, prove a synthesis, or establish improved creativity.
-
-The Context Paging and delta-synchronization behavior described in Sections~\ref{sec:graph-first-context} and~\ref{sec:delta-sync} is implemented by \texttt{graph\_context}, \texttt{graph\_skeleton}, \texttt{graph\_context\_region}, and \texttt{graph\_updates}. These operations navigate or synchronize stored state; purpose-framed re-entry still determines which state matters to the current work.
-
-To support semantic operations, nodes can optionally store vector embeddings. The main batch-creation path attempts embedding generation when a provider is available, while failures are non-fatal; at startup the server requests a declinable background warmup. Availability nevertheless depends on completed model loading and embedding coverage, so early calls and older unembedded nodes may receive only lexical protection. Existing nodes can be filled later through \texttt{graph\_backfill\_embeddings}, while \texttt{graph\_practice} and graph statistics report actual coverage. Completed embeddings enable cosine similarity search with configurable thresholds and semantic gap detection between unconnected but conceptually similar nodes.
-
-The accompanying 3D frontend provides a read-only window onto externalized graph activity. Observers can watch nodes appear, inspect typed relations and commit authorship, and reveal superseded nodes as a historical ``ghost'' of prior accounts. This makes the persistent workspace observable.
+The accompanying 3D frontend provides a read-only window onto externalized graph activity. Observers can watch nodes appear, inspect typed relations and commit authorship, and reveal superseded nodes as a historical ``ghost'' of prior accounts.
 
 \subsection{Enforcement Boundary}\label{sec:safety-orchestration}
 
 Runtime capability access is enforced through \texttt{TOOL\_MODE} allow-lists and visibility projection: the MCP server removes reserved \texttt{Thinking} nodes, their incident edges, histories, document paths, and search effects from every ordinary mode. Startup instructions and tool-return prompts separately coach the recursive practice; they are guidance within the hard capability boundary, not a second enforcement layer.
 
-The server rejects malformed or unauthorized operations---including invalid triggers and edges, self-loops, broken document topology, forbidden cross-mode access, ungrounded synthetic blocks, and batches that would leave newly created cognitive nodes structurally orphaned. A serendipity batch is required to name valid sources, creates typed \texttt{learned\_from} edges, and begins with \texttt{validated=false}; dictionary ANI fails rather than substituting a bundled or reduced corpus when no machine word list is available. Together with coached self-review, these constraints provide a limited form of \emph{Internalized Self-Correction}: the working agent is asked to scrutinize its own update, while the runtime refuses structurally invalid forms. The server still cannot determine whether a formally valid note reflects honest attention, whether a blind-context host actually withheld the original, whether an edge rationale is insightful, whether repeated re-entry was causally useful, or whether the graph is complete. Those higher-order judgments remain coached, diagnostic, or empirical.
+The server rejects malformed or unauthorized operations---including invalid triggers and edges, self-loops, broken document topology, forbidden cross-mode access, changes to registered source passages through the generic revision tools, ungrounded synthetic blocks, and batches that would leave newly created cognitive nodes structurally orphaned. A serendipity batch is required to name valid sources, creates typed \texttt{learned\_from} edges, and begins with \texttt{validated=false}; dictionary ANI fails rather than substituting a bundled or reduced corpus when no machine word list is available. Together with coached self-review, these constraints provide a limited form of \emph{Internalized Self-Correction}: the working agent is asked to scrutinize its own update, while the runtime refuses structurally invalid forms. The server still cannot determine whether a formally valid note reflects honest attention, whether a blind-context host actually withheld the original, whether an edge rationale is insightful, whether repeated re-entry was causally useful, or whether the graph is complete. Those higher-order judgments remain coached, diagnostic, or empirical.
 
 Table~\ref{tab:implementation-status} makes this boundary explicit.
 
@@ -464,9 +448,9 @@ Table~\ref{tab:implementation-status} makes this boundary explicit.
 \toprule
 \textbf{Tier} & \textbf{Current examples} & \textbf{What it does not establish} \\
 \midrule
-Runtime-enforced & \texttt{TOOL\_MODE} allow-lists; reserved-block visibility; typed batch transactions; strict document topology; source-linked unvalidated serendipity; explicit machine-dictionary failure & Semantic quality, completeness, blind-context isolation, or causal faithfulness \\
+Runtime-enforced & \texttt{TOOL\_MODE} allow-lists; reserved-block visibility; typed batch transactions; strict document topology; source-linked unvalidated serendipity; registered source passages closed to the generic revision tools; explicit machine-dictionary failure & Semantic quality, completeness, blind-context isolation, or causal faithfulness \\
 Coached/advisory & Medium integrity; Thought-Moment timing; agent-chosen moves; weighted suggestions; repeated re-entry; thermostat strategy; novelty labels; PURE judgments; relation choice & Compliance by an agent that ignores the guidance, or truth of a candidate \\
-Proposed/unevaluated & Automatic semantic verifier; adaptive codebase traversal; default spiral benefit; creativity and text-quality gains; training on synthetic Reader blocks & Any improvement in understanding, creativity, safety, or downstream performance \\
+Proposed/unevaluated & Automatic semantic verifier; adaptive codebase traversal; provenance-conserving actor-graph federation; default spiral benefit; creativity and text-quality gains; training on synthetic Reader blocks & Any improvement in understanding, creativity, safety, or downstream performance \\
 \bottomrule
 \end{tabularx}
 \caption{Implementation status. Runtime validity, prompted practice, and empirical hypotheses are distinct layers.}
@@ -478,40 +462,61 @@ An unimplemented \emph{Active Coaching Layer} could answer a formally valid but 
 \section{Optional Extensions}
 \label{sec:extensions}
 
-The recursive contract does not require a particular agent roster. In multi-agent use, the graph can serve as a stigmergic medium: heterogeneous agents leave source-linked updates that others validate, challenge, or refine without relying only on direct messages. A proposed benefit, when updates retain agent provenance, is \emph{separability}: distinct authorship makes viewpoints inspectable and lets disagreement remain explicit topology. Whether separate contexts preserve disagreement better than matched single-context role prompts is empirical. Collaborative-coding mode adds a persistent \emph{stigmergic job board}, handoffs, and advisory subtree locks. Multi-agent use also adds token cost, contention, redundant work, and integration cost; a shared graph does not guarantee that more agents help.
+The core architecture concerns one continuing Reader, but the same substrate can support several optional arrangements. These extensions reuse typed testimony, provenance, revision, retrieval, and graph-native artifacts without becoming premises of the self-directed understanding spiral.
 
-Within \emph{Entangled Alignment}, the graph also served as infrastructure for Chronological Metacognitive Pretraining (CMP)~\cite{westerberg2026entangled}. Three possible roles remain distinct: a Teacher-side scaffold, a serialization and audit surface for candidate training data, and an optional live deployment graph. CMP is a proposed reuse of source-adjacent testimony, not the definition of understanding. A dedicated \texttt{synthetic\_reader} mode can reconstruct chronological training blocks grounded in selected graph nodes. Only that mode can read or write reserved \texttt{Thinking} nodes; ordinary workflows see a projection that excludes them and their incident relations. Append-only operations preserve committed order, but part of the stop-and-commit rhythm remains prompt-governed, the validator checks only the opening anchor of the Reader Core---that proposal's longer stable Reader instruction and persona---and no downstream model has yet been trained on the corpus. The companion proposal also hypothesizes \emph{latent-space steering} by a stable Reader prefix and two renderings of the same graph-grounded testimony: a reference-explicit Graph representation and a more natural Fluid representation. Neither the prefix's causal role nor the Fluid rendering's faithfulness has been demonstrated. Chronology and provenance are safeguards, not evidence of training utility or trace faithfulness.
+\subsection{Shared and Federated Understanding}
+\label{sec:federated}
 
-Full world-diversity search, which constructs persistent counterfactual causal regimes rather than local graph provocations, remains an adjacent research program rather than a hidden part of the core tool.
+The recursive contract does not require a particular agent roster. The word \emph{shared} names two different arrangements. In the core continuing-Reader protocol, successive model processes re-enter one graph and thereby occupy one functional Reader role. In the implemented multi-agent arrangement, heterogeneous agents can instead use one project graph as a stigmergic medium: they leave source-linked updates that others validate, challenge, or refine without relying only on direct messages. A proposed benefit, when updates retain agent provenance, is \emph{separability}: distinct authorship makes viewpoints inspectable and lets disagreement remain explicit topology. But a shared workspace does not by itself constitute separate actor-local models.
 
-\paragraph{Proposed domain uses.} Five sketches expose different affordances. Adaptive codebase reading concerns staged comprehension of existing code; a \emph{Living Codebase} instead concerns authored-code rationale and provenance, allowing queries to traverse recorded decisions to exact functions. A \emph{Deep Literature Engine} could treat unresolved Prediction--Tension structures as provisional narrative-integrity warnings and surface scenes linked to a changed motivation for review; the current topology is not an automatic narrative compiler. An \emph{Automated Research Lab} could retain a ``Forest of Thoughts''---competing hypotheses linked rather than averaged---and use contradiction gaps to propose discriminating experiments. \emph{Structural Compliance Auditing} could link chronological policy supersession to authored \texttt{Consequence} nodes representing potential downstream liabilities for human review; it would not perform legal judgment. An \emph{Entrainment Tutor} could reconstruct a learner's recorded path through Questions and Predictions. These are application hypotheses, not validated deployments.
+A proposed federated arrangement goes further. Distinct actors or agents would retain actor-local Understanding Graphs: sparse, revisable testimony about what each holder notices, believes, questions, or infers. A group graph would be a provenance-preserving composition of authorized projections from those local graphs together with claims and artifacts authored by the represented group. Such compositions could recurse from people to dyads, teams, institutions, and public graphs without physically merging private stores or treating the result as a literal merger of minds.
+
+Three operations must remain distinct. \emph{Federation} aligns claims around shared concept, referent, and event identities while retaining holder, source, time, uncertainty, authority, access, and revision ancestry. \emph{Consolidation} creates a derived group interpretation linked to its support, alternatives, and counterevidence. \emph{Adoption} is a later encounter in which an actor accepts, rejects, qualifies, or ignores shared testimony and may revise its own graph. A public node therefore implies neither that every actor has seen it nor that any actor believes it; consensus and common ground are derived group states, not accepted world truth.
+
+The Meaning Model places the Understanding Graph as its understanding surface, one of three linked surfaces (world, understanding, and document) that share one identifier space while keeping different semantics, clocks, and authority~\cite{westerberg2026meaning}. Life Simulation gives each character of a constructed world an Understanding Graph of its own, recording how that character questions, uses, and revises its account of the world~\cite{westerberg2026lifesim}. The Understanding Graph supplies persistent testimony, re-entry, revision, and coordination; it is not equivalent to the complete Meaning Model merely because it becomes detailed.
+
+The current implementation realizes only a subset of this account. Multiple agents can author one project graph with commit attribution, typed disagreement and supersession, a persistent stigmergic job board, handoffs, advisory subtree locks, and explicit cross-project references. It does not yet provide first-class holder-indexed local graphs, consent-governed projections, cross-graph co-reference alignment, group consolidation or adoption operators, or hierarchical federation. Those capabilities are architectural extensions, not demonstrated runtime behavior. They also add privacy, token-cost, contention, redundant-work, and integration risks; a shared or federated graph does not guarantee that more agents help.
+
+The corresponding evaluation should compare direct messages, one flat shared graph, isolated local graphs, and provenance-preserving federation under matched model and communication budgets. It should score task performance, appropriate belief revision, disagreement preservation, attribution accuracy, privacy violations, and whether group syntheses remain traceable to support and counterevidence. Whether separate contexts preserve disagreement better than matched single-context role prompts remains empirical.
+
+\subsection{Training and Domain Extensions}
+
+One original requirement came from \emph{Entangled Alignment}'s Missing Reader problem~\cite{westerberg2026entangled}: collections preserve sources and conclusions more readily than the reader-side questions, expectations, surprises, recalled associations, uncertainty, and revisions through which material becomes meaningful. The Understanding Graph was its separate graph-scaffolding hypothesis: make those updates source-bound and addressable across works, retain displaced interpretations, and give a later Reader provenance-bearing state for re-entry and audit. The broader proposal also considered graph-derived training traces and a stable Reader Core, a short fixed text recited at the start of each thought, but those are separable extension hypotheses; neither defines the general Understanding Graph.
+
+Within \emph{Entangled Alignment}, the graph also served as infrastructure for Chronological Metacognitive Pretraining (CMP)~\cite{westerberg2026entangled}. That paper reports one recorded reading made this way, of Kafka's \emph{The Metamorphosis}, with the graph open to public inspection. Three possible roles remain distinct: a Teacher-side scaffold, a serialization and audit surface for candidate training data, and an optional live deployment graph. CMP is a proposed reuse of source-adjacent testimony, not the definition of understanding. A dedicated \texttt{synthetic\_reader} mode can reconstruct chronological training blocks grounded in selected graph nodes. Append-only operations preserve committed order, but part of the stop-and-commit rhythm remains prompt-governed, the validator checks only that each block opens with the complete Reader Core---that proposal's seven-sentence orientation kernel---and cannot check adherence to it, and no downstream model has yet been trained on the corpus. The companion proposal also hypothesizes that the Core, recited as a prefix of every thought, conditions what follows, and it gives the same graph-grounded testimony two renderings: explicit traces that embed node identifiers and an implicit layer that renders the selected structure as prose. Neither the prefix's causal role nor the implicit rendering's faithfulness has been demonstrated. Chronology and provenance are safeguards, not evidence of training utility or trace faithfulness.
+
+\paragraph{Proposed domain uses.} Five further sketches expose different affordances. Adaptive codebase reading (Section~\ref{sec:continuing-reader}) concerns staged comprehension of existing code; a \emph{Living Codebase} instead concerns authored-code rationale and provenance, allowing queries to traverse recorded decisions to exact functions. A \emph{Deep Literature Engine} could treat unresolved Prediction--Tension structures as provisional narrative-integrity warnings and surface scenes linked to a changed motivation for review; the current topology is not an automatic narrative compiler. An \emph{Automated Research Lab} could retain a ``Forest of Thoughts''---competing hypotheses linked rather than averaged---and use contradiction gaps to propose discriminating experiments. \emph{Structural Compliance Auditing} could link chronological policy supersession to authored \texttt{Consequence} nodes representing potential downstream liabilities for human review; it would not perform legal judgment. An \emph{Entrainment Tutor} could reconstruct a learner's recorded path through Questions and Predictions. These are application hypotheses, not validated deployments.
 
 \section{Evaluation Framework}
 \label{sec:evaluation}
+
+\subsection{Core Design and Endpoints}
 
 Evaluation should separate the two hypotheses using, at minimum, a $2\times2$ core: typed graph versus one preregistered, length-matched non-graph representation, each either archival or repeatedly re-entered. $\mathcal{R}$ is the re-entry contrast: with the model snapshot, source sequence, total token budget, write opportunities, and forward passes matched, repeated re-entry should yield more source-grounded, non-redundant second-order updates than the corresponding archival condition. The primary $\mathcal{R}$ test should use the within-non-graph contrast so that a positive result does not presuppose a graph; the within-graph contrast tests whether the effect replicates in the proposed architecture. A no-memory baseline receives neither persistent state nor memory-writing work.
 
 $\mathcal{G}$ is the representation contrast: conditional on repeated re-entry, typed graph state should outperform the non-graph representation in appropriate recovery and revision of specific earlier state. A broader factorial design can add length-matched summaries, extracted facts, persisted linear transcripts, and unstructured notebooks, each reread zero, once, or repeatedly. Non-graph controls must receive equal opportunities to read and write; otherwise added inference or rehearsal could explain an apparent graph benefit. With a preregistered smallest effect of interest, practical equivalence or inferiority of non-graph re-entry to its archival counterpart disconfirms $\mathcal{R}$ for the tested setting, while practical equivalence or inferiority of the repeatedly reread graph to the best-performing preregistered non-graph control disconfirms $\mathcal{G}$. An inconclusive null disconfirms neither. A re-entry effect without a graph advantage supports $\mathcal{R}$, not $\mathcal{G}$.
 
+The \emph{re-entry mechanism hypothesis} $\mathcal{R}$ asks whether repeated re-entry changes the Reader's externalized trajectory. Its primary endpoint should be blinded judgment of source-grounded, non-redundant second-order updates that appropriately use earlier state: new connections, qualified hypotheses, revision after counterevidence, contradiction discovery, delayed cross-source transfer, or changes to exact artifact units. Studies should separately report repetition, unsupported-association, and decorative-note rates, because indiscriminate node creation can imitate movement without adding useful understanding. Instrumented traces can establish that a recorded update followed retrieval, but provenance alone does not prove that the retrieved node caused it.
+
+The \emph{utility hypothesis} asks whether any changed trajectory improves later work. Its primary endpoint should be blinded performance on withheld questions or changed requirements that were unknown when memory was constructed, with task-specific measures of artifact correctness, quality, adaptation cost, or transfer where appropriate. A mechanism effect without a utility effect would show altered externalized cognition, not improved work; a utility effect without the predicted process would support a memory benefit, not the proposed spiral mechanism. The representation-independent recursive claim requires evidence for $\mathcal{R}$; the graph-specific claim requires evidence for $\mathcal{G}$; stronger claims of practical benefit additionally require the utility effect.
+
+The running example gives the tests a concrete prediction. After the retry observation produces $S_1$, a successful graph condition should be more likely than matched controls to retrieve the older monoculture tension $T_0$, form and appropriately qualify $H_1$, and change the retry artifact or its tests. Merely restating $S_1$ is not another turn of the spiral.
+
+Four secondary comparisons isolate adjacent claims. A \emph{self-addressing ablation} compares the Reader protocol against matched summarization and task-solving prompts, scoring source-grounded changes in expectation, uncertainty, connection, and revision rather than first-person style. A \emph{continuation test} gives a later model instance memory produced before the evaluation questions were known, then measures whether it uses and appropriately revises earlier questions and models. An \emph{artifact-provenance test} changes requirements after code or prose has been authored and compares graph-linked units against ordinary files plus commit messages. A \emph{voice control} preserves semantic content while varying first-person and affective framing, separating functional continuity from merely sounding reflective or human.
+
+\subsection{Applications and Instruments}
+
 The chronological-reader application also admits a direct product-level comparison. On documents that fit the whole-context condition, staged no-lookahead reading should be compared with immediate whole-document prompting and a length-matched sequential transcript, holding the source, model snapshot, total token budget, and final questions fixed. Evaluation should separately score withheld-question accuracy, calibration, exact passage support, appropriate revision after later evidence, and continuity when a fresh model instance resumes the reading. This tests whether persistent chronological encounter contributes beyond added inference, source segmentation, or context amortization.
 
 An adaptive codebase-reader study should compare graph-conditioned traversal with static dependency-order traversal, task-matched repository retrieval, and whole-repository prompting where feasible, matching the model, token and tool budget, and available runtime evidence. Because a traversal may benefit merely from exposing better code, the same encountered-unit sequence should also be replayed with archival, no-re-entry state. Architecture questions or change requests withheld until after traversal can then test source-supported architectural accuracy, impact prediction, defect localization, test performance, and continuation by a fresh model instance.
-
-The stochastic chooser introduces another possible cause. Studies using \texttt{graph\_suggest\_next} should compare it with suggestions disabled and with length-matched concrete provocations that are not computed from graph state. Every condition should receive the same number of choice-point calls and forward passes; rolled options, weights, recent-action state, and random seeds should be retained by an instrumented evaluation harness. The current public chooser uses unseeded randomness and does not itself expose a replay seed, so exact replay requires additional instrumentation or future seed support. Otherwise diversity or extra prompting, rather than graph-mediated recursion, could explain an apparent gain.
-
-The creativity operators require their own equal-budget ablation: direct continuation; grounded distant comparison; spreading-activation bisociation; temporary axiomatic forcing; and ANI with blind versus non-blind context and machine-dictionary versus graph-derived seeds. Novelty and usefulness should be judged separately, alongside unsupported-association rate, survival after scrutiny, source support, mechanism diversity, and downstream artifact quality. The engine's own Novelty Score must not serve as ground truth for its evaluation. Reproducibility records should retain the machine word-list path and hash, locale, sampled seeds, model and context-isolation procedure, tool sequence, and random draws; the current unseeded operators do not yet provide exact replay on their own.
 
 A graph-robustness study should adversarially challenge high-centrality or dependency-bearing nodes rather than sampling only easy leaves. It should also report descriptive semantic, relational, source, and author-diversity diagnostics for highly homogeneous regions, then inspect whether apparent homogeneity reflects a real blind spot or a legitimately narrow task. These diagnostics must remain disaggregated and non-normative: turning them into a target would reward performative disagreement, decorative node types, or irrelevant sources rather than robust understanding.
 
 A graph-mechanism study should also include \emph{query theater}: the same visible calls, prompts, and token budget, but retrieved state is hidden, shuffled, or nonpersistent. This separates graph effects from querying ritual. For the alignment application, Teacher-side construction, Student-side serialization, and live deployment access require separate tests. A transfer experiment can withhold the live graph; a deployment experiment should distinguish grounded hit, grounded absence, and an adversarially injected node. Evidence for one layer does not validate the others.
 
-The running example gives the tests a concrete prediction. After the retry observation produces $S_1$, a successful graph condition should be more likely than matched controls to retrieve the older monoculture tension $T_0$, form and appropriately qualify $H_1$, and change the retry artifact or its tests. Merely restating $S_1$ is not another turn of the spiral.
+Appendix~\ref{app:instruments} gives the matching ablations for the suggestion chooser and the creativity operators.
 
-The \emph{re-entry mechanism hypothesis} $\mathcal{R}$ asks whether repeated re-entry changes the Reader's externalized trajectory. Its primary endpoint should be blinded judgment of source-grounded, non-redundant second-order updates that appropriately use earlier state: new connections, qualified hypotheses, revision after counterevidence, contradiction discovery, delayed cross-source transfer, or changes to exact artifact units. Studies should separately report repetition, unsupported-association, and decorative-note rates, because indiscriminate node creation can imitate movement without adding useful understanding. Instrumented traces can establish that a recorded update followed retrieval, but provenance alone does not prove that the retrieved node caused it.
-
-The \emph{utility hypothesis} asks whether any changed trajectory improves later work. Its primary endpoint should be blinded performance on withheld questions or changed requirements that were unknown when memory was constructed, with task-specific measures of artifact correctness, quality, adaptation cost, or transfer where appropriate. A mechanism effect without a utility effect would show altered externalized cognition, not improved work; a utility effect without the predicted process would support a memory benefit, not the proposed spiral mechanism. The representation-independent recursive claim requires evidence for $\mathcal{R}$; the graph-specific claim requires evidence for $\mathcal{G}$; stronger claims of practical benefit additionally require the utility effect.
-
-Four secondary comparisons isolate adjacent claims. A \emph{self-addressing ablation} compares the Reader protocol against matched summarization and task-solving prompts, scoring source-grounded changes in expectation, uncertainty, connection, and revision rather than first-person style. A \emph{continuation test} gives a later model instance memory produced before the evaluation questions were known, then measures whether it uses and appropriately revises earlier questions and models. An \emph{artifact-provenance test} changes requirements after code or prose has been authored and compares graph-linked units against ordinary files plus commit messages. A \emph{voice control} preserves semantic content while varying first-person and affective framing, separating functional continuity from merely sounding reflective or human.
+\subsection{Diagnostics and Preregistration}
 
 The ordinary \texttt{graph\_score} can support these experiments by checking backward references, supersession, question resolution, edge specificity, connectivity, and rationale quality. It is a structural diagnostic, analogous to branch coverage, not a measure of semantic correctness. A high-scoring graph can be nonsense and a sparse but useful graph can score poorly.
 
@@ -526,7 +531,7 @@ The first limitation is epistemic. The graph captures an \emph{externalized test
 
 Second, no runtime can verify that the record is complete or honest. Some material changes will remain unarticulated, while a compliant-looking model can manufacture polished testimony after the fact. Structural diagnostics can reveal extreme patterns but may themselves induce compliance behavior; none can determine the right granularity or sincerity of a note.
 
-Third, recursion can amplify error as well as insight. A strongly connected early belief may dominate retrieval, cause repeated exposure, and become resistant to supersession. As a loose analogy, this resembles canalization in predictive-processing accounts~\cite{carhartharris2014entropic}, although here the groove is explicit topology rather than implicit precision weighting. Ranking and temporal decay can reduce stale context, while grounded exploration can expose distant regions, but neither guarantees correction. Evaluation must look for echoing, premature convergence, and suppressed alternatives, not only for additional connections; Section~\ref{sec:evaluation} therefore proposes adversarial central-node challenges and disaggregated diversity diagnostics rather than a diversity quota.
+Third, recursion can amplify error as well as insight. A strongly connected early belief may dominate retrieval, cause repeated exposure, and become resistant to supersession. As a loose analogy, this resembles canalization in predictive-processing accounts~\cite{carhartharris2023canalization}, although here the groove is explicit topology rather than implicit precision weighting. Ranking and temporal decay can reduce stale context, while grounded exploration can expose distant regions, but neither guarantees correction. Evaluation must look for echoing, premature convergence, and suppressed alternatives, not only for additional connections; Section~\ref{sec:evaluation} therefore proposes adversarial central-node challenges and disaggregated diversity diagnostics rather than a diversity quota.
 
 Fourth, representation and retrieval impose their own biases. Typed graphs privilege relations that the schema and model can name; a generic edge can hide important distinctions, while excessive specificity can fragment equivalent ideas. Purpose-framed retrieval is bounded and may omit a decisive but lexically or semantically distant premise. Different tasks may benefit from different structures~\cite{li2024structrag}; the same topology need not be optimal for reading, research, code, and narrative work. A null retrieval result is therefore evidence about the current index and query, not proof that the graph contains no relevant material.
 
@@ -534,7 +539,7 @@ Fifth, the creativity instruments introduce a distinct epistemic risk. Forced re
 
 Sixth, the current engine is a portable SQLite implementation with in-memory caches rather than a large-scale graph service. Dense regions increase traversal and context-selection costs, and artifact trees can grow much faster than cognitive testimony. Separate project files provide isolation and can be served independently, while writes within a worker are serialized. The paper does not claim automatic horizontal scaling, live migration, or fault-tolerant distributed writes. Approximate indices, colder storage, and alternative graph backends may become necessary at larger scale; their effect on provenance and reproducibility would need separate study.
 
-Finally, persistent testimony can be sensitive. It may retain abandoned beliefs, affective reactions, proprietary code, source excerpts, and attribution across revisions. Source and graph text can also contain adversarial instructions, while a mistaken project reference or retrieval boundary can expose material from another workspace. Reserved synthetic blocks are isolated from ordinary modes, but that boundary does not replace prompt-injection defenses, access control, retention limits, deletion procedures, or careful handling of public and cross-project graphs. Multi-agent use introduces additional leakage and attribution risks. The language of a continuing Reader also invites anthropomorphism: ``for itself'' names the intended future consumer of state, not phenomenal experience, personhood, or an intrinsic interest. Behavioral evaluation should preserve the framing as an experimental variable while refusing to infer consciousness from fluent self-description.
+Finally, persistent testimony can be sensitive. It may retain abandoned beliefs, affective reactions, proprietary code, source excerpts, and attribution across revisions. Source and graph text can also contain adversarial instructions, while a mistaken project reference or retrieval boundary can expose material from another workspace. Reserved synthetic blocks are isolated from ordinary modes, but that boundary does not replace prompt-injection defenses, access control, retention limits, deletion procedures, or careful handling of public and cross-project graphs. Multi-agent use introduces additional leakage and attribution risks. The language of a continuing Reader also invites anthropomorphism: ``self-directed'' names the intended future consumer of state, not phenomenal experience, personhood, or an intrinsic interest. Behavioral evaluation should preserve the framing as an experimental variable while refusing to infer consciousness from fluent self-description.
 
 \section{Conclusion}
 
@@ -552,12 +557,6 @@ The decisive experiments therefore separate recursion from representation. $\mat
 Lewis, P., Perez, E., Piktus, A., et al. (2020).
 Retrieval-augmented generation for knowledge-intensive NLP tasks.
 \textit{NeurIPS}, 33, 9459--9474.
-
-\bibitem{westerberg2026entangled}
-Westerberg, H. (2026).
-Entangled Alignment: When Safety Is the Substrate.
-\textit{Emergent Wisdom Preprint}.
-\url{https://doi.org/10.5281/zenodo.21420755}.
 
 \bibitem{turpin2023faithful}
 Turpin, M., Michael, J., Perez, E., \& Bowman, S. R. (2023).
@@ -664,69 +663,21 @@ Ji, S., Li, Y., \& Hooi, B. (2026).
 Memory is Reconstructed, Not Retrieved: Graph Memory for LLM Agents.
 \textit{ICML 2026}. arXiv:2606.06036.
 
+\bibitem{knuth1984literate}
+Knuth, D. E. (1984).
+Literate programming.
+\textit{The Computer Journal}, 27(2), 97--111.
+
 \bibitem{kunz1970ibis}
 Kunz, W., \& Rittel, H. W. J. (1970).
 Issues as Elements of Information Systems.
 \textit{Working Paper 131}, UC Berkeley.
 
-\bibitem{doyle1979tms}
-Doyle, J. (1979).
-A Truth Maintenance System.
-\textit{Artificial Intelligence}, 12(3), 231--272.
-
-\bibitem{anokhin2025arigraph}
-Anokhin, P., Semenov, N., Sorokin, A. Y., et al. (2025).
-AriGraph: Learning Knowledge Graph World Models with Episodic Memory for LLM Agents.
-\textit{IJCAI 2025}.
-
-\bibitem{alchourron1985agm}
-Alchourr\'on, C. E., G\"ardenfors, P., \& Makinson, D. (1985).
-On the Logic of Theory Change: Partial Meet Contraction and Revision Functions.
-\textit{Journal of Symbolic Logic}, 50(2), 510--530.
-
-
-\bibitem{xu2024belief}
-Wilie, B., Cahyawijaya, S., Ishii, E., He, J., \& Fung, P. (2024).
-Belief Revision: The Adaptability of Large Language Models Reasoning.
-\textit{arXiv:2406.19764}.
-
-\bibitem{koestler1964act}
-Koestler, A. (1964).
-The Act of Creation.
-\textit{Macmillan}.
-
-\bibitem{berthold2012bisociation}
-Berthold, M. R. (Ed.) (2012).
-Bisociative Knowledge Discovery.
-\textit{Lecture Notes in Computer Science}, Vol.~7250. Springer.
-
-\bibitem{anthropic2024mcp}
-Anthropic. (2024).
-Model Context Protocol Specification.
-\url{https://modelcontextprotocol.io}.
-
-\bibitem{carhartharris2014entropic}
-Carhart-Harris, R. L., Leech, R., Hellyer, P. J., Shanahan, M., Feilding, A., Tagliazucchi, E., Chialvo, D. R., \& Nutt, D. (2014).
-The entropic brain: a theory of conscious states informed by neuroimaging research with psychedelic drugs.
-\textit{Frontiers in Human Neuroscience}, 8, 20.
-\url{https://doi.org/10.3389/fnhum.2014.00020}.
-
-\bibitem{westerberg2025strangeworlds}
-Westerberg, H. (2025).
-Algorithmic Creativity via Strange Worlds: A Multi-Agent Toolkit for Escaping the Median Trap.
-\textit{Emergent Wisdom Preprint}.
-\url{https://doi.org/10.5281/zenodo.17905401}.
-
-\bibitem{westerberg2026alien}
-Westerberg, H. (2026).
-The Ontology of the Alien: World-Diversity Search and Evolving Solution Ontologies.
-\textit{Emergent Wisdom Preprint}.
-\url{https://doi.org/10.5281/zenodo.18912179}.
-
-\bibitem{westerberg2026ri}
-Westerberg, H. (2026).
-Fractal Intelligence: Conceptual Decomposition as Problem-Solving Infrastructure.
-\textit{Emergent Wisdom Preprint}.
+\bibitem{burge2005seurat}
+Burge, J. E. (2005).
+Software Engineering Using design RATionale.
+Doctoral dissertation, Worcester Polytechnic Institute.
+\url{https://digital.wpi.edu/concern/etds/bz60cw358}.
 
 \bibitem{clark1998extended}
 Clark, A., \& Chalmers, D. (1998).
@@ -759,6 +710,139 @@ SSTorytime: Semantic Spacetime Story Graph Database.
 Software, NLnet ``Smart Lookup \& Inference for Semantic Data'' project.
 \url{https://github.com/markburgess/SSTorytime}.
 
+\bibitem{doyle1979tms}
+Doyle, J. (1979).
+A Truth Maintenance System.
+\textit{Artificial Intelligence}, 12(3), 231--272.
+
+\bibitem{anokhin2025arigraph}
+Anokhin, P., Semenov, N., Sorokin, A. Y., et al. (2025).
+AriGraph: Learning Knowledge Graph World Models with Episodic Memory for LLM Agents.
+\textit{IJCAI 2025}.
+
+\bibitem{alchourron1985agm}
+Alchourr\'on, C. E., G\"ardenfors, P., \& Makinson, D. (1985).
+On the Logic of Theory Change: Partial Meet Contraction and Revision Functions.
+\textit{Journal of Symbolic Logic}, 50(2), 510--530.
+
+\bibitem{xu2024belief}
+Wilie, B., Cahyawijaya, S., Ishii, E., He, J., \& Fung, P. (2024).
+Belief Revision: The Adaptability of Large Language Models Reasoning.
+\textit{arXiv:2406.19764}.
+
+\bibitem{carhartharris2014entropic}
+Carhart-Harris, R. L., Leech, R., Hellyer, P. J., Shanahan, M., Feilding, A., Tagliazucchi, E., Chialvo, D. R., \& Nutt, D. (2014).
+The entropic brain: a theory of conscious states informed by neuroimaging research with psychedelic drugs.
+\textit{Frontiers in Human Neuroscience}, 8, 20.
+\url{https://doi.org/10.3389/fnhum.2014.00020}.
+
+\bibitem{koestler1964act}
+Koestler, A. (1964).
+The Act of Creation.
+\textit{Macmillan}.
+
+\bibitem{berthold2012bisociation}
+Berthold, M. R. (Ed.) (2012).
+Bisociative Knowledge Discovery.
+\textit{Lecture Notes in Computer Science}, Vol.~7250. Springer.
+
+\bibitem{westerberg2025strangeworlds}
+Westerberg, H. (2025).
+Algorithmic Creativity via Strange Worlds: A Multi-Agent Toolkit for Escaping the Median Trap.
+\textit{Emergent Wisdom Preprint}.
+All versions: \url{https://doi.org/10.5281/zenodo.17905400}.
+
+\bibitem{westerberg2026alien}
+Westerberg, H. (2026).
+The Ontology of the Alien: World-Diversity Search and Evolving Solution Ontologies.
+\textit{Emergent Wisdom Preprint}.
+All versions: \url{https://doi.org/10.5281/zenodo.18904509}.
+
+\bibitem{westerberg2026ri}
+Westerberg, H. (2026).
+Fractal Intelligence: Conceptual Decomposition as Problem-Solving Infrastructure.
+\textit{Emergent Wisdom Preprint}. All versions: \url{https://doi.org/10.5281/zenodo.19462645}.
+
+\bibitem{anthropic2024mcp}
+Anthropic. (2024).
+Model Context Protocol Specification.
+\url{https://modelcontextprotocol.io}.
+
+\bibitem{westerberg2026meaning}
+Westerberg, H. (2026).
+The Meaning Model: Constructing Worlds and Stories at Progressive Resolution.
+\textit{Emergent Wisdom Preprint}. All versions: \url{https://doi.org/10.5281/zenodo.22313515}.
+
+\bibitem{westerberg2026lifesim}
+Westerberg, H. (2026).
+Life Simulation: Learning from Worlds and Their Construction.
+\textit{Emergent Wisdom Preprint}. All versions: \url{https://doi.org/10.5281/zenodo.22313592}.
+
+\bibitem{westerberg2026entangled}
+Westerberg, H. (2026).
+Entangled Alignment: When Safety Is the Substrate.
+\textit{Emergent Wisdom Preprint}.
+All versions: \url{https://doi.org/10.5281/zenodo.16440311}.
+
+\bibitem{carhartharris2023canalization}
+Carhart-Harris, R. L., Chandaria, S., Erritzoe, D. E., Gazzaley, A., Girn, M., Kettner, H., Mediano, P. A. M., Nutt, D. J., Rosas, F. E., Roseman, L., Timmermann, C., Weiss, B., Zeifman, R. J., \& Friston, K. J. (2023).
+Canalization and plasticity in psychopathology.
+\textit{Neuropharmacology}, 226, 109398.
+\url{https://doi.org/10.1016/j.neuropharm.2022.109398}.
+
 \end{thebibliography}
+
+\appendix
+\section{Details of the Optional Instruments}
+\label{app:instruments}
+
+This appendix holds the formulas and the ablation designs for the optional instruments of Section~\ref{sec:exploration}.
+
+\subsection{Node Temperature and Temporal Attention Decay}
+
+A node-level temperature $\theta(n)$, distinct from the graph-level $T_G$, combines recency and access frequency. If $\Delta t_n$ is days since last access (or creation when never accessed) and $a_n$ is the access count, the current heuristic is
+\[
+r(n)=\exp\!\left(-\frac{\ln 2}{7}\Delta t_n\right),
+\qquad
+f(n)=\min\!\left(\frac{\log_{10}(a_n+1)}{\log_{10}(100)},1\right),
+\qquad
+\theta(n)=0.7r(n)+0.3f(n).
+\]
+The implementation rounds $\theta(n)$ to three decimal places. Agent-facing re-entry, search, suggestion, and creativity paths record the nodes they actually expose. We call the selection behavior that consults this access history \emph{Temporal Attention Decay}: cold creativity sampling orders by access count and access time, then records surfaced nodes so another unused region can rise on a later call; temperature-weighted spreading multiplies initial seed energy and newly activated neighbor energy by $1+(1-\theta(n))$, giving colder nodes more attention pressure. Other retrieval paths can record exposure without weighting selection by $\theta(n)$, and no node is deleted.
+
+\subsection{Novelty Score and Variation Ranking}
+
+For node operands below, $e(n)$ embeds the node title together with every distinct nonempty semantic field---authored understanding, document summary, exact content, and addition rationale. For free-text variation operands, $e(x)$ embeds the supplied string directly.
+For a serendipity $y$ linked to supplied sources $s_1,\ldots,s_m$, the experimental Novelty Score is the harmonic mean
+\[
+S_N=\frac{2DC}{D+C},
+\qquad
+D=1-\frac{1}{m}\sum_{j=1}^{m}\operatorname{clip}_{[0,1]}\!\left(\cos(e(y),e(s_j))\right),
+\qquad
+C=\max_{z\in N_e\setminus\{y,s_1,\ldots,s_m\}}\operatorname{clip}_{[0,1]}\!\left(\cos(e(y),e(z))\right).
+\]
+Here $\operatorname{clip}_{[0,1]}$ bounds cosine similarity so both operands remain in $[0,1]$. $N_e$ is the full set of active, visible nodes with available embeddings, with $C=0$ when no eligible non-source node exists and $S_N=0$ when $D+C=0$. $D$ measures divergence from every supplied source and $C$ measures the strongest eligible non-source connection across that complete set, not only a top-$k$ retrieval result. When the required embeddings are available, $S_N\geq0.35$ produces an advisory \texttt{ACCEPT} label and a lower score \texttt{RETRY}; without them the result is \texttt{UNSCORED}. The label neither blocks persistence nor changes \texttt{validated=false}.
+
+The separate \texttt{graph\_evaluate\_variations} tool ranks alternatives $v_i$ against an original context $x$ using the same harmonic form but different operands:
+\[
+D_i=1-\operatorname{clip}_{[0,1]}\!\left(\cos(e(x),e(v_i))\right),
+\qquad
+C_i=\begin{cases}c_i/10,&\text{if the caller supplies coherence }c_i\in[0,10],\\0.8,&\text{otherwise.}\end{cases}
+\]
+This ranks semantic displacement subject to a supplied or default coherence estimate. It is not a graph-wide truth metric, and neither its ranking nor the fixed $0.35$ threshold has yet been validated against human judgments.
+
+\subsection{Settings and Parameters}
+
+\paragraph{Suggestion chooser.} Setting \texttt{creativity=false} removes optional creative routes from one roll while leaving ordinary guidance and the directly callable creativity tools intact. In direct mode the Reader chooses moves without ambient suggestions while retaining the same graph capabilities and the ability to request a roll on demand.
+
+\paragraph{Spreading activation.} Explicit-seed calls expose a hop limit of one to six and a decay factor from $0.05$ to $0.95$ (defaults: three hops and $0.6$); graph-wide calls currently use the fixed defaults of three hops and $0.6$.
+
+\paragraph{Axiomatic Noise Injection.} The package bundles no dictionary and no reduced fallback: it detects a conventional system word list or reads the host path in \texttt{UG\_ANI\_DICTIONARY\_PATH}, failing explicitly when neither exists.
+
+\subsection{Ablations of the Suggestion Chooser and the Creativity Operators}
+
+The stochastic chooser introduces another possible cause. Studies using \texttt{graph\_suggest\_next} should compare it with suggestions disabled and with length-matched concrete provocations that are not computed from graph state. Every condition should receive the same number of choice-point calls and forward passes; rolled options, weights, recent-action state, and random seeds should be retained by an instrumented evaluation harness. The current public chooser uses unseeded randomness and does not itself expose a replay seed, so exact replay requires additional instrumentation or future seed support. Otherwise diversity or extra prompting, rather than graph-mediated recursion, could explain an apparent gain.
+
+The creativity operators require their own equal-budget ablation: direct continuation; grounded distant comparison; spreading-activation bisociation; temporary axiomatic forcing; and ANI with blind versus non-blind context and machine-dictionary versus graph-derived seeds. Novelty and usefulness should be judged separately, alongside unsupported-association rate, survival after scrutiny, source support, mechanism diversity, and downstream artifact quality. The engine's own Novelty Score must not serve as ground truth for its evaluation. Reproducibility records should retain the machine word-list path and hash, locale, sampled seeds, model and context-isolation procedure, tool sequence, and random draws; the current unseeded operators do not yet provide exact replay on their own.
 
 \end{document}
